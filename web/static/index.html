@@ -1,0 +1,1325 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>VFR Decision Engine · Argentina</title>
+
+  <!-- Tailwind CDN con config personalizada -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            bg:      '#0d1117',
+            surface: '#161b22',
+            border:  '#30363d',
+            muted:   '#8b949e',
+            accent:  '#58a6ff',
+            go:      '#3fb950',
+            caution: '#d29922',
+            nogo:    '#f85149',
+          },
+          fontFamily: {
+            mono: ['JetBrains Mono', 'Fira Code', 'Consolas', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
+  <style>
+    body { background-color: #0d1117; color: #e6edf3; }
+
+    /* Scrollbar oscura */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #161b22; }
+    ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #484f58; }
+
+    /* Mapa oscuro */
+    .leaflet-container { background: #0d1117; }
+    .leaflet-popup-content-wrapper { background: #161b22; color: #e6edf3; border: 1px solid #30363d; border-radius: 8px; }
+    .leaflet-popup-tip { background: #161b22; }
+
+    /* Decision badge glow animations */
+    @keyframes glow-go {
+      0%, 100% { box-shadow: 0 0 20px rgba(63,185,80,0.3), 0 0 60px rgba(63,185,80,0.1); }
+      50%       { box-shadow: 0 0 40px rgba(63,185,80,0.6), 0 0 80px rgba(63,185,80,0.2); }
+    }
+    @keyframes glow-caution {
+      0%, 100% { box-shadow: 0 0 20px rgba(210,153,34,0.3), 0 0 60px rgba(210,153,34,0.1); }
+      50%       { box-shadow: 0 0 40px rgba(210,153,34,0.6), 0 0 80px rgba(210,153,34,0.2); }
+    }
+    @keyframes glow-nogo {
+      0%, 100% { box-shadow: 0 0 20px rgba(248,81,73,0.3), 0 0 60px rgba(248,81,73,0.1); }
+      50%       { box-shadow: 0 0 40px rgba(248,81,73,0.6), 0 0 80px rgba(248,81,73,0.2); }
+    }
+    @keyframes radar-ring {
+      0%   { transform: scale(1); opacity: 0.5; }
+      100% { transform: scale(2.8); opacity: 0; }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .badge-go     { animation: glow-go     2s ease-in-out infinite; border-color: #3fb950; }
+    .badge-caution{ animation: glow-caution 2s ease-in-out infinite; border-color: #d29922; }
+    .badge-nogo   { animation: glow-nogo   2s ease-in-out infinite; border-color: #f85149; }
+
+    .ring { animation: radar-ring 2.4s ease-out infinite; }
+    .ring:nth-child(2) { animation-delay: 0.8s; }
+    .ring:nth-child(3) { animation-delay: 1.6s; }
+
+    .fade-in { animation: fadeIn 0.5s ease forwards; }
+
+    /* Input & Select estilos */
+    .av-input {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      color: #e6edf3;
+      border-radius: 6px;
+      padding: 8px 12px;
+      width: 100%;
+      outline: none;
+      transition: border-color 0.2s;
+      font-size: 14px;
+    }
+    .av-input:focus { border-color: #58a6ff; }
+    .av-input::placeholder { color: #484f58; }
+
+    .av-select {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      color: #e6edf3;
+      border-radius: 6px;
+      padding: 8px 12px;
+      width: 100%;
+      outline: none;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .av-select:focus { border-color: #58a6ff; }
+
+    /* Card */
+    .av-card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 10px;
+      padding: 20px;
+    }
+
+    /* Score bar */
+    .score-bar-bg { background: #21262d; border-radius: 4px; height: 6px; overflow: hidden; }
+    .score-bar-fill { height: 100%; border-radius: 4px; transition: width 0.6s ease; }
+
+    /* Dropdown autocomplete */
+    .dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0; right: 0;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-top: none;
+      border-radius: 0 0 8px 8px;
+      z-index: 100;
+      max-height: 220px;
+      overflow-y: auto;
+    }
+    .dropdown-item {
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 13px;
+      border-bottom: 1px solid #21262d;
+      transition: background 0.1s;
+    }
+    .dropdown-item:hover { background: #21262d; }
+    .dropdown-item:last-child { border-bottom: none; }
+
+    /* Map container */
+    #map { height: 320px; border-radius: 8px; z-index: 0; }
+
+    /* Label */
+    .av-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #8b949e;
+      margin-bottom: 6px;
+    }
+
+    /* Tag */
+    .cat-tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+    }
+  </style>
+</head>
+
+<body class="min-h-screen font-sans antialiased">
+
+<!-- ═══════════════════════════════════════════════════════════ HEADER -->
+<header class="sticky top-0 z-50 border-b border-border"
+        style="background: rgba(13,17,23,0.95); backdrop-filter: blur(12px);">
+  <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <span class="text-accent text-xl">✈</span>
+      <div>
+        <div class="font-bold text-sm tracking-wide text-[#e6edf3]">VFR DECISION ENGINE</div>
+        <div class="text-[10px] text-muted tracking-widest uppercase">Argentina · Normativa ANAC/OACI</div>
+      </div>
+    </div>
+    <div class="text-[11px] text-muted font-mono" id="utc-clock"></div>
+  </div>
+</header>
+
+<!-- ═══════════════════════════════════════════════════════════ APP -->
+<main class="max-w-5xl mx-auto px-4 py-8" x-data="app()" x-init="init()">
+
+  <!-- ── FORM CARD ─────────────────────────────────────────────────── -->
+  <div class="av-card mb-6">
+    <h2 class="text-[11px] font-semibold tracking-widest uppercase text-muted mb-5">
+      Planificación de vuelo
+    </h2>
+
+    <!-- Origen + Destino -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
+
+      <!-- ORIGEN -->
+      <div>
+        <label class="av-label">Aeródromo de origen</label>
+        <div class="relative">
+          <input class="av-input"
+                 :class="originAirport ? 'border-accent/50' : ''"
+                 type="text"
+                 placeholder="Código ICAO o nombre..."
+                 x-model="originSearch"
+                 @input="onOriginInput()"
+                 @focus="originOpen = originResults.length > 0"
+                 @keydown.escape="originOpen = false"
+                 @keydown.enter.prevent="originResults[0] && selectOrigin(originResults[0])"
+                 autocomplete="off"/>
+          <div class="dropdown" x-show="originOpen" @click.outside="originOpen = false">
+            <template x-for="ap in originResults" :key="ap.code">
+              <div class="dropdown-item" @click="selectOrigin(ap)">
+                <span class="font-mono text-accent font-bold" x-text="ap.code"></span>
+                <span class="text-[#e6edf3] ml-2" x-text="ap.name"></span>
+                <span class="text-muted ml-1 text-xs" x-text="ap.province ? '· ' + ap.province : ''"></span>
+              </div>
+            </template>
+          </div>
+        </div>
+        <!-- Info + runway selector -->
+        <div x-show="originAirport" class="mt-2 flex items-center gap-3">
+          <span class="text-xs text-muted font-mono"
+                x-text="originAirport ? `${originAirport.elev_ft} ft MSL` : ''"></span>
+          <div class="flex-1">
+            <label class="av-label" style="margin-bottom:4px">Cabecera</label>
+            <template x-if="originAirport && originAirport.runways && originAirport.runways.length > 0">
+              <select class="av-select text-xs" x-model.number="form.origin_runway">
+                <template x-for="rwy in originAirport.runways" :key="rwy.heading">
+                  <option :value="rwy.heading" x-text="`RWY ${rwy.heading}° ${rwy.label || ''}`"></option>
+                </template>
+              </select>
+            </template>
+            <template x-if="!originAirport || !originAirport.runways || originAirport.runways.length === 0">
+              <input class="av-input text-xs" type="number"
+                     x-model.number="form.origin_runway"
+                     min="0" max="360" step="10" placeholder="180"/>
+            </template>
+          </div>
+        </div>
+      </div>
+
+      <!-- DESTINO -->
+      <div>
+        <label class="av-label">Aeródromo de destino</label>
+        <div class="relative">
+          <input class="av-input"
+                 :class="destAirport ? 'border-accent/50' : ''"
+                 type="text"
+                 placeholder="Código ICAO o nombre..."
+                 x-model="destSearch"
+                 @input="onDestInput()"
+                 @focus="destOpen = destResults.length > 0"
+                 @keydown.escape="destOpen = false"
+                 @keydown.enter.prevent="destResults[0] && selectDest(destResults[0])"
+                 autocomplete="off"/>
+          <div class="dropdown" x-show="destOpen" @click.outside="destOpen = false">
+            <template x-for="ap in destResults" :key="ap.code">
+              <div class="dropdown-item" @click="selectDest(ap)">
+                <span class="font-mono text-accent font-bold" x-text="ap.code"></span>
+                <span class="text-[#e6edf3] ml-2" x-text="ap.name"></span>
+                <span class="text-muted ml-1 text-xs" x-text="ap.province ? '· ' + ap.province : ''"></span>
+              </div>
+            </template>
+          </div>
+        </div>
+        <div x-show="destAirport" class="mt-2 flex items-center gap-3">
+          <span class="text-xs text-muted font-mono"
+                x-text="destAirport ? `${destAirport.elev_ft} ft MSL` : ''"></span>
+          <div class="flex-1">
+            <label class="av-label" style="margin-bottom:4px">Cabecera</label>
+            <template x-if="destAirport && destAirport.runways && destAirport.runways.length > 0">
+              <select class="av-select text-xs" x-model.number="form.dest_runway">
+                <template x-for="rwy in destAirport.runways" :key="rwy.heading">
+                  <option :value="rwy.heading" x-text="`RWY ${rwy.heading}° ${rwy.label || ''}`"></option>
+                </template>
+              </select>
+            </template>
+            <template x-if="!destAirport || !destAirport.runways || destAirport.runways.length === 0">
+              <input class="av-input text-xs" type="number"
+                     x-model.number="form.dest_runway"
+                     min="0" max="360" step="10" placeholder="180"/>
+            </template>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Aeronave + Hora + Duración -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-5">
+      <div>
+        <label class="av-label">Aeronave</label>
+        <select class="av-select" x-model="form.aircraft">
+          <template x-for="ac in aircraftList" :key="ac.name">
+            <option :value="ac.name" x-text="ac.name"></option>
+          </template>
+        </select>
+        <div class="mt-1 text-xs text-muted font-mono"
+             x-text="selectedAc ? `${selectedAc.cruise_kt} kt · ${selectedAc.range_km} km · Xwind max ${selectedAc.crosswind_max_kt} kt` : ''">
+        </div>
+      </div>
+      <div>
+        <label class="av-label">Hora de salida (UTC)</label>
+        <input class="av-input" type="time" x-model="form.departure_time"/>
+        <div class="mt-1 text-xs text-muted">Hora local UTC · dejar vacío = ahora + 1h</div>
+      </div>
+      <div>
+        <label class="av-label">Duración estimada</label>
+        <select class="av-select" x-model.number="form.duration_hours">
+          <option value="0.5">30 minutos</option>
+          <option value="1">1 hora</option>
+          <option value="1.5">1 hora 30 min</option>
+          <option value="2">2 horas</option>
+          <option value="3">3 horas</option>
+          <option value="4">4 horas</option>
+          <option value="6">6 horas</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Toggles + Evaluar -->
+    <div class="flex items-center justify-between flex-wrap gap-3">
+      <div class="flex items-center gap-4 flex-wrap">
+        <!-- Mock toggle -->
+        <label class="flex items-center gap-2 cursor-pointer select-none">
+          <div class="relative">
+            <input type="checkbox" class="sr-only" x-model="form.mock"/>
+            <div class="w-9 h-5 rounded-full transition-colors"
+                 :class="form.mock ? 'bg-accent' : 'bg-border'"></div>
+            <div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform"
+                 :class="form.mock ? 'translate-x-4' : ''"></div>
+          </div>
+          <span class="text-xs text-muted">Modo demo (sin internet)</span>
+        </label>
+        <!-- Evitar espacios aéreos toggle -->
+        <label class="flex items-center gap-2 cursor-pointer select-none">
+          <div class="relative">
+            <input type="checkbox" class="sr-only" x-model="form.avoid_airspace"/>
+            <div class="w-9 h-5 rounded-full transition-colors"
+                 :class="form.avoid_airspace ? 'bg-[#f85149]/70' : 'bg-border'"></div>
+            <div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform"
+                 :class="form.avoid_airspace ? 'translate-x-4' : ''"></div>
+          </div>
+          <span class="text-xs text-muted">Evitar espacios aéreos R/P/D</span>
+        </label>
+      </div>
+
+      <button
+        @click="evaluate()"
+        :disabled="loading || !originAirport || !destAirport"
+        class="px-6 py-2.5 rounded-lg font-semibold text-sm tracking-wider uppercase transition-all duration-200"
+        :class="loading || !originAirport || !destAirport
+          ? 'bg-border text-muted cursor-not-allowed'
+          : 'bg-accent text-[#0d1117] hover:bg-[#79b8ff] active:scale-95'">
+        <span x-show="!loading">▶ Evaluar vuelo</span>
+        <span x-show="loading" class="flex items-center gap-2">
+          <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+          </svg>
+          Evaluando...
+        </span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ── ERROR ─────────────────────────────────────────────────────── -->
+  <div x-show="error" x-transition
+       class="av-card border-nogo/40 mb-6 flex items-start gap-3">
+    <span class="text-nogo text-lg mt-0.5">⚠</span>
+    <div>
+      <div class="font-semibold text-nogo text-sm mb-1">Error en la evaluación</div>
+      <div class="text-sm text-muted" x-text="error"></div>
+    </div>
+  </div>
+
+  <!-- ── RESULTADOS ─────────────────────────────────────────────────── -->
+  <div x-show="result" x-transition class="fade-in">
+
+    <!-- DECISION BANNER -->
+    <div class="relative flex flex-col items-center justify-center py-10 mb-8">
+      <!-- Radar rings -->
+      <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <template x-for="i in 3" :key="i">
+          <div class="absolute rounded-full border ring"
+               :style="`width:120px;height:120px;border-color:${decisionColor(result?.global_decision)}40`">
+          </div>
+        </template>
+      </div>
+
+      <!-- Badge principal -->
+      <div class="relative z-10 w-48 h-28 rounded-2xl border-2 flex flex-col items-center justify-center gap-1"
+           :class="{
+             'badge-go':     result?.global_decision === 'GO',
+             'badge-caution':result?.global_decision === 'CAUTION',
+             'badge-nogo':   result?.global_decision === 'NO GO',
+           }"
+           style="background: rgba(22,27,34,0.95)">
+        <span class="text-4xl font-black tracking-tight"
+              :style="`color:${decisionColor(result?.global_decision)}`"
+              x-text="result?.global_decision">
+        </span>
+        <span class="text-xs text-muted font-mono"
+              x-text="'R = ' + Math.max(result?.origin?.r_total||0, result?.dest?.r_total||0).toFixed(2)">
+        </span>
+      </div>
+
+      <!-- Ruta summary debajo del badge -->
+      <div class="mt-5 text-sm text-muted font-mono flex items-center gap-2" x-show="result?.route?.found">
+        <span class="text-accent font-bold" x-text="result?.origin?.station_id"></span>
+        <span>→</span>
+        <span class="text-[#e6edf3]" x-text="result?.route?.path?.slice(1,-1).join(' → ')"></span>
+        <span x-show="result?.route?.path?.length > 2">→</span>
+        <span class="text-accent font-bold" x-text="result?.dest?.station_id"></span>
+        <span class="text-muted">·</span>
+        <span x-text="result?.route?.total_dist_km + ' km'"></span>
+        <span class="text-muted">·</span>
+        <span x-text="formatTime(result?.route?.total_time_h || 0)"></span>
+      </div>
+    </div>
+
+    <!-- WEATHER CARDS -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
+      <template x-for="(card, role) in {origen: result?.origin, destino: result?.dest}" :key="role">
+        <div class="av-card"
+             :class="{
+               'border-go/40':     card.decision === 'GO',
+               'border-caution/40':card.decision === 'CAUTION',
+               'border-nogo/40':   card.decision === 'NO GO',
+             }">
+
+          <!-- Header de la card -->
+          <div class="flex items-start justify-between mb-4">
+            <div>
+              <div class="text-[10px] font-bold tracking-widest uppercase text-muted mb-1"
+                   x-text="role === 'origen' ? '● ORIGEN' : '● DESTINO'"></div>
+              <div class="font-bold text-base text-[#e6edf3]" x-text="card.name"></div>
+              <div class="flex items-center gap-2 mt-1">
+                <span class="font-mono text-xs text-accent font-bold" x-text="card.station_id"></span>
+                <span class="text-xs text-muted" x-text="`${card.elev_ft} ft MSL`"></span>
+                <span class="text-xs text-muted" x-text="card.weather_source === 'nwp' ? '· NWP' : '· METAR'"></span>
+              </div>
+            </div>
+            <div class="flex flex-col items-end gap-2">
+              <span class="cat-tag font-mono"
+                    :style="`background:${decisionColor(card.decision)}22; color:${decisionColor(card.decision)}`"
+                    x-text="card.decision">
+              </span>
+              <span x-show="card.flight_category"
+                    class="cat-tag"
+                    :style="`background:${catColor(card.flight_category)}22; color:${catColor(card.flight_category)}`"
+                    x-text="card.flight_category">
+              </span>
+            </div>
+          </div>
+
+          <!-- Hard blocker warning -->
+          <div x-show="card.hard_blocked"
+               class="bg-nogo/10 border border-nogo/30 rounded-lg px-3 py-2 mb-3 text-sm text-nogo font-semibold">
+            ⛔ <span x-text="card.blocker_summary"></span>
+          </div>
+
+          <!-- Sin datos -->
+          <div x-show="!card.fetch_ok"
+               class="bg-caution/10 border border-caution/30 rounded-lg px-3 py-2 mb-3 text-sm text-caution">
+            ⚠ Sin datos meteorológicos disponibles
+          </div>
+
+          <!-- Viento + Compass -->
+          <div class="flex items-center gap-4 mb-4" x-show="card.fetch_ok">
+            <!-- Mini compass SVG -->
+            <svg viewBox="0 0 60 60" class="w-14 h-14 flex-shrink-0">
+              <circle cx="30" cy="30" r="27" fill="none" stroke="#30363d" stroke-width="1"/>
+              <circle cx="30" cy="30" r="2" fill="#484f58"/>
+              <text x="30" y="8"  text-anchor="middle" fill="#8b949e" font-size="7" font-family="monospace">N</text>
+              <text x="54" y="34" text-anchor="middle" fill="#8b949e" font-size="7" font-family="monospace">E</text>
+              <text x="30" y="57" text-anchor="middle" fill="#8b949e" font-size="7" font-family="monospace">S</text>
+              <text x="6"  y="34" text-anchor="middle" fill="#8b949e" font-size="7" font-family="monospace">W</text>
+              <!-- Aguja de viento -->
+              <g x-show="!card.wind_variable && card.wind_dir !== null"
+                 :transform="`rotate(${card.wind_dir || 0} 30 30)`">
+                <line x1="30" y1="10" x2="30" y2="50" stroke="#58a6ff" stroke-width="1.5" stroke-linecap="round"/>
+                <polygon points="30,5 26,15 34,15" fill="#58a6ff"/>
+              </g>
+              <text x-show="card.wind_variable" x="30" y="34"
+                    text-anchor="middle" fill="#d29922" font-size="9" font-family="monospace">VRB</text>
+            </svg>
+
+            <!-- Datos de viento -->
+            <div class="flex-1">
+              <div class="text-[#e6edf3] font-mono text-sm font-bold">
+                <span x-show="card.wind_variable">VRB /</span>
+                <span x-show="!card.wind_variable"
+                      x-text="card.wind_dir !== null ? `${String(card.wind_dir).padStart(3,'0')}° /` : '---°/'">
+                </span>
+                <span x-text="card.wind_spd_kt !== null ? ` ${card.wind_spd_kt} kt` : ' -- kt'"></span>
+                <span x-show="card.wind_gust_kt" class="text-caution"
+                      x-text="` G${card.wind_gust_kt} kt`"></span>
+              </div>
+              <div class="text-xs text-muted mt-1">
+                RWY <span class="font-mono" x-text="card.runway_heading + '°'"></span>
+                <span x-show="card.xwind_kt !== null">
+                  · <span x-text="`Xwind ${card.xwind_kt} kt`"
+                          :class="card.xwind_kt > 12 ? 'text-nogo' : card.xwind_kt > 8 ? 'text-caution' : 'text-go'">
+                    </span>
+                </span>
+                <span x-show="card.headwind_kt !== null">
+                  · <span x-text="(card.headwind_kt >= 0 ? 'HW ' : 'TW ') + Math.abs(card.headwind_kt) + ' kt'"
+                          class="text-muted"></span>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Grid de parámetros meteo -->
+          <div class="grid grid-cols-2 gap-x-4 gap-y-2 mb-4 text-sm" x-show="card.fetch_ok">
+            <div>
+              <span class="text-muted text-xs">Visibilidad</span>
+              <div class="font-mono font-semibold"
+                   :class="card.visibility_km !== null && card.visibility_km < 5 ? 'text-nogo' : card.visibility_km !== null && card.visibility_km < 8 ? 'text-caution' : 'text-go'"
+                   x-text="card.visibility_km !== null ? (card.visibility_km >= 9.9 ? '>10 km' : card.visibility_km + ' km') : '---'">
+              </div>
+            </div>
+            <div>
+              <span class="text-muted text-xs">Techo</span>
+              <div class="font-mono font-semibold"
+                   :class="card.ceiling_ft !== null && card.ceiling_ft < 1000 ? 'text-nogo' : card.ceiling_ft !== null && card.ceiling_ft < 2000 ? 'text-caution' : 'text-go'"
+                   x-text="card.ceiling_ft !== null ? card.ceiling_ft + ' ft' : 'CLR/FEW'">
+              </div>
+            </div>
+            <div>
+              <span class="text-muted text-xs">Temperatura</span>
+              <div class="font-mono font-semibold text-[#e6edf3]"
+                   x-text="card.temp_c !== null ? card.temp_c + '°C' : '---'">
+              </div>
+            </div>
+            <div>
+              <span class="text-muted text-xs">Spread T/Td</span>
+              <div class="font-mono font-semibold"
+                   :class="card.spread_c !== null && card.spread_c < 3 ? 'text-caution' : 'text-[#e6edf3]'"
+                   x-text="card.spread_c !== null ? card.spread_c + '°C' : '---'">
+              </div>
+            </div>
+            <div>
+              <span class="text-muted text-xs">QNH</span>
+              <div class="font-mono font-semibold text-[#e6edf3]"
+                   x-text="card.altimeter_hpa !== null ? card.altimeter_hpa + ' hPa' : '---'">
+              </div>
+            </div>
+            <div>
+              <span class="text-muted text-xs">Fenómenos</span>
+              <div class="font-mono font-semibold text-sm"
+                   :class="card.wx_codes.length > 0 ? 'text-caution' : 'text-muted'"
+                   x-text="card.wx_codes.length > 0 ? card.wx_codes.join(' ') : 'Ninguno'">
+              </div>
+            </div>
+          </div>
+
+          <!-- Density Altitude -->
+          <div x-show="card.density_alt_ft !== null && card.fetch_ok"
+               class="mb-4 px-3 py-2 rounded-lg text-xs font-mono"
+               :class="{
+                 'bg-nogo/10 border border-nogo/25':    card.da_level === 'HIGH',
+                 'bg-caution/10 border border-caution/25': card.da_level === 'ELEVATED',
+                 'bg-go/10 border border-go/25':        card.da_level === 'NORMAL',
+               }">
+            <span class="font-bold uppercase tracking-wide mr-2"
+                  :class="{
+                    'text-nogo':    card.da_level === 'HIGH',
+                    'text-caution': card.da_level === 'ELEVATED',
+                    'text-go':      card.da_level === 'NORMAL',
+                  }"
+                  x-text="'DA · ' + card.da_level">
+            </span>
+            <span class="text-[#e6edf3]" x-text="card.density_alt_ft + ' ft'"></span>
+            <span class="text-muted ml-2"
+                  x-text="`PA ${card.pressure_alt_ft} ft · ISA ${card.isa_deviation_c > 0 ? '+' : ''}${card.isa_deviation_c}°C`">
+            </span>
+          </div>
+
+          <!-- Score total + breakdown -->
+          <div x-show="card.fetch_ok && !card.hard_blocked">
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="text-xs text-muted uppercase tracking-wide">Riesgo total</span>
+              <span class="font-mono text-sm font-bold"
+                    :style="`color:${decisionColor(card.decision)}`"
+                    x-text="(card.r_total * 100).toFixed(0) + '%'">
+              </span>
+            </div>
+            <div class="score-bar-bg mb-3">
+              <div class="score-bar-fill"
+                   :style="`width:${card.r_total * 100}%; background:${decisionColor(card.decision)}`">
+              </div>
+            </div>
+
+            <!-- Componentes del score -->
+            <div class="grid grid-cols-2 gap-x-4 gap-y-1.5">
+              <template x-for="[key, label] in [['r_vis','Visibilidad'],['r_ceil','Techo'],['r_xwind','Viento cruzado'],['r_gust','Ráfagas'],['r_wx','Fenómenos'],['r_fog','Niebla'],['r_taf','TAF']]" :key="key">
+                <div x-show="card[key] !== null && card[key] !== undefined" class="flex items-center gap-2">
+                  <span class="text-[10px] text-muted w-20 truncate" x-text="label"></span>
+                  <div class="flex-1 score-bar-bg" style="height:4px">
+                    <div class="score-bar-fill"
+                         style="height:4px"
+                         :style="`width:${(card[key]||0)*100}%; background:${(card[key]||0) >= 0.5 ? '#f85149' : (card[key]||0) >= 0.25 ? '#d29922' : '#3fb950'}`">
+                    </div>
+                  </div>
+                  <span class="text-[10px] font-mono text-muted w-7 text-right"
+                        x-text="((card[key]||0)*100).toFixed(0)+'%'">
+                  </span>
+                </div>
+              </template>
+            </div>
+
+            <!-- Factor dominante -->
+            <div x-show="card.dominant_factor" class="mt-2 text-xs text-muted">
+              Factor dominante: <span class="text-[#e6edf3] font-semibold" x-text="card.dominant_factor"></span>
+            </div>
+          </div>
+
+          <!-- Next GO -->
+          <div x-show="card.next_go_from" class="mt-3 text-xs text-muted font-mono">
+            Próxima ventana GO: <span class="text-caution" x-text="formatTs(card.next_go_from)"></span>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <!-- ── MAPA DE RUTA ───────────────────────────────────────────── -->
+    <div class="av-card mb-5" x-show="result?.route?.found">
+      <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <h3 class="text-[11px] font-bold tracking-widest uppercase text-muted">Ruta en mapa</h3>
+        <div class="flex items-center gap-2 flex-wrap text-xs">
+          <!-- Toggle aeródromos -->
+          <button @click="toggleAirports()"
+                  class="flex items-center gap-1.5 px-2.5 py-1 rounded-md border transition-all duration-150 select-none"
+                  :class="showAirports
+                    ? 'border-[#484f58] text-[#e6edf3] bg-[#21262d]'
+                    : 'border-border text-muted hover:text-[#e6edf3]'">
+            <span class="w-2 h-2 rounded-full bg-[#484f58] inline-block"></span>
+            Aeródromos
+          </button>
+          <!-- Toggle desvíos -->
+          <button @click="toggleDiversions()"
+                  class="flex items-center gap-1.5 px-2.5 py-1 rounded-md border transition-all duration-150 select-none"
+                  :class="showDiversions
+                    ? 'border-caution/50 text-caution bg-caution/5'
+                    : 'border-border text-muted hover:text-[#e6edf3]'">
+            <svg width="9" height="9" viewBox="0 0 18 18" class="inline-block">
+              <polygon points="9,1 17,16 1,16" :fill="showDiversions ? '#d29922' : '#8b949e'"/>
+            </svg>
+            Desvíos emergencia
+          </button>
+          <!-- Toggle espacios aéreos -->
+          <button @click="toggleAirspace()"
+                  class="flex items-center gap-1.5 px-2.5 py-1 rounded-md border transition-all duration-150 select-none"
+                  :class="showAirspace
+                    ? 'border-nogo/50 text-nogo bg-nogo/5'
+                    : 'border-border text-muted hover:text-[#e6edf3]'">
+            <span class="text-[9px] font-bold" :style="showAirspace ? 'color:#f85149' : 'color:#8b949e'">R</span>
+            Espacios aéreos
+          </button>
+          <!-- Alerts -->
+          <span x-show="result?.route?.airspace_conflicts?.length > 0" class="text-caution font-semibold">
+            ⚠ <span x-text="result?.route?.airspace_conflicts?.length"></span> conflicto(s) aéreo
+          </span>
+          <span x-show="result?.route?.needs_fuel_stop" class="text-caution font-semibold">
+            ⛽ Escala combustible
+          </span>
+        </div>
+      </div>
+      <div id="map"></div>
+
+      <!-- Leyenda del mapa -->
+      <div class="flex items-center gap-4 mt-2 px-1 flex-wrap" style="font-size:10px; color:#8b949e; font-family:monospace">
+        <span class="flex items-center gap-1.5">
+          <span style="width:10px;height:10px;border-radius:50%;background:#58a6ff;display:inline-block"></span>Origen
+        </span>
+        <span class="flex items-center gap-1.5">
+          <span style="width:10px;height:10px;border-radius:50%;background:#f0883e;display:inline-block"></span>Destino
+        </span>
+        <span class="flex items-center gap-1.5">
+          <span style="width:10px;height:10px;border-radius:50%;background:#3fb950;display:inline-block"></span>GO
+        </span>
+        <span class="flex items-center gap-1.5">
+          <span style="width:10px;height:10px;border-radius:50%;background:#d29922;display:inline-block"></span>CAUTION
+        </span>
+        <span class="flex items-center gap-1.5">
+          <svg width="10" height="10" viewBox="0 0 16 16" style="display:inline-block">
+            <rect x="2" y="2" width="12" height="12" fill="#8b949e" transform="rotate(45 8 8)"/>
+          </svg>Checkpoint
+        </span>
+        <span x-show="showDiversions" class="flex items-center gap-1.5">
+          <svg width="10" height="10" viewBox="0 0 18 18" style="display:inline-block">
+            <polygon points="9,1 17,16 1,16" fill="#d29922"/>
+          </svg>Desvío
+        </span>
+        <span x-show="showAirports" class="flex items-center gap-1.5">
+          <span style="width:8px;height:8px;border-radius:50%;background:#484f58;display:inline-block"></span>Aeródromo
+        </span>
+        <span x-show="showAirports" class="flex items-center gap-1.5">
+          <span style="width:8px;height:8px;border-radius:50%;background:#f0883e;display:inline-block"></span>⛽ Combustible
+        </span>
+        <span x-show="showAirspace" class="flex items-center gap-1.5">
+          <span style="width:8px;height:8px;border-radius:2px;background:#f85149;opacity:0.6;display:inline-block"></span>R/P (restringida)
+        </span>
+        <span x-show="showAirspace" class="flex items-center gap-1.5">
+          <span style="width:8px;height:8px;border-radius:2px;background:#f0883e;opacity:0.6;display:inline-block"></span>D (peligro)
+        </span>
+        <span x-show="showAirspace" class="flex items-center gap-1.5">
+          <span style="width:8px;height:8px;border-radius:2px;background:#58a6ff;opacity:0.5;display:inline-block"></span>CTR/TMA
+        </span>
+        <span style="margin-left:auto;font-size:9px">Zoom ≥ 8 para ver aeródromos · Click en cualquier marcador para info</span>
+      </div>
+
+      <!-- Tabla de tramos -->
+      <div class="mt-4 overflow-x-auto" x-show="result?.route?.legs?.length > 0">
+        <table class="w-full text-xs font-mono">
+          <thead>
+            <tr class="text-muted border-b border-border">
+              <th class="text-left pb-2 pr-4">Tramo</th>
+              <th class="text-right pb-2 pr-4">Dist.</th>
+              <th class="text-right pb-2 pr-4">Rumbo</th>
+              <th class="text-right pb-2 pr-4">Tiempo</th>
+              <th class="text-right pb-2">Combustible</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="leg in result?.route?.legs" :key="leg.origin + leg.dest">
+              <tr class="border-b border-border/40 hover:bg-surface/50">
+                <td class="py-1.5 pr-4 text-[#e6edf3]">
+                  <span class="text-accent" x-text="leg.origin"></span>
+                  <span class="text-muted mx-1">→</span>
+                  <span class="text-accent" x-text="leg.dest"></span>
+                </td>
+                <td class="py-1.5 pr-4 text-right" x-text="leg.distance_km + ' km'"></td>
+                <td class="py-1.5 pr-4 text-right" x-text="leg.bearing_deg + '°'"></td>
+                <td class="py-1.5 pr-4 text-right" x-text="formatTime(leg.time_hours)"></td>
+                <td class="py-1.5 text-right" x-text="leg.fuel_liters + ' L'"></td>
+              </tr>
+            </template>
+          </tbody>
+          <tfoot>
+            <tr class="text-[#e6edf3] font-bold border-t border-border">
+              <td class="pt-2 pr-4">TOTAL</td>
+              <td class="pt-2 pr-4 text-right" x-text="result?.route?.total_dist_km + ' km'"></td>
+              <td class="pt-2 pr-4"></td>
+              <td class="pt-2 pr-4 text-right" x-text="formatTime(result?.route?.total_time_h || 0)"></td>
+              <td class="pt-2 text-right"
+                  :class="result?.route?.fuel_ok ? 'text-go' : 'text-nogo'"
+                  x-text="result?.route?.total_fuel_l + ' L'">
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <!-- Alternativo -->
+      <div x-show="result?.route?.alternate" class="mt-4 px-3 py-2 bg-surface rounded-lg border border-border text-xs">
+        <span class="text-muted uppercase tracking-wide font-bold mr-2">Alternativo sugerido:</span>
+        <span class="font-mono text-accent font-bold" x-text="result?.route?.alternate?.code"></span>
+        <span class="text-[#e6edf3] ml-1" x-text="result?.route?.alternate?.name"></span>
+        <span class="text-muted ml-2"
+              x-text="`· ${result?.route?.alternate?.dist_from_dest_km} km desde destino`">
+        </span>
+        <span class="ml-2 cat-tag font-mono"
+              :style="`background:${decisionColor(result?.route?.alternate?.decision)}22; color:${decisionColor(result?.route?.alternate?.decision)}`"
+              x-text="result?.route?.alternate?.decision">
+        </span>
+      </div>
+    </div>
+
+    <!-- ── BRIEFING ────────────────────────────────────────────────── -->
+    <div class="av-card mb-5">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-[11px] font-bold tracking-widest uppercase text-muted">Briefing meteorológico</h3>
+        <button @click="copyBriefing()"
+                class="text-xs text-muted hover:text-accent transition-colors px-3 py-1 border border-border rounded-md">
+          <span x-text="briefingCopied ? '✓ Copiado' : '⎘ Copiar'"></span>
+        </button>
+      </div>
+      <pre class="font-mono text-xs text-[#e6edf3] whitespace-pre-wrap leading-relaxed overflow-x-auto"
+           x-text="result?.briefing">
+      </pre>
+    </div>
+
+  </div><!-- /results -->
+
+</main>
+
+<!-- ═══════════════════════════════════════════════════════════ SCRIPTS -->
+<script>
+function app() {
+  return {
+    // ── Estado del formulario
+    form: {
+      origin:         '',
+      dest:           '',
+      origin_runway:  180,
+      dest_runway:    180,
+      aircraft:       'Pipistrel Alpha Trainer',
+      departure_time: '',
+      duration_hours: 2.0,
+      mock:           false,
+      avoid_airspace: true,
+    },
+
+    // ── Autocomplete
+    originSearch:  '',
+    originResults: [],
+    originOpen:    false,
+    originAirport: null,
+    destSearch:    '',
+    destResults:   [],
+    destOpen:      false,
+    destAirport:   null,
+    _originTimer:  null,
+    _destTimer:    null,
+
+    // ── Aeronaves
+    aircraftList: [],
+
+    // ── Estado general
+    loading:       false,
+    result:        null,
+    error:         '',
+    briefingCopied: false,
+
+    // ── Mapa y capas
+    _map: null,
+    _routeLayer: null,
+    _diversionLayer: null,
+    _airportLayer: null,
+    _airspaceLayer: null,
+    _allAirports: null,
+    _airspaceData: null,
+    showAirports: true,
+    showDiversions: true,
+    showAirspace: true,
+
+    // ── Init
+    async init() {
+      // UTC clock
+      const updateClock = () => {
+        const now = new Date();
+        const h = String(now.getUTCHours()).padStart(2, '0');
+        const m = String(now.getUTCMinutes()).padStart(2, '0');
+        const s = String(now.getUTCSeconds()).padStart(2, '0');
+        const el = document.getElementById('utc-clock');
+        if (el) el.textContent = `UTC ${h}:${m}:${s}`;
+      };
+      updateClock();
+      setInterval(updateClock, 1000);
+
+      // Hora por defecto: ahora UTC + 1h
+      const now = new Date();
+      const h1 = String((now.getUTCHours() + 1) % 24).padStart(2, '0');
+      const m1 = String(now.getUTCMinutes()).padStart(2, '0');
+      this.form.departure_time = `${h1}:${m1}`;
+
+      // Cargar aeronaves
+      try {
+        const res = await fetch('/api/aircraft');
+        this.aircraftList = await res.json();
+      } catch(e) {
+        console.error('Error cargando aeronaves:', e);
+      }
+
+      // Watcher para el mapa
+      this.$watch('result', val => {
+        if (val && val.route && val.route.found) {
+          this.$nextTick(() => this.initMap());
+        }
+      });
+    },
+
+    // ── Aeronave seleccionada (computed)
+    get selectedAc() {
+      return this.aircraftList.find(a => a.name === this.form.aircraft) || null;
+    },
+
+    // ── Autocomplete origen
+    onOriginInput() {
+      clearTimeout(this._originTimer);
+      if (this.originSearch.length < 2) {
+        this.originResults = [];
+        this.originOpen = false;
+        if (!this.originSearch) {
+          this.originAirport = null;
+          this.form.origin = '';
+        }
+        return;
+      }
+      this._originTimer = setTimeout(async () => {
+        try {
+          const res = await fetch(`/api/airports?q=${encodeURIComponent(this.originSearch)}`);
+          this.originResults = await res.json();
+          this.originOpen = this.originResults.length > 0;
+        } catch(e) {}
+      }, 280);
+    },
+
+    selectOrigin(ap) {
+      this.originAirport    = ap;
+      this.form.origin      = ap.code;
+      this.originSearch     = `${ap.code} – ${ap.name}`;
+      this.originOpen       = false;
+      this.originResults    = [];
+      if (ap.runways && ap.runways.length > 0) {
+        this.form.origin_runway = ap.runways[0].heading;
+      }
+    },
+
+    // ── Autocomplete destino
+    onDestInput() {
+      clearTimeout(this._destTimer);
+      if (this.destSearch.length < 2) {
+        this.destResults = [];
+        this.destOpen = false;
+        if (!this.destSearch) {
+          this.destAirport = null;
+          this.form.dest = '';
+        }
+        return;
+      }
+      this._destTimer = setTimeout(async () => {
+        try {
+          const res = await fetch(`/api/airports?q=${encodeURIComponent(this.destSearch)}`);
+          this.destResults = await res.json();
+          this.destOpen = this.destResults.length > 0;
+        } catch(e) {}
+      }, 280);
+    },
+
+    selectDest(ap) {
+      this.destAirport      = ap;
+      this.form.dest        = ap.code;
+      this.destSearch       = `${ap.code} – ${ap.name}`;
+      this.destOpen         = false;
+      this.destResults      = [];
+      if (ap.runways && ap.runways.length > 0) {
+        this.form.dest_runway = ap.runways[0].heading;
+      }
+    },
+
+    // ── Evaluación principal
+    async evaluate() {
+      this.error   = '';
+      this.result  = null;
+      this.loading = true;
+
+      try {
+        const payload = {
+          origin:         this.form.origin,
+          dest:           this.form.dest,
+          origin_runway:  this.form.origin_runway,
+          dest_runway:    this.form.dest_runway,
+          aircraft:       this.form.aircraft,
+          departure_time: this.form.departure_time,
+          duration_hours: this.form.duration_hours,
+          mock:           this.form.mock,
+          avoid_airspace: this.form.avoid_airspace,
+        };
+
+        const res = await fetch('/api/evaluate', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload),
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({detail: res.statusText}));
+          throw new Error(err.detail || 'Error desconocido');
+        }
+
+        this.result = await res.json();
+
+        // Scroll suave a resultados
+        this.$nextTick(() => {
+          const el = document.querySelector('.fade-in');
+          if (el) el.scrollIntoView({behavior: 'smooth', block: 'start'});
+        });
+
+      } catch(e) {
+        this.error = e.message;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    // ── Mapa Leaflet
+    initMap() {
+      if (this._map) {
+        this._map.off();
+        this._map.remove();
+        this._map = null;
+        this._routeLayer = this._diversionLayer = this._airportLayer = this._airspaceLayer = null;
+      }
+
+      const wps = this.result?.route?.waypoints;
+      if (!wps || wps.length === 0) return;
+      const mapEl = document.getElementById('map');
+      if (!mapEl) return;
+
+      this._map = L.map('map', { zoomControl: true, attributionControl: true });
+
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
+        subdomains: 'abcd', maxZoom: 19,
+      }).addTo(this._map);
+
+      // Capas independientes (airspace debajo de todo)
+      this._airspaceLayer  = L.layerGroup().addTo(this._map);
+      this._routeLayer     = L.layerGroup().addTo(this._map);
+      this._diversionLayer = L.layerGroup().addTo(this._map);
+      this._airportLayer   = L.layerGroup().addTo(this._map);
+
+      this._buildRouteLayer();
+      if (this.showDiversions) this._buildDiversionLayer();
+
+      // Zoom/pan → actualizar capa de aeródromos
+      this._map.on('zoomend moveend', () => {
+        if (this.showAirports) this.updateAirportLayer();
+      });
+
+      // Cargar datos en background
+      this.loadAirportData().then(() => {
+        if (this.showAirports) this.updateAirportLayer();
+      });
+      this.loadAirspaceData().then(() => {
+        if (this.showAirspace) this.renderAirspaceLayer();
+      });
+
+      const latlngs = wps.map(wp => [wp.lat, wp.lon]);
+      this._map.fitBounds(L.latLngBounds(latlngs).pad(0.25));
+    },
+
+    _buildRouteLayer() {
+      if (!this._routeLayer) return;
+      this._routeLayer.clearLayers();
+      const wps = this.result?.route?.waypoints;
+      if (!wps) return;
+
+      const decCol = { 'GO': '#3fb950', 'CAUTION': '#d29922', 'NO GO': '#f85149' };
+      // Solo aeródromos reales para la polilínea principal
+      const airportWps = wps.filter(w => !w.is_checkpoint);
+      const allLatlngs = wps.map(w => [w.lat, w.lon]);
+
+      // Trazar línea de ruta
+      L.polyline(allLatlngs, {
+        color: '#58a6ff', weight: 2.5, opacity: 0.75, dashArray: '8 5',
+      }).addTo(this._routeLayer);
+
+      wps.forEach((wp, idx) => {
+        const isOrig = !wp.is_checkpoint && idx === 0;
+        const isDest = !wp.is_checkpoint && airportWps.length > 1 && airportWps[airportWps.length-1] === wp;
+
+        const color = isOrig ? '#58a6ff' : isDest ? '#f0883e' : (decCol[wp.decision] || '#8b949e');
+
+        if (wp.is_checkpoint) {
+          // Checkpoint: rombo (diamond) pequeño con color de decisión
+          const chkColor = decCol[wp.decision] || '#8b949e';
+          const popupChk = `<div style="font-family:monospace;min-width:160px;padding:4px 0">
+            <div style="font-size:10px;font-weight:600;color:#8b949e;margin-bottom:2px">◆ CHECKPOINT EN RUTA</div>
+            <div style="font-size:11px;color:#e6edf3;margin:3px 0">${wp.name}</div>
+            <div style="font-size:11px;font-weight:700;color:${chkColor}">R = ${wp.r_total.toFixed(2)} · ${wp.decision}</div>
+            ${wp.cruise_alt_ft ? `<div style="font-size:10px;color:#8b949e;margin-top:2px">Altitud crucero estimada: ${wp.cruise_alt_ft.toLocaleString()} ft</div>` : ''}
+          </div>`;
+          L.marker([wp.lat, wp.lon], {
+            icon: L.divIcon({
+              className: '',
+              html: `<svg width="16" height="16" viewBox="0 0 16 16" style="overflow:visible">
+                <rect x="2" y="2" width="12" height="12" fill="${chkColor}" stroke="#0d1117" stroke-width="1.5"
+                  opacity="0.85" transform="rotate(45 8 8)"/>
+              </svg>`,
+              iconSize: [16, 16], iconAnchor: [8, 8],
+            }),
+          }).bindPopup(popupChk).addTo(this._routeLayer);
+        } else {
+          const radius = (isOrig || isDest) ? 10 : 7;
+          const popup = `<div style="font-family:monospace;min-width:150px;padding:4px 0">
+            <div style="font-size:13px;font-weight:700;color:${color}">${wp.code}</div>
+            <div style="font-size:11px;color:#e6edf3;margin:3px 0">${wp.name}</div>
+            <div style="font-size:10px;color:#8b949e">R = ${wp.r_total.toFixed(2)} · ${wp.decision}</div>
+          </div>`;
+
+          L.circleMarker([wp.lat, wp.lon], {
+            radius, fillColor: color, color: '#0d1117', weight: 2, fillOpacity: 0.9,
+          }).bindPopup(popup).addTo(this._routeLayer);
+
+          L.marker([wp.lat, wp.lon], {
+            icon: L.divIcon({
+              className: '',
+              html: `<div style="color:${color};font-family:monospace;font-size:11px;font-weight:700;white-space:nowrap;margin-top:13px;margin-left:5px;text-shadow:0 1px 3px #000">${wp.code}</div>`,
+              iconAnchor: [0, 0],
+            }), interactive: false,
+          }).addTo(this._routeLayer);
+        }
+      });
+    },
+
+    _buildDiversionLayer() {
+      if (!this._diversionLayer) return;
+      this._diversionLayer.clearLayers();
+      const wps = this.result?.route?.waypoints;
+      if (!wps) return;
+
+      wps.forEach(wp => {
+        (wp.diversions || []).forEach(div => {
+          // Línea punteada del waypoint al desvío
+          L.polyline([[wp.lat, wp.lon], [div.lat, div.lon]], {
+            color: '#d29922', weight: 1.5, opacity: 0.45, dashArray: '4 6',
+          }).addTo(this._diversionLayer);
+
+          const popup = `<div style="font-family:monospace;min-width:155px;padding:4px 0">
+            <div style="font-size:10px;font-weight:600;color:#d29922;margin-bottom:3px">⚡ DESVÍO DE EMERGENCIA</div>
+            <div style="font-size:13px;font-weight:700;color:#58a6ff">${div.code}</div>
+            <div style="font-size:11px;color:#e6edf3;margin:3px 0">${div.name}</div>
+            <div style="font-size:10px;color:#8b949e">${div.elev_ft} ft · ${div.dist_km} km de ${wp.code}</div>
+            ${div.province ? `<div style="font-size:10px;color:#8b949e">${div.province}</div>` : ''}
+          </div>`;
+
+          // Triángulo SVG como icono
+          L.marker([div.lat, div.lon], {
+            icon: L.divIcon({
+              className: '',
+              html: `<svg width="18" height="18" viewBox="0 0 18 18">
+                <polygon points="9,1 17,16 1,16" fill="#d29922" stroke="#0d1117" stroke-width="1.5" opacity="0.88"/>
+              </svg>`,
+              iconSize: [18, 18], iconAnchor: [9, 16],
+            }),
+          }).bindPopup(popup).addTo(this._diversionLayer);
+        });
+      });
+    },
+
+    async loadAirportData() {
+      if (this._allAirports) return;
+      try {
+        const res = await fetch('/api/airports/map');
+        this._allAirports = await res.json();
+      } catch(e) {
+        this._allAirports = [];
+      }
+    },
+
+    updateAirportLayer() {
+      if (!this._map || !this._airportLayer || !this._allAirports) return;
+      this._airportLayer.clearLayers();
+
+      const zoom = this._map.getZoom();
+      if (zoom < 8) return;
+
+      const bounds     = this._map.getBounds();
+      const routeCodes = new Set(this.result?.route?.path || []);
+      const divCodes   = new Set();
+      (this.result?.route?.waypoints || []).forEach(wp =>
+        (wp.diversions || []).forEach(d => divCodes.add(d.code))
+      );
+
+      let count = 0;
+      for (const ap of this._allAirports) {
+        if (routeCodes.has(ap.code) || divCodes.has(ap.code)) continue;
+        if (!bounds.contains([ap.lat, ap.lon])) continue;
+
+        const hasFuel = ap.fuel && ap.fuel.trim() !== '';
+        const markerColor = hasFuel ? '#f0883e' : '#484f58';
+        const borderColor = hasFuel ? '#d29922' : '#30363d';
+
+        const rwys = ap.runways?.length
+          ? ap.runways.map(r => {
+              let s = r.heading + '°';
+              if (r.length_m) s += ` · ${r.length_m}m`;
+              if (r.surface)  s += ` · ${r.surface}`;
+              return s;
+            }).join('<br/>')
+          : '—';
+
+        const phones = ap.phones?.length
+          ? ap.phones.map(p => `<a href="tel:${p}" style="color:#58a6ff">${p}</a>`).join(' · ')
+          : null;
+
+        const popup = `<div style="font-family:monospace;min-width:190px;padding:4px 0">
+          ${hasFuel ? '<div style="font-size:10px;font-weight:700;color:#f0883e;margin-bottom:3px">⛽ COMBUSTIBLE DISPONIBLE</div>' : ''}
+          <div style="font-size:13px;font-weight:700;color:#58a6ff">${ap.code}</div>
+          <div style="font-size:11px;color:#e6edf3;margin:3px 0">${ap.name}</div>
+          <div style="font-size:10px;color:#8b949e">${ap.elev_ft} ft MSL · ${ap.province || 'AR'}</div>
+          ${ap.condition ? `<div style="font-size:10px;color:#8b949e">${ap.condition}${ap.control ? ' · ' + ap.control : ''}</div>` : ''}
+          ${ap.runways?.length ? `<div style="font-size:10px;color:#8b949e;margin-top:4px"><span style="color:#6e7681">RWY:</span><br/>${rwys}</div>` : ''}
+          ${hasFuel ? `<div style="font-size:10px;color:#f0883e;margin-top:3px">Combustible: ${ap.fuel}</div>` : ''}
+          ${ap.schedule ? `<div style="font-size:10px;color:#8b949e">Horario: ${ap.schedule}</div>` : ''}
+          ${phones ? `<div style="font-size:10px;color:#8b949e;margin-top:3px">Tel: ${phones}</div>` : ''}
+        </div>`;
+
+        L.circleMarker([ap.lat, ap.lon], {
+          radius:      zoom >= 10 ? (hasFuel ? 7 : 5) : (hasFuel ? 5 : 3),
+          fillColor:   markerColor,
+          color:       borderColor,
+          weight:      hasFuel ? 1.5 : 1,
+          fillOpacity: 0.85,
+        }).bindPopup(popup).addTo(this._airportLayer);
+
+        if (++count >= 300) break;
+      }
+    },
+
+    toggleAirports() {
+      this.showAirports = !this.showAirports;
+      if (!this._map || !this._airportLayer) return;
+      if (this.showAirports) {
+        this.updateAirportLayer();
+      } else {
+        this._airportLayer.clearLayers();
+      }
+    },
+
+    toggleDiversions() {
+      this.showDiversions = !this.showDiversions;
+      if (!this._map || !this._diversionLayer) return;
+      if (this.showDiversions) {
+        this._buildDiversionLayer();
+      } else {
+        this._diversionLayer.clearLayers();
+      }
+    },
+
+    async loadAirspaceData() {
+      if (this._airspaceData) return;
+      try {
+        const res = await fetch('/api/airspace');
+        this._airspaceData = await res.json();
+      } catch(e) {
+        this._airspaceData = [];
+      }
+    },
+
+    renderAirspaceLayer() {
+      if (!this._map || !this._airspaceLayer || !this._airspaceData) return;
+      this._airspaceLayer.clearLayers();
+
+      const zoneStyle = {
+        'R':   { color: '#f85149', fillColor: '#f85149', fillOpacity: 0.12, weight: 1.5 },
+        'P':   { color: '#ff3a3a', fillColor: '#ff3a3a', fillOpacity: 0.18, weight: 2 },
+        'D':   { color: '#f0883e', fillColor: '#f0883e', fillOpacity: 0.12, weight: 1.5 },
+        'CTR': { color: '#58a6ff', fillColor: '#58a6ff', fillOpacity: 0.08, weight: 1, dashArray: '5 4' },
+        'TMA': { color: '#79c0ff', fillColor: '#79c0ff', fillOpacity: 0.05, weight: 1, dashArray: '8 6' },
+      };
+
+      for (const z of this._airspaceData) {
+        const style = zoneStyle[z.zone_type] || { color: '#8b949e', fillColor: '#8b949e', fillOpacity: 0.06, weight: 1 };
+        const ceilStr = z.ceiling_ft >= 99000 ? 'Unlimited' : z.ceiling_ft.toLocaleString() + ' ft';
+        const popup = `<div style="font-family:monospace;min-width:180px;padding:4px 0">
+          <div style="font-size:10px;font-weight:700;color:${style.color};margin-bottom:3px">${z.zone_type} — ${z.is_restricted ? 'RESTRINGIDO' : z.is_controlled ? 'CONTROLADO' : 'PELIGRO'}</div>
+          <div style="font-size:12px;font-weight:700;color:#e6edf3">${z.name}</div>
+          <div style="font-size:10px;color:#8b949e;margin-top:3px">Piso: ${z.floor_ft.toLocaleString()} ft · Techo: ${ceilStr}</div>
+          ${z.notes ? `<div style="font-size:10px;color:#8b949e;margin-top:2px">${z.notes}</div>` : ''}
+        </div>`;
+
+        let layer;
+        if (z.polygon && z.polygon.length >= 3) {
+          layer = L.polygon(z.polygon, style);
+        } else {
+          layer = L.circle([z.center_lat, z.center_lon], {
+            radius: z.radius_km * 1000,
+            ...style,
+          });
+        }
+        layer.bindPopup(popup).addTo(this._airspaceLayer);
+      }
+    },
+
+    toggleAirspace() {
+      this.showAirspace = !this.showAirspace;
+      if (!this._map || !this._airspaceLayer) return;
+      if (this.showAirspace) {
+        this.loadAirspaceData().then(() => this.renderAirspaceLayer());
+      } else {
+        this._airspaceLayer.clearLayers();
+      }
+    },
+
+    // ── Helpers de display
+    decisionColor(d) {
+      return d === 'GO' ? '#3fb950' : d === 'CAUTION' ? '#d29922' : '#f85149';
+    },
+
+    catColor(cat) {
+      return cat === 'VFR' ? '#3fb950' : cat === 'MVFR' ? '#d29922' : '#f85149';
+    },
+
+    formatTime(h) {
+      const hours = Math.floor(h);
+      const mins  = Math.round((h - hours) * 60);
+      return hours > 0 ? `${hours}h ${String(mins).padStart(2,'0')}min` : `${mins} min`;
+    },
+
+    formatTs(ts) {
+      if (!ts) return '';
+      const d = new Date(ts * 1000);
+      const dd = String(d.getUTCDate()).padStart(2,'0');
+      const mo = String(d.getUTCMonth()+1).padStart(2,'0');
+      const hh = String(d.getUTCHours()).padStart(2,'0');
+      const mm = String(d.getUTCMinutes()).padStart(2,'0');
+      return `${dd}/${mo} ${hh}:${mm}Z`;
+    },
+
+    async copyBriefing() {
+      try {
+        await navigator.clipboard.writeText(this.result?.briefing || '');
+        this.briefingCopied = true;
+        setTimeout(() => this.briefingCopied = false, 2000);
+      } catch(e) {}
+    },
+  };
+}
+</script>
+
+<!-- Alpine.js -->
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+</body>
+</html>
