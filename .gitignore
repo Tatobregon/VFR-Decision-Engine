@@ -5,5 +5,4 @@ __pycache__/
 webserver.log
 data/madhel_fetch.log
 data/madhel_fetch_err.log
-data/madhel_cache.json
 .claude/
