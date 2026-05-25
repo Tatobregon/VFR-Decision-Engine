@@ -423,7 +423,7 @@
 
     <!-- WEATHER CARDS -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
-      <template x-for="(card, role) in {origen: result?.origin, destino: result?.dest}" :key="role">
+      <template x-for="(card, role) in (result ? {origen: result.origin, destino: result.dest} : {})" :key="role">
         <div class="av-card"
              :class="{
                'border-go/40':     card.decision === 'GO',
