@@ -14,6 +14,7 @@ import sys
 import os
 import time
 import logging
+import copy
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict
 from pathlib import Path
@@ -313,8 +314,16 @@ def _evaluate_nwp_at_coord(
             if blocker.is_blocked:
                 return 1.0, "NO GO", wx
 
-        # Usar track_bearing como cabecera de pista para el cálculo de viento cruzado
-        scores = [compute_soft_score(w, track_bearing, aircraft) for w in window_wx]
+        # En vuelo crucero el viento cruzado no es peligroso (el piloto crabea).
+        # Se zeroa el crosswind alineando wind_dir con el track; r_gust sigue
+        # capturando turbulencia por ráfagas.
+        def _inflight_wx(w):
+            wx2 = copy.copy(w)
+            wx2.wind_dir = track_bearing
+            wx2.wind_variable = False
+            return wx2
+
+        scores = [compute_soft_score(_inflight_wx(w), track_bearing, aircraft) for w in window_wx]
         worst = max(scores, key=lambda s: s.r_total)
         ref_wx = min(window_wx, key=lambda w: abs(w.obs_time - dep_time))
         return worst.r_total, worst.decision, ref_wx
