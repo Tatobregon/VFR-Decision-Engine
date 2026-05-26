@@ -15,6 +15,7 @@ import os
 import time
 import logging
 import copy
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict
 from pathlib import Path
@@ -63,6 +64,7 @@ class EvaluateRequest(BaseModel):
     duration_hours: float = Field(default=2.0, ge=0.3, le=12.0)
     mock: bool = False
     avoid_airspace: bool = True    # si True, la ruta evita zonas R/P/D
+    duration_hours: float = 0.0   # ignorado; calculado internamente desde la ruta
 
 
 class WeatherCard(BaseModel):
@@ -344,25 +346,19 @@ def _generate_route_waypoints(
     step_km: float = 230.0,
 ) -> List[RouteWaypoint]:
     """
-    Construye la lista completa de waypoints de la ruta:
-    - Aeródromos reales del path A*
-    - Puntos intermedios geográficos cada ~step_km en tramos largos
-
-    Los checkpoints se evalúan con NWP a altitud de crucero.
+    Construye la lista completa de waypoints de la ruta.
+    Los checkpoints NWP se evalúan en paralelo para minimizar latencia.
     """
-    total_route_dist = 0.0
-    # Pre-calcular distancias acumuladas para estimar tiempo al llegar a cada punto
     leg_dists: List[float] = []
     for i in range(len(path) - 1):
         a = AIRPORTS.get(path[i])
         b = AIRPORTS.get(path[i + 1])
-        if a and b:
-            leg_dists.append(haversine_km(a.lat, a.lon, b.lat, b.lon))
-        else:
-            leg_dists.append(0.0)
+        leg_dists.append(haversine_km(a.lat, a.lon, b.lat, b.lon) if a and b else 0.0)
     total_route_dist = sum(leg_dists)
 
-    all_waypoints: List[RouteWaypoint] = []
+    # Paso 1: construir secuencia ordenada — aeródromos ya completos,
+    # checkpoints como specs (dict) pendientes de evaluación NWP.
+    sequence: list = []
     cumulative_km = 0.0
 
     for i, code in enumerate(path):
@@ -372,28 +368,23 @@ def _generate_route_waypoints(
 
         r_val = r_map.get(code, 0.0)
         dec = "GO" if r_val < 0.25 else "CAUTION" if r_val < 0.50 else "NO GO"
-        all_waypoints.append(RouteWaypoint(
+        sequence.append(RouteWaypoint(
             code=code, name=ap.name,
             lat=ap.lat, lon=ap.lon,
             r_total=r_val, decision=dec,
-            is_checkpoint=False,
-            cruise_alt_ft=None,
+            is_checkpoint=False, cruise_alt_ft=None,
         ))
 
         if i >= len(path) - 1:
             break
 
-        next_code = path[i + 1]
-        next_ap = AIRPORTS.get(next_code)
+        next_ap = AIRPORTS.get(path[i + 1])
         if not next_ap:
             continue
 
         leg_km = leg_dists[i] if i < len(leg_dists) else 0.0
         track = int(bearing_deg(ap.lat, ap.lon, next_ap.lat, next_ap.lon))
-
-        # Altitud de crucero para este tramo
-        max_elev_ft = max(ap.elev_ft, next_ap.elev_ft)
-        cruise_alt = max(7500, max_elev_ft + 3000)
+        cruise_alt = max(7500, max(ap.elev_ft, next_ap.elev_ft) + 3000)
 
         if leg_km > step_km:
             n_chk = int(leg_km // step_km)
@@ -402,39 +393,47 @@ def _generate_route_waypoints(
                 if frac >= 1.0:
                     break
 
-                chk_lat = ap.lat + frac * (next_ap.lat - ap.lat)
-                chk_lon = ap.lon + frac * (next_ap.lon - ap.lon)
-                chk_elev_m = (ap.elev_ft + frac * (next_ap.elev_ft - ap.elev_ft)) * 0.3048
-
-                # Tiempo estimado de llegada al checkpoint
                 dist_to_chk = cumulative_km + j * step_km
                 frac_total = dist_to_chk / total_route_dist if total_route_dist > 0 else 0.5
-                chk_dep_time = dep_time + int(frac_total * duration_hours * 3600)
-
-                r_chk, dec_chk, _ = _evaluate_nwp_at_coord(
-                    lat=chk_lat, lon=chk_lon,
-                    elev_m=chk_elev_m,
-                    dep_time=chk_dep_time,
-                    duration_hours=1.0,
-                    aircraft=aircraft,
-                    mock=mock,
-                    cruise_alt_ft=cruise_alt,
-                    track_bearing=track,
-                )
-
-                dist_from_prev = round(j * step_km)
-                all_waypoints.append(RouteWaypoint(
-                    code=f"WP{i+1}-{j}",
-                    name=f"En ruta · {dist_from_prev} km desde {code}",
-                    lat=chk_lat, lon=chk_lon,
-                    r_total=r_chk, decision=dec_chk,
-                    is_checkpoint=True,
-                    cruise_alt_ft=cruise_alt,
-                ))
+                sequence.append({
+                    'seq_code':  f"WP{i+1}-{j}",
+                    'seq_name':  f"En ruta · {round(j * step_km)} km desde {code}",
+                    'lat':       ap.lat + frac * (next_ap.lat - ap.lat),
+                    'lon':       ap.lon + frac * (next_ap.lon - ap.lon),
+                    'elev_m':    (ap.elev_ft + frac * (next_ap.elev_ft - ap.elev_ft)) * 0.3048,
+                    'cruise_alt': cruise_alt,
+                    'track':     track,
+                    'dep_time':  dep_time + int(frac_total * duration_hours * 3600),
+                })
 
         cumulative_km += leg_km
 
-    return all_waypoints
+    # Paso 2: evaluar todos los checkpoints pendientes en paralelo.
+    chk_items = [(idx, spec) for idx, spec in enumerate(sequence) if isinstance(spec, dict)]
+
+    def _eval_chk(idx_spec):
+        idx, spec = idx_spec
+        r, dec, _ = _evaluate_nwp_at_coord(
+            lat=spec['lat'], lon=spec['lon'], elev_m=spec['elev_m'],
+            dep_time=spec['dep_time'], duration_hours=1.0,
+            aircraft=aircraft, mock=mock,
+            cruise_alt_ft=spec['cruise_alt'], track_bearing=spec['track'],
+        )
+        return idx, spec, r, dec
+
+    if chk_items:
+        with ThreadPoolExecutor(max_workers=min(8, len(chk_items))) as ex:
+            futures = [ex.submit(_eval_chk, item) for item in chk_items]
+            for fut in futures:
+                idx, spec, r, dec = fut.result()
+                sequence[idx] = RouteWaypoint(
+                    code=spec['seq_code'], name=spec['seq_name'],
+                    lat=spec['lat'], lon=spec['lon'],
+                    r_total=r, decision=dec,
+                    is_checkpoint=True, cruise_alt_ft=spec['cruise_alt'],
+                )
+
+    return [wp for wp in sequence if isinstance(wp, RouteWaypoint)]
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -555,8 +554,18 @@ async def evaluate(req: EvaluateRequest):
     dep_time = _parse_dep_time(req.departure_time)
     engine   = DecisionEngine(mock=req.mock, aircraft=aircraft)
 
-    origin_result = engine.evaluate(origin, req.origin_runway, dep_time, req.duration_hours)
-    dest_result   = engine.evaluate(dest,   req.dest_runway,   dep_time, req.duration_hours)
+    # Estimación rápida de duración para ventana meteorológica inicial
+    orig_ap = AIRPORTS[origin]
+    dest_ap = AIRPORTS[dest]
+    rough_duration = max(0.5, haversine_km(orig_ap.lat, orig_ap.lon, dest_ap.lat, dest_ap.lon)
+                         / (aircraft.cruise_kt * 1.852) * 1.3)
+
+    # Fase 1: origin eval + dest eval en paralelo
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        fut_o = ex.submit(engine.evaluate, origin, req.origin_runway, dep_time, rough_duration)
+        fut_d = ex.submit(engine.evaluate, dest,   req.dest_runway,   dep_time, rough_duration)
+        origin_result = fut_o.result()
+        dest_result   = fut_d.result()
 
     r_map = {origin: origin_result.r_total, dest: dest_result.r_total}
     route_result = optimize(
@@ -570,6 +579,9 @@ async def evaluate(req: EvaluateRequest):
         mock=req.mock,
         dep_time=dep_time,
     )
+
+    # Duración real desde la ruta calculada
+    actual_duration = route_result.total_time_h if (route_result.found and route_result.total_time_h > 0) else rough_duration
 
     notams_orig = notams_dest = []
     try:
@@ -590,15 +602,12 @@ async def evaluate(req: EvaluateRequest):
     decisions = [origin_result.decision, dest_result.decision]
     global_dec = "NO GO" if "NO GO" in decisions else "CAUTION" if "CAUTION" in decisions else "GO"
 
-    orig_ap = AIRPORTS[origin]
-    dest_ap = AIRPORTS[dest]
-
     # Generar waypoints con checkpoints intermedios cada ~230 km
     waypoints = _generate_route_waypoints(
         path=route_result.path,
         aircraft=aircraft,
         dep_time=dep_time,
-        duration_hours=req.duration_hours,
+        duration_hours=actual_duration,
         r_map=r_map,
         mock=req.mock,
     )

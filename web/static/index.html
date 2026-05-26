@@ -306,18 +306,6 @@
         <input class="av-input" type="time" x-model="form.departure_time"/>
         <div class="mt-1 text-xs text-muted">Hora local UTC · dejar vacío = ahora + 1h</div>
       </div>
-      <div>
-        <label class="av-label">Duración estimada</label>
-        <select class="av-select" x-model.number="form.duration_hours">
-          <option value="0.5">30 minutos</option>
-          <option value="1">1 hora</option>
-          <option value="1.5">1 hora 30 min</option>
-          <option value="2">2 horas</option>
-          <option value="3">3 horas</option>
-          <option value="4">4 horas</option>
-          <option value="6">6 horas</option>
-        </select>
-      </div>
     </div>
 
     <!-- Toggles + Evaluar -->
@@ -801,7 +789,6 @@ function app() {
       dest_runway:    180,
       aircraft:       'Pipistrel Alpha Trainer',
       departure_time: '',
-      duration_hours: 2.0,
       mock:           false,
       avoid_airspace: true,
     },
