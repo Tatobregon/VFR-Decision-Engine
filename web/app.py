@@ -119,6 +119,26 @@ class DiversionAirport(BaseModel):
     province: str = ""
 
 
+class CheckpointWeather(BaseModel):
+    """Condiciones NWP en un checkpoint intermedio (altitud de crucero)."""
+    wind_dir: Optional[int] = None
+    wind_spd_kt: Optional[float] = None
+    wind_gust_kt: Optional[float] = None
+    wind_variable: bool = False
+    visibility_km: Optional[float] = None
+    ceiling_ft: Optional[int] = None
+    temp_c: Optional[float] = None
+    spread_c: Optional[float] = None
+    wx_codes: List[str] = []
+    flight_category: Optional[str] = None
+    r_vis: Optional[float] = None
+    r_ceil: Optional[float] = None
+    r_gust: Optional[float] = None
+    r_wx: Optional[float] = None
+    r_fog: Optional[float] = None
+    dominant_factor: Optional[str] = None
+
+
 class RouteWaypoint(BaseModel):
     code: str
     name: str
@@ -127,8 +147,10 @@ class RouteWaypoint(BaseModel):
     r_total: float
     decision: str
     diversions: List[DiversionAirport] = []
-    is_checkpoint: bool = False        # True = punto intermedio geográfico (no aeródromo)
-    cruise_alt_ft: Optional[int] = None  # altitud de crucero estimada para ese punto
+    is_checkpoint: bool = False
+    cruise_alt_ft: Optional[int] = None
+    chk_weather: Optional[CheckpointWeather] = None   # meteo NWP del checkpoint
+    alt_via: Optional[DiversionAirport] = None         # aeródromo alternativo si NO GO
 
 
 class RouteCard(BaseModel):
@@ -299,22 +321,24 @@ def _evaluate_nwp_at_coord(
             cruise_alt_ft=cruise_alt_ft,
         )
         if raw_nwp is None:
-            return 0.0, "GO", None
+            return 0.0, "GO", None, None
 
         chk_id = f"CHK_{abs(lat):.1f}_{abs(lon):.1f}"
         all_wx = adapter.adapt_all(raw_nwp, station_id=chk_id)
         if not all_wx:
-            return 0.0, "GO", None
+            return 0.0, "GO", None, None
 
         window_end = dep_time + int(duration_hours * 3600)
         window_wx = [w for w in all_wx if dep_time <= w.obs_time <= window_end]
         if not window_wx:
             window_wx = [min(all_wx, key=lambda w: abs(w.obs_time - dep_time))]
 
+        ref_wx = min(window_wx, key=lambda w: abs(w.obs_time - dep_time))
+
         for wx in window_wx:
             blocker = check_hard_blockers_from_weather(wx)
             if blocker.is_blocked:
-                return 1.0, "NO GO", wx
+                return 1.0, "NO GO", ref_wx, None
 
         # En vuelo crucero el viento cruzado no es peligroso (el piloto crabea).
         # Se zeroa el crosswind alineando wind_dir con el track; r_gust sigue
@@ -327,11 +351,34 @@ def _evaluate_nwp_at_coord(
 
         scores = [compute_soft_score(_inflight_wx(w), track_bearing, aircraft) for w in window_wx]
         worst = max(scores, key=lambda s: s.r_total)
-        ref_wx = min(window_wx, key=lambda w: abs(w.obs_time - dep_time))
-        return worst.r_total, worst.decision, ref_wx
+        return worst.r_total, worst.decision, ref_wx, worst
     except Exception as e:
         logger.warning(f"Error evaluando NWP en coord ({lat:.2f},{lon:.2f}): {e}")
-        return 0.0, "GO", None
+        return 0.0, "GO", None, None
+
+
+# ── Helper: aeródromo alternativo más cercano a un checkpoint NO GO ────────────
+
+def _find_best_alt_via(
+    chk_lat: float, chk_lon: float, route_codes: set, max_km: float = 150.0
+) -> Optional[DiversionAirport]:
+    """Devuelve el aeródromo más cercano al checkpoint que no está en la ruta."""
+    best_dist = max_km + 1.0
+    best = None
+    for code, ap in AIRPORTS.items():
+        if code in route_codes:
+            continue
+        d = haversine_km(chk_lat, chk_lon, ap.lat, ap.lon)
+        if d < best_dist:
+            best_dist = d
+            best = (code, ap, d)
+    if best is None:
+        return None
+    code, ap, d = best
+    return DiversionAirport(
+        code=code, name=ap.name, lat=ap.lat, lon=ap.lon,
+        dist_km=round(d, 1), elev_ft=ap.elev_ft, province=ap.province or "",
+    )
 
 
 # ── Helper: generar waypoints completos de la ruta con checkpoints intermedios ─
@@ -413,24 +460,56 @@ def _generate_route_waypoints(
 
     def _eval_chk(idx_spec):
         idx, spec = idx_spec
-        r, dec, _ = _evaluate_nwp_at_coord(
+        r, dec, ref_wx, worst = _evaluate_nwp_at_coord(
             lat=spec['lat'], lon=spec['lon'], elev_m=spec['elev_m'],
             dep_time=spec['dep_time'], duration_hours=1.0,
             aircraft=aircraft, mock=mock,
             cruise_alt_ft=spec['cruise_alt'], track_bearing=spec['track'],
         )
-        return idx, spec, r, dec
+        return idx, spec, r, dec, ref_wx, worst
+
+    route_codes = set(path)
 
     if chk_items:
         with ThreadPoolExecutor(max_workers=min(8, len(chk_items))) as ex:
             futures = [ex.submit(_eval_chk, item) for item in chk_items]
             for fut in futures:
-                idx, spec, r, dec = fut.result()
+                idx, spec, r, dec, ref_wx, worst = fut.result()
+
+                # Construir resumen meteo del checkpoint si hay datos NWP
+                chk_wx = None
+                if ref_wx is not None:
+                    chk_wx = CheckpointWeather(
+                        wind_dir=ref_wx.wind_dir,
+                        wind_spd_kt=ref_wx.wind_spd_kt,
+                        wind_gust_kt=ref_wx.wind_gust_kt,
+                        wind_variable=ref_wx.wind_variable,
+                        visibility_km=ref_wx.visibility_km,
+                        ceiling_ft=ref_wx.ceiling_ft,
+                        temp_c=ref_wx.temp_c,
+                        spread_c=ref_wx.spread_c,
+                        wx_codes=ref_wx.wx_codes or [],
+                        flight_category=ref_wx.flight_category,
+                        r_vis=getattr(worst, 'r_vis', None),
+                        r_ceil=getattr(worst, 'r_ceil', None),
+                        r_gust=getattr(worst, 'r_gust', None),
+                        r_wx=getattr(worst, 'r_wx', None),
+                        r_fog=getattr(worst, 'r_fog', None),
+                        dominant_factor=getattr(worst, 'dominant_factor', None),
+                    )
+
+                # Para checkpoints NO GO, sugerir aeródromo alternativo cercano
+                alt_via = None
+                if dec == "NO GO":
+                    alt_via = _find_best_alt_via(spec['lat'], spec['lon'], route_codes)
+
                 sequence[idx] = RouteWaypoint(
                     code=spec['seq_code'], name=spec['seq_name'],
                     lat=spec['lat'], lon=spec['lon'],
                     r_total=r, decision=dec,
                     is_checkpoint=True, cruise_alt_ft=spec['cruise_alt'],
+                    chk_weather=chk_wx,
+                    alt_via=alt_via,
                 )
 
     return [wp for wp in sequence if isinstance(wp, RouteWaypoint)]
