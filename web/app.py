@@ -62,10 +62,10 @@ class EvaluateRequest(BaseModel):
     dest_runway: int = 180
     aircraft: str = "Pipistrel Alpha Trainer"
     departure_time: str = ""       # "HH:MM" UTC; vacío = ahora + 1h
+    duration_hours: float = Field(default=2.0, ge=0.3, le=12.0)
     mock: bool = False
     avoid_airspace: bool = True    # si True, la ruta evita zonas R/P/D
-    forced_waypoints: List[str] = []   # aeródromos intermedios obligatorios (códigos ICAO)
-    forced_airways: List[str] = []     # aerovías forzadas por el planificador (ej. ["W6","W3"])
+    duration_hours: float = 0.0   # ignorado; calculado internamente desde la ruta
 
 
 class WeatherCard(BaseModel):
@@ -159,8 +159,6 @@ class RouteWaypoint(BaseModel):
     fir_contact: Optional[str] = None       # "Córdoba Control" — solo en entry
     is_airway_entry: bool = False
     is_airway_exit: bool = False
-    # Parada forzada (planificador de ruta personalizada)
-    is_forced_stop: bool = False
 
 
 class RouteCard(BaseModel):
@@ -405,7 +403,6 @@ def _generate_route_waypoints(
     mock: bool,
     step_km: float = 230.0,
     airway_map: Optional[dict] = None,
-    forced_stop_codes: Optional[set] = None,
 ) -> List[RouteWaypoint]:
     """
     Construye la lista completa de waypoints de la ruta.
@@ -415,8 +412,6 @@ def _generate_route_waypoints(
     """
     if airway_map is None:
         airway_map = {}
-    if forced_stop_codes is None:
-        forced_stop_codes = set()
 
     leg_dists: List[float] = []
     for i in range(len(path) - 1):
@@ -442,7 +437,6 @@ def _generate_route_waypoints(
             lat=ap.lat, lon=ap.lon,
             r_total=r_val, decision=dec,
             is_checkpoint=False, cruise_alt_ft=None,
-            is_forced_stop=(code in forced_stop_codes),
         ))
 
         if i >= len(path) - 1:
@@ -626,79 +620,6 @@ def _generate_route_waypoints(
     return [wp for wp in final_sequence if isinstance(wp, RouteWaypoint)]
 
 
-# ── Helper: ruta multi-parada (planificador personalizado) ────────────────────
-
-def _multi_stop_optimize(all_stops: List[str], r_map: dict, aircraft, req, dep_time: int):
-    """
-    Optimiza una ruta con múltiples paradas obligatorias.
-    Llama a optimize() para cada tramo y combina los resultados.
-    """
-    combined_path: List[str] = [all_stops[0]]
-    combined_legs: List[Dict] = []
-    total_dist = total_time = total_fuel = 0.0
-    fuel_ok = True
-    needs_stop = False
-    airspace_conflicts: List[Dict] = []
-
-    for i in range(len(all_stops) - 1):
-        leg = optimize(
-            origin=all_stops[i],
-            dest=all_stops[i + 1],
-            mode="suggested",
-            r_map=r_map,
-            aircraft=aircraft,
-            suggest_alternate=False,
-            evaluate_intermediate=False,
-            avoid_restricted_zones=req.avoid_airspace,
-            mock=req.mock,
-            dep_time=dep_time,
-        )
-        if leg.found:
-            combined_path += leg.path[1:]
-            combined_legs += [
-                {
-                    "origin":      l.origin,
-                    "dest":        l.dest,
-                    "distance_km": l.distance_km,
-                    "bearing_deg": l.bearing_deg,
-                    "time_hours":  l.time_hours,
-                    "fuel_liters": l.fuel_liters,
-                }
-                for l in leg.legs
-            ]
-            total_dist += leg.total_dist_km
-            total_time += leg.total_time_h
-            total_fuel += leg.total_fuel_l
-            if not leg.fuel_ok:
-                fuel_ok = False
-            if leg.needs_fuel_stop:
-                needs_stop = True
-            airspace_conflicts += [
-                {"name": z.name, "type": "R" if z.is_restricted else "D" if getattr(z, "zone_type", "") == "D" else "C"}
-                for z in leg.airspace_conflicts
-            ]
-        else:
-            combined_path.append(all_stops[i + 1])
-
-    class _R:
-        pass
-
-    r = _R()
-    r.found        = True
-    r.path         = combined_path
-    r.legs         = combined_legs          # ya formateados como dicts
-    r.total_dist_km = total_dist
-    r.total_time_h  = total_time
-    r.total_fuel_l  = total_fuel
-    r.fuel_ok       = fuel_ok
-    r.needs_fuel_stop = needs_stop
-    r.alternate     = None
-    r.airspace_conflicts = []               # ya formateados como dicts
-    r._conflicts_raw = airspace_conflicts
-    r.error         = ""
-    return r
-
-
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @app.get("/")
@@ -798,16 +719,6 @@ async def get_airspace():
     return result
 
 
-@app.get("/api/airways")
-async def get_airways():
-    """Todos los segmentos de aerovías inferiores para el mapa planificador."""
-    import json as _json
-    data_path = Path(__file__).parent.parent / "data" / "aerovias_argentinas.json"
-    with open(data_path, encoding="utf-8") as f:
-        raw = _json.load(f)
-    return {"segments": raw.get("airways", [])}
-
-
 @app.post("/api/evaluate", response_model=EvaluateResponse)
 async def evaluate(req: EvaluateRequest):
     """Evaluación meteorológica completa: origen + destino + ruta + briefing."""
@@ -827,55 +738,36 @@ async def evaluate(req: EvaluateRequest):
     dep_time = _parse_dep_time(req.departure_time)
     engine   = DecisionEngine(mock=req.mock, aircraft=aircraft)
 
-    # Paradas forzadas validadas
-    forced_wps = [s.upper().strip() for s in req.forced_waypoints
-                  if s.upper().strip() in AIRPORTS]
-    forced_airways_set = set(req.forced_airways)
-    all_stops = [origin] + forced_wps + [dest]
-
-    # Estimación de duración para ventana meteorológica
+    # Estimación rápida de duración para ventana meteorológica inicial
     orig_ap = AIRPORTS[origin]
     dest_ap = AIRPORTS[dest]
     rough_duration = max(0.5, haversine_km(orig_ap.lat, orig_ap.lon, dest_ap.lat, dest_ap.lon)
-                         / (aircraft.cruise_kt * 1.852) * 1.3 * max(1, len(all_stops) - 1))
+                         / (aircraft.cruise_kt * 1.852) * 1.3)
 
-    # Evaluar meteo para todos los aeródromos (origen + paradas + destino) en paralelo
-    with ThreadPoolExecutor(max_workers=min(8, len(all_stops))) as ex:
-        futs: dict = {}
-        for stop in all_stops:
-            rwy = req.origin_runway if stop == origin else (req.dest_runway if stop == dest else 180)
-            futs[ex.submit(engine.evaluate, stop, rwy, dep_time, rough_duration)] = stop
-        all_results: dict = {}
-        for fut, stop in futs.items():
-            all_results[stop] = fut.result()
+    # Fase 1: origin eval + dest eval en paralelo
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        fut_o = ex.submit(engine.evaluate, origin, req.origin_runway, dep_time, rough_duration)
+        fut_d = ex.submit(engine.evaluate, dest,   req.dest_runway,   dep_time, rough_duration)
+        origin_result = fut_o.result()
+        dest_result   = fut_d.result()
 
-    origin_result = all_results[origin]
-    dest_result   = all_results[dest]
-    r_map = {stop: all_results[stop].r_total for stop in all_stops}
-
-    # Optimización de ruta (simple o multi-parada)
-    if len(all_stops) == 2:
-        route_result = optimize(
-            origin=origin, dest=dest,
-            mode="suggested",
-            r_map=r_map,
-            aircraft=aircraft,
-            suggest_alternate=True,
-            evaluate_intermediate=False,
-            avoid_restricted_zones=req.avoid_airspace,
-            mock=req.mock,
-            dep_time=dep_time,
-        )
-        _legs_preformatted = False
-    else:
-        route_result = _multi_stop_optimize(all_stops, r_map, aircraft, req, dep_time)
-        _legs_preformatted = True  # los legs ya están como dicts en _multi_stop_optimize
+    r_map = {origin: origin_result.r_total, dest: dest_result.r_total}
+    route_result = optimize(
+        origin=origin, dest=dest,
+        mode="suggested",
+        r_map=r_map,
+        aircraft=aircraft,
+        suggest_alternate=True,
+        evaluate_intermediate=False,
+        avoid_restricted_zones=req.avoid_airspace,
+        mock=req.mock,
+        dep_time=dep_time,
+    )
 
     # Duración real desde la ruta calculada
     actual_duration = route_result.total_time_h if (route_result.found and route_result.total_time_h > 0) else rough_duration
 
-    # Buscar aerovías para cada tramo del path (skip detour si hay forzadas)
-    skip_detour = bool(forced_airways_set)
+    # Buscar aerovías para cada tramo del path
     airway_map: dict = {}
     if route_result.found and len(route_result.path) >= 2:
         for i in range(len(route_result.path) - 1):
@@ -889,7 +781,6 @@ async def evaluate(req: EvaluateRequest):
                         orig_ap_aw.lat, orig_ap_aw.lon,
                         dest_ap_aw.lat, dest_ap_aw.lon,
                         aircraft.cruise_alt_ft,
-                        skip_detour_check=skip_detour,
                     )
                     if aw_wps:
                         airway_map[(leg_orig, leg_dest)] = aw_wps
@@ -912,7 +803,7 @@ async def evaluate(req: EvaluateRequest):
         notams_dest=notams_dest,
     )
 
-    decisions = [all_results[stop].decision for stop in all_stops]
+    decisions = [origin_result.decision, dest_result.decision]
     global_dec = "NO GO" if "NO GO" in decisions else "CAUTION" if "CAUTION" in decisions else "GO"
 
     # Generar waypoints con checkpoints intermedios cada ~230 km
@@ -924,7 +815,6 @@ async def evaluate(req: EvaluateRequest):
         r_map=r_map,
         mock=req.mock,
         airway_map=airway_map,
-        forced_stop_codes=set(forced_wps),
     )
 
     # Aeródromos de desvío por waypoint (sin requests HTTP)
@@ -933,24 +823,6 @@ async def evaluate(req: EvaluateRequest):
         RouteWaypoint(**{**wp.model_dump(), "diversions": divs.get(wp.code, [])})
         for wp in waypoints
     ]
-
-    # Formatear legs (difiere si viene de ruta simple o multi-parada)
-    if _legs_preformatted:
-        legs_list = route_result.legs  # ya son dicts
-        conflicts_list = getattr(route_result, '_conflicts_raw', [])
-    else:
-        legs_list = [{
-            "origin":      l.origin,
-            "dest":        l.dest,
-            "distance_km": l.distance_km,
-            "bearing_deg": l.bearing_deg,
-            "time_hours":  l.time_hours,
-            "fuel_liters": l.fuel_liters,
-        } for l in route_result.legs]
-        conflicts_list = [{
-            "name": z.name,
-            "type": "R" if z.is_restricted else "D" if getattr(z, "zone_type", "") == "D" else "C",
-        } for z in route_result.airspace_conflicts]
 
     route_card = RouteCard(
         found          = route_result.found,
@@ -961,16 +833,26 @@ async def evaluate(req: EvaluateRequest):
         total_fuel_l   = round(route_result.total_fuel_l, 1),
         fuel_ok        = route_result.fuel_ok,
         needs_fuel_stop= route_result.needs_fuel_stop,
-        legs           = legs_list,
-        alternate      = {
+        legs=[{
+            "origin":      l.origin,
+            "dest":        l.dest,
+            "distance_km": l.distance_km,
+            "bearing_deg": l.bearing_deg,
+            "time_hours":  l.time_hours,
+            "fuel_liters": l.fuel_liters,
+        } for l in route_result.legs],
+        alternate={
             "code":              route_result.alternate.code,
             "name":              route_result.alternate.name,
             "decision":          route_result.alternate.decision,
             "r_total":           route_result.alternate.r_total,
             "dist_from_dest_km": route_result.alternate.dist_from_dest_km,
         } if route_result.alternate else None,
-        airspace_conflicts = conflicts_list,
-        error          = route_result.error,
+        airspace_conflicts=[{
+            "name": z.name,
+            "type": "R" if z.is_restricted else "D" if getattr(z, "zone_type", "") == "D" else "C",
+        } for z in route_result.airspace_conflicts],
+        error=route_result.error,
     )
 
     return EvaluateResponse(

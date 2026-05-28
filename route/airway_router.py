@@ -108,7 +108,6 @@ def find_airways_for_leg(
     orig_lat: float, orig_lon: float,
     dest_lat: float, dest_lon: float,
     cruise_alt_ft: int,
-    skip_detour_check: bool = False,
 ) -> list[AirwayWaypoint]:
     """
     Busca la mejor ruta por aerovias inferiores para el tramo dado.
@@ -140,8 +139,8 @@ def find_airways_for_leg(
 
             total_km = dist_to_entry + airway_km + dist_to_exit
 
-            # Criterio: total <= direct * (1 + MAX_DETOUR_PCT), o forzado por planificador
-            if (skip_detour_check or total_km <= direct_km * (1 + MAX_DETOUR_PCT)) and total_km < best_total:
+            # Criterio: total <= direct * (1 + MAX_DETOUR_PCT)
+            if total_km <= direct_km * (1 + MAX_DETOUR_PCT) and total_km < best_total:
                 best_total       = total_km
                 best_path        = path_nodes
                 best_entry_dist  = dist_to_entry
