@@ -1287,10 +1287,65 @@ function app() {
       const airportWps = wps.filter(w => !w.is_checkpoint);
       const allLatlngs = wps.map(w => [w.lat, w.lon]);
 
-      // Trazar línea de ruta
-      L.polyline(allLatlngs, {
-        color: '#58a6ff', weight: 2.5, opacity: 0.75, dashArray: '8 5',
-      }).addTo(this._routeLayer);
+      // ── Segmentos clickeables (uno por par consecutivo de waypoints) ──────
+      for (let si = 0; si < wps.length - 1; si++) {
+        const wpA = wps[si];
+        const wpB = wps[si + 1];
+        const segLatLngs = [[wpA.lat, wpA.lon], [wpB.lat, wpB.lon]];
+
+        // Determinar si el segmento es parte de una aerovía
+        const onAirway = wpA.is_airway_waypoint && wpB.is_airway_waypoint;
+        const awName   = onAirway ? (wpA.airway_name || wpB.airway_name || '') : null;
+        const awMea    = onAirway ? (wpA.airway_mea_ft || wpB.airway_mea_ft || null) : null;
+        const awFir    = onAirway ? (wpA.fir_contact || wpB.fir_contact || null) : null;
+
+        // Línea del segmento: cyan si es aerovía, azul punteado si es directo
+        const segPoly = L.polyline(segLatLngs, {
+          color:     onAirway ? '#22d3ee' : '#58a6ff',
+          weight:    onAirway ? 3.0 : 2.5,
+          opacity:   onAirway ? 0.90 : 0.75,
+          dashArray: onAirway ? null : '8 5',
+        });
+
+        // Popup al clickear el segmento
+        const midLat = (wpA.lat + wpB.lat) / 2;
+        const midLon = (wpA.lon + wpB.lon) / 2;
+
+        let popupContent;
+        if (onAirway) {
+          const entryRole = wpA.is_airway_entry ? ' — INGRESO' : wpA.is_airway_exit ? ' — SALIDA' : '';
+          popupContent = `<div style="font-family:monospace;min-width:210px;padding:4px 0">
+            <div style="font-size:10px;font-weight:700;color:#22d3ee;letter-spacing:.08em;margin-bottom:4px">
+              → SEGMENTO EN AEROVÍA
+            </div>
+            <div style="font-size:15px;font-weight:700;color:#22d3ee;margin-bottom:2px">${awName}${entryRole}</div>
+            <div style="font-size:11px;color:#e6edf3;margin-bottom:4px">${wpA.code} &nbsp;→&nbsp; ${wpB.code}</div>
+            ${awMea ? `<div style="font-size:11px;color:#8b949e;margin-bottom:2px">
+              MEA: <span style="color:#e6edf3;font-weight:600">${awMea.toLocaleString()} ft MSL</span>
+            </div>` : ''}
+            ${awFir ? `<div style="font-size:11px;color:#58a6ff;font-weight:600;margin-bottom:3px">
+              Contactar: ${awFir}
+            </div>` : ''}
+            <div style="font-size:9px;color:#6e7681;margin-top:4px;border-top:1px solid #30363d;padding-top:4px">
+              Mantener altitud ≥ MEA · VFR en aerovía inferior
+            </div>
+          </div>`;
+        } else {
+          popupContent = `<div style="font-family:monospace;min-width:185px;padding:4px 0">
+            <div style="font-size:10px;font-weight:700;color:#8b949e;letter-spacing:.08em;margin-bottom:4px">
+              — RUTA DIRECTA
+            </div>
+            <div style="font-size:11px;color:#e6edf3;margin-bottom:3px">${wpA.code} &nbsp;→&nbsp; ${wpB.code}</div>
+            <div style="font-size:10px;color:#8b949e;margin-bottom:2px">Sin aerovía para este tramo</div>
+            <div style="font-size:9px;color:#6e7681;margin-top:4px;border-top:1px solid #30363d;padding-top:4px">
+              Vuelo directo · verificar espacio aéreo y separación con TCA
+            </div>
+          </div>`;
+        }
+
+        segPoly.bindPopup(popupContent, { maxWidth: 280 })
+               .addTo(this._routeLayer);
+      }
 
       wps.forEach((wp, idx) => {
         // Waypoints de aerovía puros (sin checkpoint meteo) van a _airwayLayer
