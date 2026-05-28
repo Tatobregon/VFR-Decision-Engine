@@ -155,6 +155,30 @@
     .layer-btn.active { background: rgba(88,166,255,0.08); color: #e6edf3; }
     .layer-btn .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
 
+    /* Planner overlay */
+    [x-cloak] { display: none !important; }
+    #planner-map { width: 100%; height: 100%; border-radius: 0; }
+    .planner-panel { background: #161b22; }
+    .planner-stop-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 5px 8px; border-radius: 5px; background: #0d1117;
+      border: 1px solid #30363d; font-size: 12px; gap: 6px;
+    }
+    .planner-airway-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 5px 8px; border-radius: 5px; background: #0d1117;
+      border: 1px solid #22d3ee40; font-size: 12px; gap: 6px;
+    }
+    .planner-remove-btn {
+      flex-shrink: 0; width: 18px; height: 18px; border-radius: 3px;
+      background: transparent; border: 1px solid #484f58;
+      color: #8b949e; font-size: 11px; cursor: pointer; line-height: 1;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .planner-remove-btn:hover { background: #f8514920; border-color: #f85149; color: #f85149; }
+    .mea-legend-item { display: flex; align-items: center; gap: 5px; font-size: 10px; color: #8b949e; }
+    .mea-swatch { width: 20px; height: 4px; border-radius: 2px; flex-shrink: 0; }
+
     /* Label */
     .av-label {
       display: block;
@@ -196,7 +220,8 @@
 </header>
 
 <!-- ═══════════════════════════════════════════════════════════ APP -->
-<main class="max-w-5xl mx-auto px-4 py-8" x-data="app()" x-init="init()">
+<div x-data="app()" x-init="init()">
+<main class="max-w-5xl mx-auto px-4 py-8">
 
   <!-- ── FORM CARD ─────────────────────────────────────────────────── -->
   <div class="av-card mb-6">
@@ -346,22 +371,38 @@
         </label>
       </div>
 
-      <button
-        @click="evaluate()"
-        :disabled="loading || !originAirport || !destAirport"
-        class="px-6 py-2.5 rounded-lg font-semibold text-sm tracking-wider uppercase transition-all duration-200"
-        :class="loading || !originAirport || !destAirport
-          ? 'bg-border text-muted cursor-not-allowed'
-          : 'bg-accent text-[#0d1117] hover:bg-[#79b8ff] active:scale-95'">
-        <span x-show="!loading">▶ Evaluar vuelo</span>
-        <span x-show="loading" class="flex items-center gap-2">
-          <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-          </svg>
-          Evaluando...
-        </span>
-      </button>
+      <div class="flex items-center gap-3 flex-wrap">
+        <!-- Indicador de ruta personalizada activa -->
+        <div x-show="form.forced_waypoints.length > 0 || form.forced_airways.length > 0"
+             class="flex items-center gap-2 text-xs text-cyan-400 border border-cyan-400/30 rounded-lg px-3 py-1.5">
+          <span>✎</span>
+          <span x-text="`Ruta personalizada · ${form.forced_waypoints.length} parada(s) · ${form.forced_airways.length} aerovía(s)`"></span>
+          <button @click="form.forced_waypoints=[]; form.forced_airways=[]"
+                  class="text-muted hover:text-nogo ml-1 leading-none">✕</button>
+        </div>
+
+        <button @click="openPlanner()"
+                class="px-4 py-2.5 rounded-lg font-semibold text-sm tracking-wider uppercase transition-all duration-200 border border-cyan-400/50 text-cyan-400 hover:bg-cyan-400/10 active:scale-95">
+          ✎ Ruta personalizada
+        </button>
+
+        <button
+          @click="evaluate()"
+          :disabled="loading || !originAirport || !destAirport"
+          class="px-6 py-2.5 rounded-lg font-semibold text-sm tracking-wider uppercase transition-all duration-200"
+          :class="loading || !originAirport || !destAirport
+            ? 'bg-border text-muted cursor-not-allowed'
+            : 'bg-accent text-[#0d1117] hover:bg-[#79b8ff] active:scale-95'">
+          <span x-show="!loading">▶ Evaluar vuelo</span>
+          <span x-show="loading" class="flex items-center gap-2">
+            <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+            Evaluando...
+          </span>
+        </button>
+      </div>
     </div>
   </div>
 
@@ -774,20 +815,204 @@
 
 </main>
 
+<!-- ═══════════════════════ PLANIFICADOR DE RUTA PERSONALIZADA ════════ -->
+<div x-show="plannerOpen" x-cloak
+     style="position:fixed;inset:0;z-index:500;background:rgba(0,0,0,0.88);"
+     class="flex items-center justify-center p-3">
+
+  <div class="flex flex-col" style="width:96vw;height:93vh;background:#161b22;border:1px solid #30363d;border-radius:12px;overflow:hidden;">
+
+    <!-- Header del planificador -->
+    <div class="flex items-center justify-between px-5 py-3 flex-shrink-0" style="border-bottom:1px solid #30363d;">
+      <div class="flex items-center gap-3">
+        <span class="text-cyan-400 text-lg">✎</span>
+        <div>
+          <div class="font-bold text-sm tracking-widest uppercase text-[#e6edf3]">Planificador de Ruta Personalizada</div>
+          <div class="text-[10px] text-muted">Click en segmento = seleccionar · Doble click = aerovía completa · Click en aeródromo = origen / destino / parada</div>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <button
+          @click="sendPlannerToEvaluation()"
+          :disabled="!plannerOriginAirport || !plannerDestAirport"
+          class="px-5 py-2 rounded-lg font-bold text-sm tracking-wider uppercase transition-all"
+          :class="!plannerOriginAirport || !plannerDestAirport
+            ? 'bg-border text-muted cursor-not-allowed'
+            : 'bg-go text-[#0d1117] hover:opacity-90 active:scale-95'">
+          ▶ Enviar a evaluación
+        </button>
+        <button @click="closePlanner()"
+                class="w-8 h-8 rounded-lg flex items-center justify-center text-muted hover:text-[#e6edf3] hover:bg-[#21262d] transition-colors text-lg">
+          ✕
+        </button>
+      </div>
+    </div>
+
+    <!-- Cuerpo: panel izquierdo + mapa -->
+    <div class="flex flex-1 overflow-hidden">
+
+      <!-- ── Panel izquierdo ────────────────────────────────── -->
+      <div class="w-80 flex-shrink-0 overflow-y-auto p-4 flex flex-col gap-4" style="border-right:1px solid #30363d;">
+
+        <!-- Aeronave -->
+        <div>
+          <label class="av-label">Aeronave</label>
+          <select class="av-select" x-model="form.aircraft">
+            <template x-for="ac in aircraftList" :key="ac.name">
+              <option :value="ac.name" x-text="ac.name"></option>
+            </template>
+          </select>
+        </div>
+
+        <!-- Origen -->
+        <div>
+          <label class="av-label">Aeródromo de origen</label>
+          <div class="relative">
+            <input class="av-input" type="text" placeholder="Código ICAO o nombre..."
+                   x-model="plannerOriginSearch"
+                   @input="onPlannerOriginInput()"
+                   @focus="plannerOriginOpen = plannerOriginResults.length > 0"
+                   @keydown.escape="plannerOriginOpen = false"
+                   @keydown.enter.prevent="plannerOriginResults[0] && selectPlannerOrigin(plannerOriginResults[0])"
+                   autocomplete="off"/>
+            <div class="dropdown" x-show="plannerOriginOpen" @click.outside="plannerOriginOpen = false">
+              <template x-for="ap in plannerOriginResults" :key="ap.code">
+                <div class="dropdown-item" @click="selectPlannerOrigin(ap)">
+                  <span class="font-mono text-accent font-bold" x-text="ap.code"></span>
+                  <span class="text-[#e6edf3] ml-2" x-text="ap.name"></span>
+                </div>
+              </template>
+            </div>
+          </div>
+          <div x-show="plannerOriginAirport" class="mt-1 text-xs text-go font-mono"
+               x-text="plannerOriginAirport ? `▶ ${plannerOriginAirport.code} — ${plannerOriginAirport.name}` : ''"></div>
+        </div>
+
+        <!-- Destino -->
+        <div>
+          <label class="av-label">Aeródromo de destino</label>
+          <div class="relative">
+            <input class="av-input" type="text" placeholder="Código ICAO o nombre..."
+                   x-model="plannerDestSearch"
+                   @input="onPlannerDestInput()"
+                   @focus="plannerDestOpen = plannerDestResults.length > 0"
+                   @keydown.escape="plannerDestOpen = false"
+                   @keydown.enter.prevent="plannerDestResults[0] && selectPlannerDest(plannerDestResults[0])"
+                   autocomplete="off"/>
+            <div class="dropdown" x-show="plannerDestOpen" @click.outside="plannerDestOpen = false">
+              <template x-for="ap in plannerDestResults" :key="ap.code">
+                <div class="dropdown-item" @click="selectPlannerDest(ap)">
+                  <span class="font-mono text-accent font-bold" x-text="ap.code"></span>
+                  <span class="text-[#e6edf3] ml-2" x-text="ap.name"></span>
+                </div>
+              </template>
+            </div>
+          </div>
+          <div x-show="plannerDestAirport" class="mt-1 text-xs text-nogo font-mono"
+               x-text="plannerDestAirport ? `■ ${plannerDestAirport.code} — ${plannerDestAirport.name}` : ''"></div>
+        </div>
+
+        <!-- Paradas intermedias -->
+        <div>
+          <label class="av-label">Paradas intermedias</label>
+          <div class="relative mb-2">
+            <input class="av-input" type="text" placeholder="Agregar aeródromo..."
+                   x-model="plannerStopSearch"
+                   @input="onPlannerStopInput()"
+                   @focus="plannerStopOpen = plannerStopResults.length > 0"
+                   @keydown.escape="plannerStopOpen = false"
+                   @keydown.enter.prevent="plannerStopResults[0] && addPlannerStop(plannerStopResults[0])"
+                   autocomplete="off"/>
+            <div class="dropdown" x-show="plannerStopOpen" @click.outside="plannerStopOpen = false">
+              <template x-for="ap in plannerStopResults" :key="ap.code">
+                <div class="dropdown-item" @click="addPlannerStop(ap)">
+                  <span class="font-mono text-accent font-bold" x-text="ap.code"></span>
+                  <span class="text-[#e6edf3] ml-2" x-text="ap.name"></span>
+                </div>
+              </template>
+            </div>
+          </div>
+          <div class="flex flex-col gap-1">
+            <template x-for="(stop, idx) in plannerStops" :key="stop.code">
+              <div class="planner-stop-item">
+                <span class="text-caution">⬥</span>
+                <span class="font-mono text-xs flex-1" x-text="`${stop.code} · ${stop.name}`"></span>
+                <button class="planner-remove-btn" @click="removePlannerStop(idx)">✕</button>
+              </div>
+            </template>
+            <div x-show="plannerStops.length === 0" class="text-xs text-muted italic">Sin paradas intermedias</div>
+          </div>
+        </div>
+
+        <!-- Aerovías seleccionadas -->
+        <div>
+          <label class="av-label">Aerovías seleccionadas
+            <span class="normal-case font-normal ml-1" x-text="plannerSelectedItems.length > 0 ? `(${plannerSelectedItems.length})` : ''"></span>
+          </label>
+          <div class="flex flex-col gap-1">
+            <template x-for="(item, idx) in plannerSelectedItems" :key="idx">
+              <div class="planner-airway-item">
+                <span class="text-cyan-400 text-xs">
+                  <span x-text="item.type === 'airway' ? '↔' : '→'"></span>
+                </span>
+                <span class="font-mono text-xs flex-1 text-cyan-300" x-text="item.label"></span>
+                <span class="text-muted text-xs" x-text="item.mea_ft ? item.mea_ft.toLocaleString() + ' ft' : ''"></span>
+                <button class="planner-remove-btn" @click="removePlannerItem(idx)">✕</button>
+              </div>
+            </template>
+            <div x-show="plannerSelectedItems.length === 0" class="text-xs text-muted italic">
+              Clickeá en el mapa para seleccionar aerovías
+            </div>
+          </div>
+        </div>
+
+        <!-- Leyenda MEA -->
+        <div class="mt-auto pt-3" style="border-top:1px solid #30363d;">
+          <div class="text-[10px] font-semibold tracking-widest uppercase text-muted mb-2">MEA — Altitud mínima de ruta</div>
+          <div class="flex flex-col gap-1.5">
+            <div class="mea-legend-item"><div class="mea-swatch" style="background:#22c55e"></div> ≤ 5 000 ft</div>
+            <div class="mea-legend-item"><div class="mea-swatch" style="background:#84cc16"></div> 5 001 – 8 000 ft</div>
+            <div class="mea-legend-item"><div class="mea-swatch" style="background:#eab308"></div> 8 001 – 12 000 ft</div>
+            <div class="mea-legend-item"><div class="mea-swatch" style="background:#f97316"></div> 12 001 – 16 000 ft</div>
+            <div class="mea-legend-item"><div class="mea-swatch" style="background:#ef4444"></div> > 16 000 ft</div>
+          </div>
+          <div class="text-[10px] text-muted mt-3">
+            <div>· <b>Click</b> en segmento → seleccionar esa sección</div>
+            <div>· <b>Doble click</b> → seleccionar aerovía entera</div>
+            <div>· <b>Click en aeródromo</b> → origen / destino / parada</div>
+            <div class="mt-1 text-cyan-400/70">Aerodromos visibles desde zoom 7+</div>
+          </div>
+        </div>
+
+      </div><!-- /left panel -->
+
+      <!-- ── Mapa planificador ──────────────────────────────── -->
+      <div class="flex-1 relative overflow-hidden">
+        <div id="planner-map" style="width:100%;height:100%;"></div>
+      </div>
+
+    </div><!-- /body -->
+  </div><!-- /modal -->
+</div><!-- /planner overlay -->
+
+</div><!-- /x-data wrapper -->
+
 <!-- ═══════════════════════════════════════════════════════════ SCRIPTS -->
 <script>
 function app() {
   return {
     // ── Estado del formulario
     form: {
-      origin:         '',
-      dest:           '',
-      origin_runway:  180,
-      dest_runway:    180,
-      aircraft:       'Pipistrel Alpha Trainer',
-      departure_time: '',
-      mock:           false,
-      avoid_airspace: true,
+      origin:           '',
+      dest:             '',
+      origin_runway:    180,
+      dest_runway:      180,
+      aircraft:         'Pipistrel Alpha Trainer',
+      departure_time:   '',
+      mock:             false,
+      avoid_airspace:   true,
+      forced_waypoints: [],
+      forced_airways:   [],
     },
 
     // ── Autocomplete
@@ -824,6 +1049,32 @@ function app() {
     showDiversions: true,
     showAirspace: true,
     showAirways: true,
+
+    // ── Planificador de Ruta Personalizada
+    plannerOpen: false,
+    plannerOriginSearch: '',
+    plannerOriginResults: [],
+    plannerOriginOpen: false,
+    plannerOriginAirport: null,
+    plannerDestSearch: '',
+    plannerDestResults: [],
+    plannerDestOpen: false,
+    plannerDestAirport: null,
+    plannerStopSearch: '',
+    plannerStopResults: [],
+    plannerStopOpen: false,
+    plannerStops: [],
+    plannerSelectedItems: [],
+    _plannerMap: null,
+    _plannerAllAirways: null,
+    _plannerAirwayLayer: null,
+    _plannerMarkerLayer: null,
+    _plannerAirportLayer: null,
+    _plannerPolylines: {},
+    _plannerSelectedRoutes: null,
+    _plannerOriginTimer: null,
+    _plannerDestTimer: null,
+    _plannerStopTimer: null,
 
     // ── Init
     async init() {
@@ -938,15 +1189,16 @@ function app() {
 
       try {
         const payload = {
-          origin:         this.form.origin,
-          dest:           this.form.dest,
-          origin_runway:  this.form.origin_runway,
-          dest_runway:    this.form.dest_runway,
-          aircraft:       this.form.aircraft,
-          departure_time: this.form.departure_time,
-          duration_hours: this.form.duration_hours,
-          mock:           this.form.mock,
-          avoid_airspace: this.form.avoid_airspace,
+          origin:           this.form.origin,
+          dest:             this.form.dest,
+          origin_runway:    this.form.origin_runway,
+          dest_runway:      this.form.dest_runway,
+          aircraft:         this.form.aircraft,
+          departure_time:   this.form.departure_time,
+          mock:             this.form.mock,
+          avoid_airspace:   this.form.avoid_airspace,
+          forced_waypoints: this.form.forced_waypoints || [],
+          forced_airways:   this.form.forced_airways   || [],
         };
 
         const res = await fetch('/api/evaluate', {
@@ -1507,6 +1759,411 @@ function app() {
       const mm = String(d.getUTCMinutes()).padStart(2,'0');
       return `${dd}/${mo} ${hh}:${mm}Z`;
     },
+
+    // ══════════════════════════════════════════════════════════════════
+    // PLANIFICADOR DE RUTA PERSONALIZADA
+    // ══════════════════════════════════════════════════════════════════
+
+    async openPlanner() {
+      this.plannerOpen = true;
+      this._plannerSelectedRoutes = new Set();
+      await this.$nextTick();
+      setTimeout(() => this.initPlannerMap(), 120);
+    },
+
+    closePlanner() {
+      if (this._plannerMap) {
+        this._plannerMap.off();
+        this._plannerMap.remove();
+        this._plannerMap = null;
+        this._plannerAirwayLayer = null;
+        this._plannerMarkerLayer = null;
+        this._plannerAirportLayer = null;
+      }
+      this.plannerOpen = false;
+    },
+
+    sendPlannerToEvaluation() {
+      if (!this.plannerOriginAirport || !this.plannerDestAirport) return;
+
+      this.originAirport    = this.plannerOriginAirport;
+      this.form.origin      = this.plannerOriginAirport.code;
+      this.originSearch     = `${this.plannerOriginAirport.code} – ${this.plannerOriginAirport.name}`;
+      this.form.origin_runway = this.plannerOriginAirport.runways?.length > 0
+        ? this.plannerOriginAirport.runways[0].heading : 180;
+
+      this.destAirport      = this.plannerDestAirport;
+      this.form.dest        = this.plannerDestAirport.code;
+      this.destSearch       = `${this.plannerDestAirport.code} – ${this.plannerDestAirport.name}`;
+      this.form.dest_runway = this.plannerDestAirport.runways?.length > 0
+        ? this.plannerDestAirport.runways[0].heading : 180;
+
+      this.form.forced_waypoints = this.plannerStops.map(s => s.code);
+      this.form.forced_airways   = this._plannerSelectedRoutes
+        ? [...this._plannerSelectedRoutes] : [];
+
+      this.closePlanner();
+      this.$nextTick(() => this.evaluate());
+    },
+
+    // ── Mapa del planificador ──────────────────────────────────────────
+
+    async initPlannerMap() {
+      if (this._plannerMap) { this._plannerMap.off(); this._plannerMap.remove(); this._plannerMap = null; }
+      const mapEl = document.getElementById('planner-map');
+      if (!mapEl) return;
+
+      this._plannerMap = L.map('planner-map', { center: [-34.0, -64.0], zoom: 5 });
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OSM &copy; CARTO', subdomains: 'abcd', maxZoom: 19,
+      }).addTo(this._plannerMap);
+
+      this._plannerAirwayLayer  = L.layerGroup().addTo(this._plannerMap);
+      this._plannerMarkerLayer  = L.layerGroup().addTo(this._plannerMap);
+      this._plannerAirportLayer = L.layerGroup().addTo(this._plannerMap);
+
+      await this.loadPlannerAirways();
+      this.buildPlannerAirwayLayer();
+      this.updatePlannerRouteMarkers();
+
+      this._plannerMap.on('zoomend moveend', () => this.updatePlannerAirportLayer());
+      await this.loadAirportData();
+      this.updatePlannerAirportLayer();
+      this._plannerMap.invalidateSize();
+    },
+
+    async loadPlannerAirways() {
+      if (this._plannerAllAirways) return;
+      try {
+        const res = await fetch('/api/airways');
+        const data = await res.json();
+        this._plannerAllAirways = data.segments || [];
+      } catch(e) {
+        console.error('Error cargando aerovías:', e);
+        this._plannerAllAirways = [];
+      }
+    },
+
+    _meaColor(mea_ft) {
+      if (mea_ft <= 5000)  return '#22c55e';
+      if (mea_ft <= 8000)  return '#84cc16';
+      if (mea_ft <= 12000) return '#eab308';
+      if (mea_ft <= 16000) return '#f97316';
+      return '#ef4444';
+    },
+
+    buildPlannerAirwayLayer() {
+      if (!this._plannerAirwayLayer || !this._plannerAllAirways) return;
+      this._plannerAirwayLayer.clearLayers();
+      this._plannerPolylines = {};
+      const self = this;
+
+      for (const seg of this._plannerAllAirways) {
+        const key = `${seg.ruta}_${seg.origen.id}_${seg.destino.id}`;
+        const isSelected = this._plannerSelectedRoutes && this._plannerSelectedRoutes.has(seg.ruta);
+        const color  = isSelected ? '#22d3ee' : this._meaColor(seg.mea_ft);
+        const weight = isSelected ? 4 : 2;
+
+        const poly = L.polyline(
+          [[seg.origen.lat, seg.origen.lon], [seg.destino.lat, seg.destino.lon]],
+          { color, weight, opacity: isSelected ? 1.0 : 0.72 }
+        );
+
+        // Click único vs doble click (timer 300ms)
+        let clickTimer = null;
+        poly.on('click', function(e) {
+          L.DomEvent.stopPropagation(e);
+          if (clickTimer !== null) return;
+          clickTimer = setTimeout(() => {
+            clickTimer = null;
+            self.onPlannerSegmentClick(seg, e);
+          }, 300);
+        });
+        poly.on('dblclick', function(e) {
+          L.DomEvent.stopPropagation(e);
+          L.DomEvent.preventDefault(e);
+          if (clickTimer !== null) { clearTimeout(clickTimer); clickTimer = null; }
+          self.onPlannerAirwayDblClick(seg.ruta, e);
+        });
+
+        poly.addTo(this._plannerAirwayLayer);
+        this._plannerPolylines[key] = poly;
+      }
+    },
+
+    onPlannerSegmentClick(seg, e) {
+      const rutaName = seg.ruta;
+      if (!this._plannerSelectedRoutes) this._plannerSelectedRoutes = new Set();
+
+      if (!this._plannerSelectedRoutes.has(rutaName)) {
+        this._plannerSelectedRoutes.add(rutaName);
+        const existing = this.plannerSelectedItems.find(i => i.ruta === rutaName);
+        if (!existing) {
+          this.plannerSelectedItems.push({
+            type: 'segment',
+            ruta: rutaName,
+            label: `${rutaName}  ${seg.origen.id} → ${seg.destino.id}`,
+            mea_ft: seg.mea_ft,
+          });
+        }
+        this.refreshPlannerAirwayColors();
+      }
+
+      // Popup informativo
+      const midLat = (seg.origen.lat + seg.destino.lat) / 2;
+      const midLon = (seg.origen.lon + seg.destino.lon) / 2;
+      L.popup({ maxWidth: 260 })
+        .setLatLng([midLat, midLon])
+        .setContent(`<div style="font-family:monospace;padding:4px 0">
+          <div style="font-size:12px;font-weight:700;color:#22d3ee;margin-bottom:4px">AEROVÍA ${seg.ruta}</div>
+          <div style="font-size:11px;color:#e6edf3">${seg.origen.id} → ${seg.destino.id}</div>
+          <div style="font-size:11px;color:#8b949e;margin-top:2px">MEA: ${seg.mea_ft.toLocaleString()} ft MSL</div>
+          <div style="font-size:10px;color:#6e7681;margin-top:5px;font-style:italic">
+            Doble click → seleccionar aerovía ${seg.ruta} completa
+          </div>
+        </div>`)
+        .openOn(this._plannerMap);
+    },
+
+    onPlannerAirwayDblClick(rutaName, e) {
+      if (!this._plannerSelectedRoutes) this._plannerSelectedRoutes = new Set();
+      this._plannerSelectedRoutes.add(rutaName);
+
+      const rutaSegs = (this._plannerAllAirways || []).filter(s => s.ruta === rutaName);
+      const maxMea = Math.max(...rutaSegs.map(s => s.mea_ft));
+      const minMea = Math.min(...rutaSegs.map(s => s.mea_ft));
+
+      // Reemplaza entradas de segmento por la aerovía completa
+      this.plannerSelectedItems = this.plannerSelectedItems.filter(i => i.ruta !== rutaName);
+      this.plannerSelectedItems.push({
+        type: 'airway',
+        ruta: rutaName,
+        label: `${rutaName}  aerovía completa (${rutaSegs.length} seg.)`,
+        mea_ft: maxMea,
+        mea_min_ft: minMea,
+      });
+
+      this.refreshPlannerAirwayColors();
+
+      if (e && e.latlng) {
+        L.popup({ maxWidth: 280 })
+          .setLatLng(e.latlng)
+          .setContent(`<div style="font-family:monospace;padding:4px 0">
+            <div style="font-size:12px;font-weight:700;color:#22d3ee;margin-bottom:4px">AEROVÍA ${rutaName} — SELECCIONADA</div>
+            <div style="font-size:11px;color:#e6edf3">${rutaSegs.length} segmentos</div>
+            <div style="font-size:11px;color:#8b949e;margin-top:2px">
+              MEA: ${minMea.toLocaleString()} – ${maxMea.toLocaleString()} ft MSL
+            </div>
+          </div>`)
+          .openOn(this._plannerMap);
+      }
+    },
+
+    refreshPlannerAirwayColors() {
+      if (!this._plannerAllAirways) return;
+      for (const seg of this._plannerAllAirways) {
+        const key = `${seg.ruta}_${seg.origen.id}_${seg.destino.id}`;
+        const poly = this._plannerPolylines[key];
+        if (!poly) continue;
+        const isSelected = this._plannerSelectedRoutes && this._plannerSelectedRoutes.has(seg.ruta);
+        poly.setStyle({
+          color:   isSelected ? '#22d3ee' : this._meaColor(seg.mea_ft),
+          weight:  isSelected ? 4 : 2,
+          opacity: isSelected ? 1.0 : 0.72,
+        });
+      }
+    },
+
+    removePlannerItem(idx) {
+      const item = this.plannerSelectedItems[idx];
+      if (item) {
+        const othersForRuta = this.plannerSelectedItems.filter((it, i) => i !== idx && it.ruta === item.ruta);
+        if (othersForRuta.length === 0 && this._plannerSelectedRoutes) {
+          this._plannerSelectedRoutes.delete(item.ruta);
+          this.refreshPlannerAirwayColors();
+        }
+      }
+      this.plannerSelectedItems.splice(idx, 1);
+    },
+
+    updatePlannerRouteMarkers() {
+      if (!this._plannerMarkerLayer) return;
+      this._plannerMarkerLayer.clearLayers();
+
+      const mkIcon = (color) => L.divIcon({
+        html: `<div style="width:13px;height:13px;background:${color};border:2px solid #fff;border-radius:50%;"></div>`,
+        className: '', iconSize: [13,13], iconAnchor: [6,6],
+      });
+      const mkSquare = (color) => L.divIcon({
+        html: `<div style="width:11px;height:11px;background:${color};border:2px solid #fff;border-radius:2px;"></div>`,
+        className: '', iconSize: [11,11], iconAnchor: [5,5],
+      });
+
+      if (this.plannerOriginAirport) {
+        const ap = this.plannerOriginAirport;
+        L.marker([ap.lat, ap.lon], {icon: mkIcon('#3fb950')})
+          .bindPopup(`<b style="color:#3fb950">ORIGEN</b><br>${ap.code} · ${ap.name}`)
+          .addTo(this._plannerMarkerLayer);
+      }
+      if (this.plannerDestAirport) {
+        const ap = this.plannerDestAirport;
+        L.marker([ap.lat, ap.lon], {icon: mkSquare('#f85149')})
+          .bindPopup(`<b style="color:#f85149">DESTINO</b><br>${ap.code} · ${ap.name}`)
+          .addTo(this._plannerMarkerLayer);
+      }
+      for (const stop of this.plannerStops) {
+        L.marker([stop.lat, stop.lon], {icon: mkIcon('#d29922')})
+          .bindPopup(`<b style="color:#d29922">PARADA</b><br>${stop.code} · ${stop.name}`)
+          .addTo(this._plannerMarkerLayer);
+      }
+    },
+
+    updatePlannerAirportLayer() {
+      if (!this._plannerMap || !this._plannerAirportLayer || !this._allAirports) return;
+      const zoom = this._plannerMap.getZoom();
+      this._plannerAirportLayer.clearLayers();
+      if (zoom < 7) return;
+
+      const bounds = this._plannerMap.getBounds();
+      const self = this;
+
+      // Handlers globales para botones dentro del popup Leaflet
+      window._pSetOrig = (ap) => {
+        self.plannerOriginAirport = ap;
+        self.plannerOriginSearch  = `${ap.code} – ${ap.name}`;
+        self.updatePlannerRouteMarkers();
+        self._plannerMap.closePopup();
+      };
+      window._pSetDest = (ap) => {
+        self.plannerDestAirport  = ap;
+        self.plannerDestSearch   = `${ap.code} – ${ap.name}`;
+        self.updatePlannerRouteMarkers();
+        self._plannerMap.closePopup();
+      };
+      window._pAddStop = (ap) => {
+        if (!self.plannerStops.find(s => s.code === ap.code)) {
+          self.plannerStops.push({
+            code: ap.code, name: ap.name, lat: ap.lat, lon: ap.lon,
+            runway: ap.runways?.length > 0 ? ap.runways[0].heading : 180,
+          });
+          self.updatePlannerRouteMarkers();
+        }
+        self._plannerMap.closePopup();
+      };
+
+      const apIcon = L.divIcon({
+        html: `<div style="width:7px;height:7px;background:#58a6ff;border:1.5px solid #30363d;border-radius:2px;"></div>`,
+        className: '', iconSize: [7,7], iconAnchor: [3,3],
+      });
+
+      for (const ap of this._allAirports) {
+        if (!bounds.contains([ap.lat, ap.lon])) continue;
+        const apJson = JSON.stringify(ap).replace(/"/g, '&quot;');
+        const popup = `<div style="font-family:monospace;min-width:175px">
+          <div style="font-size:12px;font-weight:700;color:#58a6ff">${ap.code}</div>
+          <div style="font-size:11px;color:#e6edf3;margin-bottom:7px">${ap.name}</div>
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <button onclick="window._pSetOrig(${apJson})"
+                    style="background:#22863a;color:#fff;border:none;border-radius:4px;padding:3px 0;font-size:11px;cursor:pointer;font-family:monospace;width:100%">
+              ▶ Origen
+            </button>
+            <button onclick="window._pSetDest(${apJson})"
+                    style="background:#9b2335;color:#fff;border:none;border-radius:4px;padding:3px 0;font-size:11px;cursor:pointer;font-family:monospace;width:100%">
+              ■ Destino
+            </button>
+            <button onclick="window._pAddStop(${apJson})"
+                    style="background:#7d6514;color:#fff;border:none;border-radius:4px;padding:3px 0;font-size:11px;cursor:pointer;font-family:monospace;width:100%">
+              ⬥ Parada intermedia
+            </button>
+          </div>
+        </div>`;
+        L.marker([ap.lat, ap.lon], {icon: apIcon}).bindPopup(popup).addTo(this._plannerAirportLayer);
+      }
+    },
+
+    // ── Planner autocomplete origen
+    onPlannerOriginInput() {
+      clearTimeout(this._plannerOriginTimer);
+      if (this.plannerOriginSearch.length < 2) {
+        this.plannerOriginResults = []; this.plannerOriginOpen = false; return;
+      }
+      this._plannerOriginTimer = setTimeout(async () => {
+        try {
+          const res = await fetch(`/api/airports?q=${encodeURIComponent(this.plannerOriginSearch)}`);
+          this.plannerOriginResults = await res.json();
+          this.plannerOriginOpen = this.plannerOriginResults.length > 0;
+        } catch(e) {}
+      }, 280);
+    },
+
+    selectPlannerOrigin(ap) {
+      this.plannerOriginAirport = ap;
+      this.plannerOriginSearch  = `${ap.code} – ${ap.name}`;
+      this.plannerOriginOpen    = false;
+      this.plannerOriginResults = [];
+      this.updatePlannerRouteMarkers();
+      // Zoom al aeródromo
+      if (this._plannerMap) this._plannerMap.setView([ap.lat, ap.lon], 9);
+    },
+
+    // ── Planner autocomplete destino
+    onPlannerDestInput() {
+      clearTimeout(this._plannerDestTimer);
+      if (this.plannerDestSearch.length < 2) {
+        this.plannerDestResults = []; this.plannerDestOpen = false; return;
+      }
+      this._plannerDestTimer = setTimeout(async () => {
+        try {
+          const res = await fetch(`/api/airports?q=${encodeURIComponent(this.plannerDestSearch)}`);
+          this.plannerDestResults = await res.json();
+          this.plannerDestOpen = this.plannerDestResults.length > 0;
+        } catch(e) {}
+      }, 280);
+    },
+
+    selectPlannerDest(ap) {
+      this.plannerDestAirport  = ap;
+      this.plannerDestSearch   = `${ap.code} – ${ap.name}`;
+      this.plannerDestOpen     = false;
+      this.plannerDestResults  = [];
+      this.updatePlannerRouteMarkers();
+      if (this._plannerMap) this._plannerMap.setView([ap.lat, ap.lon], 9);
+    },
+
+    // ── Planner autocomplete paradas
+    onPlannerStopInput() {
+      clearTimeout(this._plannerStopTimer);
+      if (this.plannerStopSearch.length < 2) {
+        this.plannerStopResults = []; this.plannerStopOpen = false; return;
+      }
+      this._plannerStopTimer = setTimeout(async () => {
+        try {
+          const res = await fetch(`/api/airports?q=${encodeURIComponent(this.plannerStopSearch)}`);
+          this.plannerStopResults = await res.json();
+          this.plannerStopOpen = this.plannerStopResults.length > 0;
+        } catch(e) {}
+      }, 280);
+    },
+
+    addPlannerStop(ap) {
+      if (!this.plannerStops.find(s => s.code === ap.code)) {
+        this.plannerStops.push({
+          code: ap.code, name: ap.name, lat: ap.lat, lon: ap.lon,
+          runway: ap.runways?.length > 0 ? ap.runways[0].heading : 180,
+        });
+        this.updatePlannerRouteMarkers();
+      }
+      this.plannerStopSearch   = '';
+      this.plannerStopResults  = [];
+      this.plannerStopOpen     = false;
+    },
+
+    removePlannerStop(idx) {
+      this.plannerStops.splice(idx, 1);
+      this.updatePlannerRouteMarkers();
+    },
+
+    // ══════════════════════════════════════════════════════════════════
 
     async copyBriefing() {
       try {
