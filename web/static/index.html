@@ -142,7 +142,18 @@
     .dropdown-item:last-child { border-bottom: none; }
 
     /* Map container */
-    #map { height: 320px; border-radius: 8px; z-index: 0; }
+    #map { height: 520px; border-radius: 8px; z-index: 0; }
+
+    /* Layer toggle buttons */
+    .layer-btn {
+      display: flex; align-items: center; gap: 5px;
+      padding: 4px 10px; border-radius: 6px; border: 1px solid #30363d;
+      font-size: 11px; cursor: pointer; transition: all 0.15s;
+      background: transparent; color: #8b949e; white-space: nowrap;
+    }
+    .layer-btn:hover { border-color: #484f58; color: #e6edf3; }
+    .layer-btn.active { background: rgba(88,166,255,0.08); color: #e6edf3; }
+    .layer-btn .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
 
     /* Label */
     .av-label {
@@ -617,89 +628,75 @@
 
     <!-- ── MAPA DE RUTA ───────────────────────────────────────────── -->
     <div class="av-card mb-5" x-show="result?.route?.found">
-      <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <h3 class="text-[11px] font-bold tracking-widest uppercase text-muted">Ruta en mapa</h3>
-        <div class="flex items-center gap-2 flex-wrap text-xs">
-          <!-- Toggle aeródromos -->
-          <button @click="toggleAirports()"
-                  class="flex items-center gap-1.5 px-2.5 py-1 rounded-md border transition-all duration-150 select-none"
-                  :class="showAirports
-                    ? 'border-[#484f58] text-[#e6edf3] bg-[#21262d]'
-                    : 'border-border text-muted hover:text-[#e6edf3]'">
-            <span class="w-2 h-2 rounded-full bg-[#484f58] inline-block"></span>
-            Aeródromos
-          </button>
-          <!-- Toggle desvíos -->
-          <button @click="toggleDiversions()"
-                  class="flex items-center gap-1.5 px-2.5 py-1 rounded-md border transition-all duration-150 select-none"
-                  :class="showDiversions
-                    ? 'border-caution/50 text-caution bg-caution/5'
-                    : 'border-border text-muted hover:text-[#e6edf3]'">
-            <svg width="9" height="9" viewBox="0 0 18 18" class="inline-block">
-              <polygon points="9,1 17,16 1,16" :fill="showDiversions ? '#d29922' : '#8b949e'"/>
-            </svg>
-            Desvíos emergencia
-          </button>
-          <!-- Toggle espacios aéreos -->
-          <button @click="toggleAirspace()"
-                  class="flex items-center gap-1.5 px-2.5 py-1 rounded-md border transition-all duration-150 select-none"
-                  :class="showAirspace
-                    ? 'border-nogo/50 text-nogo bg-nogo/5'
-                    : 'border-border text-muted hover:text-[#e6edf3]'">
-            <span class="text-[9px] font-bold" :style="showAirspace ? 'color:#f85149' : 'color:#8b949e'">R</span>
-            Espacios aéreos
-          </button>
-          <!-- Alerts -->
-          <span x-show="result?.route?.airspace_conflicts?.length > 0" class="text-caution font-semibold">
-            ⚠ <span x-text="result?.route?.airspace_conflicts?.length"></span> conflicto(s) aéreo
-          </span>
-          <span x-show="result?.route?.needs_fuel_stop" class="text-caution font-semibold">
-            ⛽ Escala combustible
-          </span>
+      <div class="flex items-start justify-between mb-3 gap-4 flex-wrap">
+        <h3 class="text-[11px] font-bold tracking-widest uppercase text-muted shrink-0 mt-1">Ruta en mapa</h3>
+
+        <!-- Filtros de capas: 2 grupos -->
+        <div class="flex flex-col gap-2 flex-1 min-w-0">
+          <!-- Fila 1: capas de ruta -->
+          <div class="flex flex-wrap gap-1.5">
+            <!-- Aerovías -->
+            <button @click="toggleAirways()" class="layer-btn" :class="showAirways ? 'active' : ''"
+                    :style="showAirways ? 'border-color:#58a6ff40' : ''">
+              <svg width="9" height="9" viewBox="0 0 10 10">
+                <path d="M1 5 L9 5 M6 2 L9 5 L6 8" :stroke="showAirways ? '#58a6ff' : '#8b949e'" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              Aerovías
+            </button>
+            <!-- Desvíos emergencia -->
+            <button @click="toggleDiversions()" class="layer-btn" :class="showDiversions ? 'active' : ''"
+                    :style="showDiversions ? 'border-color:#d2992240' : ''">
+              <svg width="9" height="9" viewBox="0 0 18 18">
+                <polygon points="9,1 17,16 1,16" :fill="showDiversions ? '#d29922' : '#8b949e'"/>
+              </svg>
+              Desvíos
+            </button>
+            <!-- Aeródromos -->
+            <button @click="toggleAirports()" class="layer-btn" :class="showAirports ? 'active' : ''"
+                    :style="showAirports ? 'border-color:#48505840' : ''">
+              <span class="dot" :style="showAirports ? 'background:#8b949e' : 'background:#484f58'"></span>
+              Aeródromos
+            </button>
+            <!-- Espacios aéreos -->
+            <button @click="toggleAirspace()" class="layer-btn" :class="showAirspace ? 'active' : ''"
+                    :style="showAirspace ? 'border-color:#f8514940' : ''">
+              <span style="font-size:9px;font-weight:700;line-height:1" :style="showAirspace ? 'color:#f85149' : 'color:#8b949e'">R</span>
+              Espacios aéreos
+            </button>
+          </div>
+          <!-- Fila 2: alertas -->
+          <div class="flex items-center gap-3 text-xs">
+            <span x-show="result?.route?.airspace_conflicts?.length > 0" class="text-caution font-semibold">
+              ⚠ <span x-text="result?.route?.airspace_conflicts?.length"></span> conflicto(s) aéreo
+            </span>
+            <span x-show="result?.route?.needs_fuel_stop" class="text-caution font-semibold">
+              ⛽ Escala de combustible necesaria
+            </span>
+            <span x-show="result?.route?.waypoints?.some(w => w.is_airway_entry)" class="text-accent font-semibold">
+              → Vuelo por aerovía disponible
+            </span>
+          </div>
         </div>
       </div>
       <div id="map"></div>
 
       <!-- Leyenda del mapa -->
-      <div class="flex items-center gap-4 mt-2 px-1 flex-wrap" style="font-size:10px; color:#8b949e; font-family:monospace">
-        <span class="flex items-center gap-1.5">
-          <span style="width:10px;height:10px;border-radius:50%;background:#58a6ff;display:inline-block"></span>Origen
+      <div class="flex items-center gap-3 mt-2 px-1 flex-wrap" style="font-size:10px; color:#8b949e; font-family:monospace">
+        <span class="flex items-center gap-1"><span style="width:9px;height:9px;border-radius:50%;background:#58a6ff;display:inline-block"></span>Origen</span>
+        <span class="flex items-center gap-1"><span style="width:9px;height:9px;border-radius:50%;background:#f0883e;display:inline-block"></span>Destino</span>
+        <span class="flex items-center gap-1"><span style="width:9px;height:9px;border-radius:50%;background:#3fb950;display:inline-block"></span>GO</span>
+        <span class="flex items-center gap-1"><span style="width:9px;height:9px;border-radius:50%;background:#d29922;display:inline-block"></span>CAUTION</span>
+        <span class="flex items-center gap-1"><svg width="9" height="9" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="12" fill="#8b949e" transform="rotate(45 8 8)"/></svg>Checkpoint</span>
+        <span x-show="showAirways" class="flex items-center gap-1">
+          <svg width="12" height="9" viewBox="0 0 14 10"><circle cx="7" cy="5" r="3.5" fill="none" stroke="#58a6ff" stroke-width="1.5"/><line x1="1" y1="5" x2="3.5" y2="5" stroke="#58a6ff" stroke-width="1.5"/><line x1="10.5" y1="5" x2="13" y2="5" stroke="#58a6ff" stroke-width="1.5"/></svg>Aerovía
         </span>
-        <span class="flex items-center gap-1.5">
-          <span style="width:10px;height:10px;border-radius:50%;background:#f0883e;display:inline-block"></span>Destino
-        </span>
-        <span class="flex items-center gap-1.5">
-          <span style="width:10px;height:10px;border-radius:50%;background:#3fb950;display:inline-block"></span>GO
-        </span>
-        <span class="flex items-center gap-1.5">
-          <span style="width:10px;height:10px;border-radius:50%;background:#d29922;display:inline-block"></span>CAUTION
-        </span>
-        <span class="flex items-center gap-1.5">
-          <svg width="10" height="10" viewBox="0 0 16 16" style="display:inline-block">
-            <rect x="2" y="2" width="12" height="12" fill="#8b949e" transform="rotate(45 8 8)"/>
-          </svg>Checkpoint
-        </span>
-        <span x-show="showDiversions" class="flex items-center gap-1.5">
-          <svg width="10" height="10" viewBox="0 0 18 18" style="display:inline-block">
-            <polygon points="9,1 17,16 1,16" fill="#d29922"/>
-          </svg>Desvío
-        </span>
-        <span x-show="showAirports" class="flex items-center gap-1.5">
-          <span style="width:8px;height:8px;border-radius:50%;background:#484f58;display:inline-block"></span>Aeródromo
-        </span>
-        <span x-show="showAirports" class="flex items-center gap-1.5">
-          <span style="width:8px;height:8px;border-radius:50%;background:#f0883e;display:inline-block"></span>⛽ Combustible
-        </span>
-        <span x-show="showAirspace" class="flex items-center gap-1.5">
-          <span style="width:8px;height:8px;border-radius:2px;background:#f85149;opacity:0.6;display:inline-block"></span>R/P (restringida)
-        </span>
-        <span x-show="showAirspace" class="flex items-center gap-1.5">
-          <span style="width:8px;height:8px;border-radius:2px;background:#f0883e;opacity:0.6;display:inline-block"></span>D (peligro)
-        </span>
-        <span x-show="showAirspace" class="flex items-center gap-1.5">
-          <span style="width:8px;height:8px;border-radius:2px;background:#58a6ff;opacity:0.5;display:inline-block"></span>CTR/TMA
-        </span>
-        <span style="margin-left:auto;font-size:9px">Zoom ≥ 8 para ver aeródromos · Click en cualquier marcador para info</span>
+        <span x-show="showDiversions" class="flex items-center gap-1"><svg width="9" height="9" viewBox="0 0 18 18"><polygon points="9,1 17,16 1,16" fill="#d29922"/></svg>Desvío</span>
+        <span x-show="showAirports" class="flex items-center gap-1"><span style="width:7px;height:7px;border-radius:50%;background:#484f58;display:inline-block"></span>Aeródromo</span>
+        <span x-show="showAirports" class="flex items-center gap-1"><span style="width:7px;height:7px;border-radius:50%;background:#f0883e;display:inline-block"></span>⛽ Combustible</span>
+        <span x-show="showAirspace" class="flex items-center gap-1"><span style="width:7px;height:7px;border-radius:2px;background:#f85149;opacity:0.6;display:inline-block"></span>R/P</span>
+        <span x-show="showAirspace" class="flex items-center gap-1"><span style="width:7px;height:7px;border-radius:2px;background:#f0883e;opacity:0.6;display:inline-block"></span>D</span>
+        <span x-show="showAirspace" class="flex items-center gap-1"><span style="width:7px;height:7px;border-radius:2px;background:#58a6ff;opacity:0.5;display:inline-block"></span>CTR/TMA</span>
+        <span style="margin-left:auto;font-size:9px">Zoom ≥ 8 → aeródromos · Click en marcador → info</span>
       </div>
 
       <!-- Tabla de tramos -->
@@ -820,11 +817,13 @@ function app() {
     _diversionLayer: null,
     _airportLayer: null,
     _airspaceLayer: null,
+    _airwayLayer: null,
     _allAirports: null,
     _airspaceData: null,
     showAirports: true,
     showDiversions: true,
     showAirspace: true,
+    showAirways: true,
 
     // ── Init
     async init() {
@@ -982,7 +981,7 @@ function app() {
         this._map.off();
         this._map.remove();
         this._map = null;
-        this._routeLayer = this._diversionLayer = this._airportLayer = this._airspaceLayer = null;
+        this._routeLayer = this._diversionLayer = this._airportLayer = this._airspaceLayer = this._airwayLayer = null;
       }
 
       const wps = this.result?.route?.waypoints;
@@ -997,13 +996,15 @@ function app() {
         subdomains: 'abcd', maxZoom: 19,
       }).addTo(this._map);
 
-      // Capas independientes (airspace debajo de todo)
+      // Capas independientes (airspace debajo de todo, luego ruta, aerovías encima)
       this._airspaceLayer  = L.layerGroup().addTo(this._map);
       this._routeLayer     = L.layerGroup().addTo(this._map);
+      this._airwayLayer    = L.layerGroup().addTo(this._map);
       this._diversionLayer = L.layerGroup().addTo(this._map);
       this._airportLayer   = L.layerGroup().addTo(this._map);
 
       this._buildRouteLayer();
+      if (this.showAirways) this._buildAirwayLayer();
       if (this.showDiversions) this._buildDiversionLayer();
 
       // Zoom/pan → actualizar capa de aeródromos
@@ -1040,12 +1041,17 @@ function app() {
       }).addTo(this._routeLayer);
 
       wps.forEach((wp, idx) => {
-        const isOrig = !wp.is_checkpoint && idx === 0;
-        const isDest = !wp.is_checkpoint && airportWps.length > 1 && airportWps[airportWps.length-1] === wp;
+        // Waypoints de aerovía puros (sin checkpoint meteo) van a _airwayLayer
+        if (wp.is_airway_waypoint && !wp.is_checkpoint) return;
+
+        const isOrig = !wp.is_checkpoint && !wp.is_airway_waypoint && idx === 0;
+        const isDest = !wp.is_checkpoint && !wp.is_airway_waypoint && airportWps.length > 1 && airportWps[airportWps.length-1] === wp;
 
         const color = isOrig ? '#58a6ff' : isDest ? '#f0883e' : (decCol[wp.decision] || '#8b949e');
 
         if (wp.is_checkpoint) {
+          // Si además es waypoint de aerovía fusionado, el borde es azul
+          const isFused = wp.is_airway_waypoint;
           const chkColor = decCol[wp.decision] || '#8b949e';
           const cw = wp.chk_weather;
 
@@ -1090,25 +1096,38 @@ function app() {
               <div style="font-size:9px;color:#8b949e;margin-top:2px">Verificar condiciones antes de seleccionar</div>
             </div>` : '';
 
-          const popupChk = `<div style="font-family:monospace;min-width:200px;max-width:260px;padding:4px 0">
-            <div style="font-size:10px;font-weight:600;color:#8b949e;margin-bottom:2px">◆ CHECKPOINT EN RUTA</div>
+          const awBlock = isFused ? `
+            <div style="border-top:1px solid #30363d;margin-top:5px;padding-top:4px;background:rgba(88,166,255,0.05);border-radius:4px;padding:5px">
+              <div style="font-size:10px;font-weight:700;color:#58a6ff;margin-bottom:2px">→ AEROVÍA ${wp.airway_name || ''}</div>
+              ${wp.airway_mea_ft ? `<div style="font-size:10px;color:#8b949e">MEA: ${wp.airway_mea_ft.toLocaleString()} ft</div>` : ''}
+              ${wp.fir_contact ? `<div style="font-size:10px;color:#58a6ff;font-weight:600;margin-top:2px">Contactar: ${wp.fir_contact}</div>` : ''}
+              ${wp.is_airway_entry ? `<div style="font-size:9px;color:#58a6ff">Punto de ingreso a la aerovía</div>` : ''}
+              ${wp.is_airway_exit  ? `<div style="font-size:9px;color:#58a6ff">Punto de salida de la aerovía</div>` : ''}
+            </div>` : '';
+
+          const popupChk = `<div style="font-family:monospace;min-width:200px;max-width:265px;padding:4px 0">
+            <div style="font-size:10px;font-weight:600;color:${isFused ? '#58a6ff' : '#8b949e'};margin-bottom:2px">${isFused ? '⊕ CHECKPOINT + AEROVÍA' : '◆ CHECKPOINT EN RUTA'}</div>
             <div style="font-size:11px;color:#e6edf3;margin:3px 0">${wp.name}</div>
             <div style="font-size:12px;font-weight:700;color:${chkColor}">R = ${wp.r_total.toFixed(2)} · ${wp.decision}</div>
             ${wp.cruise_alt_ft ? `<div style="font-size:10px;color:#8b949e">Crucero: ${wp.cruise_alt_ft.toLocaleString()} ft</div>` : ''}
+            ${awBlock}
             ${meteoBlock}
             ${altViaBlock}
           </div>`;
 
+          const outerStroke = isFused ? '#58a6ff' : '#0d1117';
+          const outerWidth  = isFused ? '2' : '1.5';
           L.marker([wp.lat, wp.lon], {
             icon: L.divIcon({
               className: '',
-              html: `<svg width="16" height="16" viewBox="0 0 16 16" style="overflow:visible">
-                <rect x="2" y="2" width="12" height="12" fill="${chkColor}" stroke="#0d1117" stroke-width="1.5"
-                  opacity="0.85" transform="rotate(45 8 8)"/>
+              html: `<svg width="18" height="18" viewBox="0 0 18 18" style="overflow:visible">
+                <rect x="2" y="2" width="14" height="14" fill="${chkColor}" stroke="${outerStroke}" stroke-width="${outerWidth}"
+                  opacity="0.9" transform="rotate(45 9 9)"/>
+                ${isFused ? `<rect x="5" y="5" width="8" height="8" fill="none" stroke="#58a6ff" stroke-width="1" opacity="0.7" transform="rotate(45 9 9)"/>` : ''}
               </svg>`,
-              iconSize: [16, 16], iconAnchor: [8, 8],
+              iconSize: [18, 18], iconAnchor: [9, 9],
             }),
-          }).bindPopup(popupChk, {maxWidth: 280}).addTo(this._routeLayer);
+          }).bindPopup(popupChk, {maxWidth: 285}).addTo(this._routeLayer);
         } else {
           const radius = (isOrig || isDest) ? 10 : 7;
           const popup = `<div style="font-family:monospace;min-width:150px;padding:4px 0">
@@ -1174,6 +1193,114 @@ function app() {
           }), interactive: false,
         }).addTo(this._routeLayer);
       });
+    },
+
+    _buildAirwayLayer() {
+      if (!this._airwayLayer) return;
+      this._airwayLayer.clearLayers();
+      const wps = this.result?.route?.waypoints;
+      if (!wps) return;
+
+      // Solo waypoints de aerovía puros (no fusionados con checkpoint)
+      const awWps = wps.filter(w => w.is_airway_waypoint && !w.is_checkpoint);
+      if (awWps.length === 0) return;
+
+      // Línea de aerovía — conectar waypoints consecutivos de aerovía
+      // Agrupamos por aerovía contigua en la lista
+      let lineStart = null;
+      let linePts   = [];
+      let lastAw    = null;
+
+      const flushLine = () => {
+        if (linePts.length >= 2) {
+          L.polyline(linePts, { color: '#58a6ff', weight: 2, opacity: 0.6 })
+            .addTo(this._airwayLayer);
+        }
+        linePts = [];
+      };
+
+      wps.forEach(wp => {
+        if (wp.is_airway_waypoint && !wp.is_checkpoint) {
+          linePts.push([wp.lat, wp.lon]);
+        } else if (wp.is_airway_waypoint && wp.is_checkpoint) {
+          // Fusionado: también conectar en la línea
+          linePts.push([wp.lat, wp.lon]);
+        } else {
+          // Aeródromo o checkpoint puro: cortar la línea
+          if (linePts.length >= 2) flushLine();
+          else linePts = [];
+        }
+      });
+      if (linePts.length >= 2) flushLine();
+
+      // Marcadores para cada waypoint de aerovía puro
+      awWps.forEach(wp => {
+        const isEntry = wp.is_airway_entry;
+        const isExit  = wp.is_airway_exit;
+        const markerColor = '#58a6ff';
+
+        // Popup
+        const popup = `<div style="font-family:monospace;min-width:180px;max-width:240px;padding:4px 0">
+          <div style="font-size:10px;font-weight:700;color:#58a6ff;margin-bottom:2px">
+            ${isEntry ? '→ INGRESO A AEROVÍA' : isExit ? '← SALIDA DE AEROVÍA' : '· AEROVÍA'}
+            ${wp.airway_name ? ' ' + wp.airway_name : ''}
+          </div>
+          <div style="font-size:13px;font-weight:700;color:#e6edf3">${wp.code}</div>
+          ${wp.airway_mea_ft ? `<div style="font-size:10px;color:#8b949e;margin-top:2px">MEA: ${wp.airway_mea_ft.toLocaleString()} ft</div>` : ''}
+          ${wp.fir_contact ? `
+            <div style="border-top:1px solid #30363d;margin-top:5px;padding-top:4px">
+              <div style="font-size:11px;font-weight:700;color:#58a6ff">📡 Contactar: ${wp.fir_contact}</div>
+              <div style="font-size:9px;color:#8b949e;margin-top:2px">Al ingresar a la aerovía, identificarse e informar ingreso</div>
+            </div>` : ''}
+        </div>`;
+
+        // Icono: círculo con borde azul para waypoints intermedios,
+        // círculo más grande con flecha para entry/exit
+        const size   = (isEntry || isExit) ? 14 : 10;
+        const anchor = size / 2;
+        let svgHtml;
+        if (isEntry) {
+          svgHtml = `<svg width="${size}" height="${size}" viewBox="0 0 14 14" style="overflow:visible">
+            <circle cx="7" cy="7" r="5" fill="#0d1117" stroke="#58a6ff" stroke-width="2"/>
+            <text x="7" y="10.5" text-anchor="middle" font-size="7" font-family="monospace" font-weight="bold" fill="#58a6ff">→</text>
+          </svg>`;
+        } else if (isExit) {
+          svgHtml = `<svg width="${size}" height="${size}" viewBox="0 0 14 14" style="overflow:visible">
+            <circle cx="7" cy="7" r="5" fill="#0d1117" stroke="#58a6ff" stroke-width="2"/>
+            <text x="7" y="10.5" text-anchor="middle" font-size="7" font-family="monospace" font-weight="bold" fill="#58a6ff">←</text>
+          </svg>`;
+        } else {
+          svgHtml = `<svg width="${size}" height="${size}" viewBox="0 0 10 10" style="overflow:visible">
+            <circle cx="5" cy="5" r="4" fill="#0d1117" stroke="#58a6ff" stroke-width="1.5"/>
+          </svg>`;
+        }
+
+        L.marker([wp.lat, wp.lon], {
+          icon: L.divIcon({
+            className: '', html: svgHtml,
+            iconSize: [size, size], iconAnchor: [anchor, anchor],
+          }),
+        }).bindPopup(popup, {maxWidth: 260}).addTo(this._airwayLayer);
+
+        // Label ICAO debajo del marcador
+        L.marker([wp.lat, wp.lon], {
+          icon: L.divIcon({
+            className: '',
+            html: `<div style="color:#58a6ff;font-family:monospace;font-size:9px;font-weight:700;white-space:nowrap;margin-top:${size+2}px;margin-left:${-anchor+3}px;text-shadow:0 1px 2px #000">${wp.code}</div>`,
+            iconAnchor: [0, 0],
+          }), interactive: false,
+        }).addTo(this._airwayLayer);
+      });
+    },
+
+    toggleAirways() {
+      this.showAirways = !this.showAirways;
+      if (!this._map || !this._airwayLayer) return;
+      if (this.showAirways) {
+        this._buildAirwayLayer();
+      } else {
+        this._airwayLayer.clearLayers();
+      }
     },
 
     _buildDiversionLayer() {
