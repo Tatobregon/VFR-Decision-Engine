@@ -1201,39 +1201,106 @@ function app() {
       const wps = this.result?.route?.waypoints;
       if (!wps) return;
 
-      // Solo waypoints de aerovía puros (no fusionados con checkpoint)
       const awWps = wps.filter(w => w.is_airway_waypoint && !w.is_checkpoint);
       if (awWps.length === 0) return;
 
-      // Línea de aerovía — conectar waypoints consecutivos de aerovía
-      // Agrupamos por aerovía contigua en la lista
-      let lineStart = null;
-      let linePts   = [];
-      let lastAw    = null;
+      // ── Helpers geométricos ────────────────────────────────────────────
+      const toR = d => d * Math.PI / 180;
 
-      const flushLine = () => {
-        if (linePts.length >= 2) {
-          L.polyline(linePts, { color: '#58a6ff', weight: 2, opacity: 0.6 })
-            .addTo(this._airwayLayer);
-        }
-        linePts = [];
+      const _bearing = (la1, lo1, la2, lo2) => {
+        const y = Math.sin(toR(lo2-lo1)) * Math.cos(toR(la2));
+        const x = Math.cos(toR(la1)) * Math.sin(toR(la2))
+                - Math.sin(toR(la1)) * Math.cos(toR(la2)) * Math.cos(toR(lo2-lo1));
+        return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
       };
 
-      wps.forEach(wp => {
-        if (wp.is_airway_waypoint && !wp.is_checkpoint) {
-          linePts.push([wp.lat, wp.lon]);
-        } else if (wp.is_airway_waypoint && wp.is_checkpoint) {
-          // Fusionado: también conectar en la línea
-          linePts.push([wp.lat, wp.lon]);
-        } else {
-          // Aeródromo o checkpoint puro: cortar la línea
-          if (linePts.length >= 2) flushLine();
-          else linePts = [];
-        }
-      });
-      if (linePts.length >= 2) flushLine();
+      const _dist = (la1, lo1, la2, lo2) => {
+        const dlat = toR(la2-la1), dlon = toR(lo2-lo1);
+        const a = Math.sin(dlat/2)**2 + Math.cos(toR(la1))*Math.cos(toR(la2))*Math.sin(dlon/2)**2;
+        return 6371 * 2 * Math.asin(Math.sqrt(a));
+      };
 
-      // Marcadores para cada waypoint de aerovía puro
+      // Rotación CSS: el texto queda paralelo al segmento, nunca al revés
+      const _cssAngle = (brg) => {
+        let a = brg - 90;
+        if (a >  90) a -= 180;
+        if (a < -90) a += 180;
+        return a;
+      };
+
+      // ── Polilínea de aerovía ───────────────────────────────────────────
+      let linePts = [];
+      const flushLine = () => {
+        if (linePts.length >= 2)
+          L.polyline(linePts, { color: '#58a6ff', weight: 2.2, opacity: 0.65 })
+           .addTo(this._airwayLayer);
+        linePts = [];
+      };
+      wps.forEach(wp => {
+        if (wp.is_airway_waypoint) linePts.push([wp.lat, wp.lon]);
+        else { flushLine(); }
+      });
+      flushLine();
+
+      // ── Etiquetas estilo carta de navegación ───────────────────────────
+      // Una etiqueta por segmento entre waypoints de aerovía consecutivos
+      const allAwWps = wps.filter(w => w.is_airway_waypoint);
+      for (let i = 0; i < allAwWps.length - 1; i++) {
+        const wpA = allAwWps[i];
+        const wpB = allAwWps[i + 1];
+
+        const dist  = _dist(wpA.lat, wpA.lon, wpB.lat, wpB.lon);
+        if (dist < 12) continue;   // segmento muy corto, omitir
+
+        const midLat = (wpA.lat + wpB.lat) / 2;
+        const midLon = (wpA.lon + wpB.lon) / 2;
+        const fwd    = Math.round(_bearing(wpA.lat, wpA.lon, wpB.lat, wpB.lon));
+        const rev    = Math.round((fwd + 180) % 360);
+        const angle  = _cssAngle(fwd);
+
+        const awName = wpA.airway_name || wpB.airway_name || '';
+        const mea    = wpA.airway_mea_ft || wpB.airway_mea_ft || null;
+        const fwd3   = String(fwd).padStart(3, '0');
+        const rev3   = String(rev).padStart(3, '0');
+        const distKm = Math.round(dist);
+
+        const labelHtml = `
+          <div style="
+            display:inline-block;
+            background:rgba(9,12,18,0.90);
+            border:1px solid #1e3a5f;
+            border-radius:3px;
+            padding:2px 6px 3px 6px;
+            font-family:monospace;
+            white-space:nowrap;
+            text-align:center;
+            line-height:1.45;
+            box-shadow:0 1px 5px rgba(0,0,0,0.6);
+          ">
+            <div style="font-size:11px;font-weight:700;color:#58a6ff;letter-spacing:.07em">${awName}</div>
+            <div style="height:1px;background:#1e3a5f;margin:2px -4px"></div>
+            <div style="font-size:8.5px;color:#e6edf3;margin-top:2px">${fwd3}° <span style="color:#30363d">·</span> ${rev3}°</div>
+            ${mea ? `<div style="font-size:8px;color:#8b949e">MEA ${mea.toLocaleString()} ft</div>` : ''}
+            <div style="font-size:7.5px;color:#484f58">${distKm} km</div>
+          </div>`;
+
+        L.marker([midLat, midLon], {
+          icon: L.divIcon({
+            className: '',
+            html: `<div style="position:relative;transform:translate(-50%,-50%)">
+                     <div style="transform:rotate(${angle}deg);transform-origin:center center">
+                       ${labelHtml}
+                     </div>
+                   </div>`,
+            iconSize: [0, 0],
+            iconAnchor: [0, 0],
+          }),
+          interactive: false,
+          zIndexOffset: 400,
+        }).addTo(this._airwayLayer);
+      }
+
+      // ── Marcadores para cada waypoint de aerovía puro ─────────────────
       awWps.forEach(wp => {
         const isEntry = wp.is_airway_entry;
         const isExit  = wp.is_airway_exit;
