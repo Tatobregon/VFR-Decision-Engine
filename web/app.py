@@ -608,7 +608,10 @@ def _generate_route_waypoints(
 
 @app.get("/")
 async def root():
-    return FileResponse(str(STATIC_DIR / "index.html"))
+    return FileResponse(
+        str(STATIC_DIR / "index.html"),
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+    )
 
 
 @app.get("/api/airports")

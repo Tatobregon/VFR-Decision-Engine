@@ -977,6 +977,9 @@ function app() {
 
     // ── Mapa Leaflet
     initMap() {
+      const wps0 = this.result?.route?.waypoints;
+      console.log('[initMap] showAirways=', this.showAirways, 'waypoints=', wps0?.length, 'awWps=', wps0?.filter(w=>w.is_airway_waypoint&&!w.is_checkpoint).length);
+
       if (this._map) {
         this._map.off();
         this._map.remove();
@@ -1196,13 +1199,14 @@ function app() {
     },
 
     _buildAirwayLayer() {
-      if (!this._airwayLayer) return;
+      if (!this._airwayLayer) { console.warn('[AW] no airwayLayer'); return; }
       this._airwayLayer.clearLayers();
       const wps = this.result?.route?.waypoints;
-      if (!wps) return;
+      if (!wps) { console.warn('[AW] no waypoints'); return; }
 
       const awWps = wps.filter(w => w.is_airway_waypoint && !w.is_checkpoint);
-      if (awWps.length === 0) return;
+      console.log('[AW] awWps:', awWps.length, awWps.map(w => w.code));
+      if (awWps.length === 0) { console.warn('[AW] early return - no airway waypoints'); return; }
 
       // ── Helpers geométricos ────────────────────────────────────────────
       const toR = d => d * Math.PI / 180;
@@ -1243,8 +1247,8 @@ function app() {
       flushLine();
 
       // ── Etiquetas estilo carta de navegación ───────────────────────────
-      // Una etiqueta por segmento entre waypoints de aerovía consecutivos
       const allAwWps = wps.filter(w => w.is_airway_waypoint);
+      console.log('[AW] allAwWps for labels:', allAwWps.length);
       for (let i = 0; i < allAwWps.length - 1; i++) {
         const wpA = allAwWps[i];
         const wpB = allAwWps[i + 1];
@@ -1284,20 +1288,23 @@ function app() {
             <div style="font-size:7.5px;color:#484f58">${distKm} km</div>
           </div>`;
 
-        L.marker([midLat, midLon], {
-          icon: L.divIcon({
-            className: '',
-            html: `<div style="position:relative;transform:translate(-50%,-50%)">
-                     <div style="transform:rotate(${angle}deg);transform-origin:center center">
-                       ${labelHtml}
-                     </div>
-                   </div>`,
-            iconSize: [0, 0],
-            iconAnchor: [0, 0],
-          }),
-          interactive: false,
-          zIndexOffset: 400,
-        }).addTo(this._airwayLayer);
+        console.log('[AW] label', i, ':', awName, 'dist=', Math.round(dist), 'km', 'mea=', mea, 'mid=[', midLat.toFixed(3), midLon.toFixed(3), ']');
+        try {
+          L.marker([midLat, midLon], {
+            icon: L.divIcon({
+              className: '',
+              html: `<div style="position:relative;transform:translate(-50%,-50%)">
+                       <div style="transform:rotate(${angle}deg);transform-origin:center center">
+                         ${labelHtml}
+                       </div>
+                     </div>`,
+              iconSize: [0, 0],
+              iconAnchor: [0, 0],
+            }),
+            interactive: false,
+            zIndexOffset: 400,
+          }).addTo(this._airwayLayer);
+        } catch(e) { console.error('[AW] label error:', e); }
       }
 
       // ── Marcadores para cada waypoint de aerovía ──────────────────────

@@ -29,7 +29,7 @@ from data.fir_zones import get_fir
 
 MAX_DETOUR_PCT  = 0.15   # maximo 15% sobre distancia directa
 MAX_ENTRY_KM    = 100.0  # radio maximo para buscar entry/exit nodes
-TOP_N_CANDIDATES = 3     # cantidad de candidatos entry/exit a evaluar
+TOP_N_CANDIDATES = 5     # cantidad de candidatos entry/exit a evaluar
 
 
 # ── Dataclass resultado ────────────────────────────────────────────────────────
