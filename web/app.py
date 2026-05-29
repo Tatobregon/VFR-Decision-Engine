@@ -453,7 +453,9 @@ def _generate_route_waypoints(
         # Waypoints de aerovía para este tramo
         aw_wps: list = airway_map.get((code, path[i + 1]), [])
 
-        # Insertar waypoints de aerovía como RouteWaypoints (sin meteo aún)
+        # Insertar waypoints de aerovía como RouteWaypoints (sin meteo aún).
+        # Se registra el índice de cada uno para actualizarlo después de la evaluación NWP.
+        aw_ncp_start = len(sequence)
         for aw in aw_wps:
             dist_to_chk = cumulative_km + haversine_km(ap.lat, ap.lon, aw.lat, aw.lon)
             frac_total  = dist_to_chk / total_route_dist if total_route_dist > 0 else 0.5
@@ -474,21 +476,23 @@ def _generate_route_waypoints(
             ))
 
         if aw_wps:
-            # Tramo con aerovía: evaluar NWP en cada waypoint de aerovía
-            for aw in aw_wps:
+            # Specs NWP para cada waypoint de aerovía.
+            # '_update_idx' apunta al RouteWaypoint no-checkpoint a actualizar con los datos NWP.
+            for j, aw in enumerate(aw_wps):
                 dist_to_aw = cumulative_km + haversine_km(ap.lat, ap.lon, aw.lat, aw.lon)
                 frac_total = dist_to_aw / total_route_dist if total_route_dist > 0 else 0.5
                 chk_time   = dep_time + int(frac_total * duration_hours * 3600)
                 sequence.append({
-                    'seq_code':  aw.node_id,
-                    'seq_name':  aw.node_id,
-                    'lat':       aw.lat,
-                    'lon':       aw.lon,
-                    'elev_m':    0.0,
-                    'cruise_alt': cruise_alt,
-                    'track':     track,
-                    'dep_time':  chk_time,
-                    '_fused_aw': aw,
+                    'seq_code':    aw.node_id,
+                    'seq_name':    aw.node_id,
+                    'lat':         aw.lat,
+                    'lon':         aw.lon,
+                    'elev_m':      0.0,
+                    'cruise_alt':  cruise_alt,
+                    'track':       track,
+                    'dep_time':    chk_time,
+                    '_fused_aw':   aw,
+                    '_update_idx': aw_ncp_start + j,
                 })
         elif leg_km > step_km:
             # Tramo sin aerovía: checkpoints interpolados cada step_km
@@ -564,24 +568,29 @@ def _generate_route_waypoints(
                 if dec == "NO GO":
                     alt_via = _find_best_alt_via(spec['lat'], spec['lon'], route_codes)
 
-                fused_aw = spec.get('_fused_aw')
-                if fused_aw is not None:
-                    # Waypoint fusionado: tiene info de aerovía + meteo
-                    sequence[idx] = RouteWaypoint(
-                        code=fused_aw.node_id,
-                        name=f"{'→ ' if fused_aw.is_entry else '← ' if fused_aw.is_exit else ''}{fused_aw.node_id}",
-                        lat=fused_aw.lat, lon=fused_aw.lon,
+                fused_aw   = spec.get('_fused_aw')
+                update_idx = spec.get('_update_idx')
+
+                if fused_aw is not None and update_idx is not None:
+                    # Actualizar el RouteWaypoint no-checkpoint con los datos NWP.
+                    # Mantiene is_checkpoint=False para que _buildAirwayLayer() lo dibuje como círculo.
+                    orig = sequence[update_idx]
+                    sequence[update_idx] = RouteWaypoint(
+                        code=orig.code, name=orig.name,
+                        lat=orig.lat, lon=orig.lon,
                         r_total=r, decision=dec,
-                        is_checkpoint=True, cruise_alt_ft=spec['cruise_alt'],
+                        is_checkpoint=False,
+                        cruise_alt_ft=spec['cruise_alt'],
                         chk_weather=chk_wx,
                         alt_via=alt_via,
                         is_airway_waypoint=True,
-                        airway_name=fused_aw.airway_name,
-                        airway_mea_ft=fused_aw.mea_ft,
-                        fir_contact=fused_aw.fir_contact,
-                        is_airway_entry=fused_aw.is_entry,
-                        is_airway_exit=fused_aw.is_exit,
+                        airway_name=orig.airway_name,
+                        airway_mea_ft=orig.airway_mea_ft,
+                        fir_contact=orig.fir_contact,
+                        is_airway_entry=orig.is_airway_entry,
+                        is_airway_exit=orig.is_airway_exit,
                     )
+                    sequence[idx] = None  # descartar el spec dict (ya procesado)
                 else:
                     sequence[idx] = RouteWaypoint(
                         code=spec['seq_code'], name=spec['seq_name'],
@@ -592,20 +601,7 @@ def _generate_route_waypoints(
                         alt_via=alt_via,
                     )
 
-    # Eliminar duplicados: si un waypoint de aerovía tiene versión con meteo (is_checkpoint=True),
-    # descartar la versión sin meteo (is_checkpoint=False) del mismo código.
-    checkpoint_aw_codes = {
-        item.code for item in sequence
-        if isinstance(item, RouteWaypoint) and item.is_airway_waypoint and item.is_checkpoint
-    }
-    final_sequence: list = []
-    for item in sequence:
-        if isinstance(item, RouteWaypoint) and item.is_airway_waypoint and not item.is_checkpoint:
-            if item.code in checkpoint_aw_codes:
-                continue
-        final_sequence.append(item)
-
-    return [wp for wp in final_sequence if isinstance(wp, RouteWaypoint)]
+    return [wp for wp in sequence if isinstance(wp, RouteWaypoint)]
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
