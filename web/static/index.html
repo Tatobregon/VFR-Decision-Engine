@@ -1259,7 +1259,7 @@ function app() {
         const angle  = _cssAngle(fwd);
 
         const awName = wpA.airway_name || wpB.airway_name || '';
-        const mea    = wpA.airway_mea_ft || wpB.airway_mea_ft || null;
+        const mea    = wpB.airway_mea_ft || wpA.airway_mea_ft || null;
         const fwd3   = String(fwd).padStart(3, '0');
         const rev3   = String(rev).padStart(3, '0');
         const distKm = Math.round(dist);

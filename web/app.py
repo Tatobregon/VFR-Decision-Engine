@@ -473,57 +473,46 @@ def _generate_route_waypoints(
                 cruise_alt_ft=cruise_alt,
             ))
 
-        # Generar posiciones candidatas a checkpoint meteo cada step_km
-        if leg_km > step_km:
+        if aw_wps:
+            # Tramo con aerovía: evaluar NWP en cada waypoint de aerovía
+            for aw in aw_wps:
+                dist_to_aw = cumulative_km + haversine_km(ap.lat, ap.lon, aw.lat, aw.lon)
+                frac_total = dist_to_aw / total_route_dist if total_route_dist > 0 else 0.5
+                chk_time   = dep_time + int(frac_total * duration_hours * 3600)
+                sequence.append({
+                    'seq_code':  aw.node_id,
+                    'seq_name':  aw.node_id,
+                    'lat':       aw.lat,
+                    'lon':       aw.lon,
+                    'elev_m':    0.0,
+                    'cruise_alt': cruise_alt,
+                    'track':     track,
+                    'dep_time':  chk_time,
+                    '_fused_aw': aw,
+                })
+        elif leg_km > step_km:
+            # Tramo sin aerovía: checkpoints interpolados cada step_km
             n_chk = int(leg_km // step_km)
             for j in range(1, n_chk + 1):
                 frac = (j * step_km) / leg_km
                 if frac >= 1.0:
                     break
-
                 chk_lat = ap.lat + frac * (next_ap.lat - ap.lat)
                 chk_lon = ap.lon + frac * (next_ap.lon - ap.lon)
-
-                # Fusión: si hay un waypoint de aerovía a menos de FUSION_KM,
-                # el checkpoint se evaluará en ese waypoint en vez de la interpolación.
-                fused_aw = None
-                if aw_wps:
-                    min_d = _FUSION_KM
-                    for aw in aw_wps:
-                        d = haversine_km(chk_lat, chk_lon, aw.lat, aw.lon)
-                        if d < min_d:
-                            min_d = d
-                            fused_aw = aw
-
                 dist_to_chk = cumulative_km + j * step_km
                 frac_total  = dist_to_chk / total_route_dist if total_route_dist > 0 else 0.5
                 chk_time    = dep_time + int(frac_total * duration_hours * 3600)
-
-                if fused_aw is not None:
-                    # Agregar spec meteo sobre el waypoint de aerovía fusionado
-                    sequence.append({
-                        'seq_code':   fused_aw.node_id,
-                        'seq_name':   fused_aw.node_id,
-                        'lat':        fused_aw.lat,
-                        'lon':        fused_aw.lon,
-                        'elev_m':     0.0,
-                        'cruise_alt': cruise_alt,
-                        'track':      track,
-                        'dep_time':   chk_time,
-                        '_fused_aw':  fused_aw,  # referencia para reconstruir
-                    })
-                else:
-                    sequence.append({
-                        'seq_code':  f"WP{i+1}-{j}",
-                        'seq_name':  f"En ruta · {round(j * step_km)} km desde {code}",
-                        'lat':       chk_lat,
-                        'lon':       chk_lon,
-                        'elev_m':    (ap.elev_ft + frac * (next_ap.elev_ft - ap.elev_ft)) * 0.3048,
-                        'cruise_alt': cruise_alt,
-                        'track':     track,
-                        'dep_time':  chk_time,
-                        '_fused_aw':  None,
-                    })
+                sequence.append({
+                    'seq_code':  f"WP{i+1}-{j}",
+                    'seq_name':  f"En ruta · {round(j * step_km)} km desde {code}",
+                    'lat':       chk_lat,
+                    'lon':       chk_lon,
+                    'elev_m':    (ap.elev_ft + frac * (next_ap.elev_ft - ap.elev_ft)) * 0.3048,
+                    'cruise_alt': cruise_alt,
+                    'track':     track,
+                    'dep_time':  chk_time,
+                    '_fused_aw': None,
+                })
 
         cumulative_km += leg_km
 
@@ -603,18 +592,17 @@ def _generate_route_waypoints(
                         alt_via=alt_via,
                     )
 
-    # Eliminar duplicados: si un waypoint de aerovía ya aparece como RouteWaypoint
-    # (insertado sin meteo) Y como spec fusionado evaluado, quedarnos solo con
-    # el evaluado (el spec reemplaza al RouteWaypoint original).
-    seen_airway_codes: set = set()
+    # Eliminar duplicados: si un waypoint de aerovía tiene versión con meteo (is_checkpoint=True),
+    # descartar la versión sin meteo (is_checkpoint=False) del mismo código.
+    checkpoint_aw_codes = {
+        item.code for item in sequence
+        if isinstance(item, RouteWaypoint) and item.is_airway_waypoint and item.is_checkpoint
+    }
     final_sequence: list = []
     for item in sequence:
         if isinstance(item, RouteWaypoint) and item.is_airway_waypoint and not item.is_checkpoint:
-            if item.code in seen_airway_codes:
+            if item.code in checkpoint_aw_codes:
                 continue
-            seen_airway_codes.add(item.code)
-        elif isinstance(item, RouteWaypoint) and item.is_airway_waypoint and item.is_checkpoint:
-            seen_airway_codes.add(item.code)
         final_sequence.append(item)
 
     return [wp for wp in final_sequence if isinstance(wp, RouteWaypoint)]
