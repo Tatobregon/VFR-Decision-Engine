@@ -1201,8 +1201,11 @@ function app() {
       const wps = this.result?.route?.waypoints;
       if (!wps) return;
 
+      const allAwWps_check = wps.filter(w => w.is_airway_waypoint);
+      if (allAwWps_check.length === 0) return;
+      // Marcadores circulares solo para waypoints de aerovía que NO son checkpoints
+      // (los checkpoint+airway ya se dibujan como diamantes en la capa de ruta)
       const awWps = wps.filter(w => w.is_airway_waypoint && !w.is_checkpoint);
-      if (awWps.length === 0) return;
 
       // ── Helpers geométricos ────────────────────────────────────────────
       const toR = d => d * Math.PI / 180;
