@@ -104,16 +104,50 @@ def _build_corridor_graph(
     ref_dist = haversine_km(orig_ap.lat, orig_ap.lon, dest_ap.lat, dest_ap.lon)
     corridor = max(80.0, ref_dist * 0.20)
 
+    # Para rutas largas que cruzan el corredor central argentino (norte-sur),
+    # usar un corredor "doblado" que pasa por los hubs del eje oriental donde
+    # existen aerovias inferiores (SACO, SAEZ). El corredor recto a lo largo
+    # del piedemonte andino carece de aerovias accesibles para la mayoria de
+    # las aeronaves VFR.
+    is_long_north_south = (
+        ref_dist > 1500.0
+        and (
+            (orig_ap.lat > -29.0 and dest_ap.lat < -38.0)
+            or (orig_ap.lat < -38.0 and dest_ap.lat > -29.0)
+        )
+    )
+
+    # Puntos de referencia para el corredor: si la ruta es larga norte-sur,
+    # construir el corredor alrededor de la polilinea origin→hub→dest donde
+    # el hub es el nodo mas adecuado del eje Cordoba-BA (SACO o SAEZ).
+    ref_segments: list = [(orig_ap.lat, orig_ap.lon, dest_ap.lat, dest_ap.lon)]
+    max_leg = aircraft.range_km
+
+    if is_long_north_south:
+        # Elegir hub: usar SACO si el origen esta al norte, SAEZ si al sur
+        hub_code = "SACO" if orig_ap.lat > dest_ap.lat else "SAEZ"
+        hub_ap = airports.get(hub_code)
+        if hub_ap is None and hub_code == "SACO":
+            hub_ap = airports.get("SAEZ")
+        if hub_ap is not None and hub_code not in (origin, dest):
+            ref_segments = [
+                (orig_ap.lat, orig_ap.lon, hub_ap.lat, hub_ap.lon),
+                (hub_ap.lat, hub_ap.lon, dest_ap.lat, dest_ap.lon),
+            ]
+            corridor = max(corridor, 250.0)
+            max_leg  = min(max_leg, 800.0)
+
+    def _in_corridor(ap_lat, ap_lon):
+        for alat, alon, blat, blon in ref_segments:
+            if _dist_point_to_segment_km(ap_lat, ap_lon, alat, alon, blat, blon) <= corridor:
+                return True
+        return False
+
     corridor_aps: Dict[str, "AirportInfo"] = {origin: orig_ap, dest: dest_ap}
     for code, ap in airports.items():
         if code in (origin, dest):
             continue
-        d = _dist_point_to_segment_km(
-            ap.lat, ap.lon,
-            orig_ap.lat, orig_ap.lon,
-            dest_ap.lat, dest_ap.lon,
-        )
-        if d <= corridor:
+        if _in_corridor(ap.lat, ap.lon):
             corridor_aps[code] = ap
 
     return build_graph(
@@ -121,7 +155,7 @@ def _build_corridor_graph(
         r_map      = r_map,
         airports   = corridor_aps,
         aircraft   = aircraft,
-        max_leg_km = aircraft.range_km,
+        max_leg_km = max_leg,
     )
 
 
@@ -448,11 +482,78 @@ def optimize(
 
     # ── Llamar al algoritmo correspondiente ─────────────────────────────────
     if mode == "suggested" and not avoid_restricted_zones:
-        # A* con corredor geografico: solo aerodromos dentro de la banda
-        # alrededor de la ruta directa. Fallback al grafo completo si el
-        # corredor no conecta origen con destino.
-        _corridor = _build_corridor_graph(origin, dest, aps, r, ac)
-        _res = astar(_corridor, origin, dest)
+        # Para rutas largas norte-sur en Argentina, forzar paso por el hub de
+        # Cordoba (SACO) que tiene buena cobertura de aerovias inferiores.
+        # Sin este split, el A* elige el corredor andino mas corto pero sin aerovias.
+        orig_ap_s = aps.get(origin)
+        dest_ap_s = aps.get(dest)
+        direct_km_s = haversine_km(orig_ap_s.lat, orig_ap_s.lon, dest_ap_s.lat, dest_ap_s.lon) if (orig_ap_s and dest_ap_s) else 0
+        _force_hub = (
+            direct_km_s > 1500.0
+            and orig_ap_s and dest_ap_s
+            and origin not in ("SACO", "SAEZ", "SACT")
+            and dest not in ("SACO", "SAEZ", "SACT")
+            and (
+                (orig_ap_s.lat > -38.0 and dest_ap_s.lat < -38.0)
+                or (orig_ap_s.lat < -38.0 and dest_ap_s.lat > -38.0)
+            )
+        )
+
+        # Hubs del corredor oriental argentino — tienen cobertura de aerovias
+        # W24/W5/W55/W9/W15 a MEA accesible para aeronaves VFR tipicas.
+        _ARG_HUBS = ["SACO", "SAEZ"]
+
+        if _force_hub:
+            # Seleccionar hubs intermedios disponibles en el grafo
+            active_hubs = [h for h in _ARG_HUBS if h in aps and h not in (origin, dest)]
+
+            def _astar_via(seg_origin, seg_dest):
+                """Ejecuta A* con corridor+fallback para un segmento."""
+                _c = _build_corridor_graph(seg_origin, seg_dest, aps, r, ac)
+                _rr = astar(_c, seg_origin, seg_dest)
+                if not _rr.found:
+                    _ff = build_graph(mode="shortest", r_map=r, airports=aps, aircraft=ac, max_leg_km=ac.range_km)
+                    _rr = astar(_ff, seg_origin, seg_dest)
+                return _rr
+
+            from route.astar import AStarResult
+
+            # Construir cadena de segmentos: origin → hub1 → hub2 → dest
+            chain = [origin] + active_hubs + [dest]
+            seg_results = [_astar_via(chain[i], chain[i+1]) for i in range(len(chain)-1)]
+
+            if all(s.found for s in seg_results):
+                merged = seg_results[0].path[:]
+                for sr in seg_results[1:]:
+                    merged += sr.path[1:]  # evitar duplicados en los hubs
+                _res = AStarResult(
+                    found=True, path=merged,
+                    total_weight=sum(s.total_weight for s in seg_results),
+                    total_dist_km=sum(s.total_dist_km for s in seg_results),
+                    mode=seg_results[0].mode,
+                    nodes_explored=sum(s.nodes_explored for s in seg_results),
+                )
+            else:
+                # Al menos un segmento fallo — intentar solo con SACO como hub
+                _r1 = _astar_via(origin, "SACO") if "SACO" in active_hubs else type("_R", (), {"found": False})()
+                _r2 = _astar_via("SACO", dest)    if "SACO" in active_hubs else type("_R", (), {"found": False})()
+                if _r1.found and _r2.found:
+                    merged = _r1.path + _r2.path[1:]
+                    _res = AStarResult(
+                        found=True, path=merged,
+                        total_weight=_r1.total_weight + _r2.total_weight,
+                        total_dist_km=_r1.total_dist_km + _r2.total_dist_km,
+                        mode=_r1.mode, nodes_explored=_r1.nodes_explored + _r2.nodes_explored,
+                    )
+                else:
+                    _res = type("_R", (), {"found": False})()
+        else:
+            _res = type("_R", (), {"found": False})()
+
+        if not _res.found:
+            # Camino sin hub forzado (ruta directa por corredor geometrico)
+            _corridor = _build_corridor_graph(origin, dest, aps, r, ac)
+            _res = astar(_corridor, origin, dest)
         if not _res.found:
             _full = build_graph(
                 mode="shortest", r_map=r, airports=aps,

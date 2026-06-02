@@ -978,7 +978,6 @@ function app() {
     // ── Mapa Leaflet
     initMap() {
       const wps0 = this.result?.route?.waypoints;
-      console.log('[initMap] showAirways=', this.showAirways, 'waypoints=', wps0?.length, 'awWps=', wps0?.filter(w=>w.is_airway_waypoint&&!w.is_checkpoint).length);
 
       if (this._map) {
         this._map.off();
@@ -1199,14 +1198,13 @@ function app() {
     },
 
     _buildAirwayLayer() {
-      if (!this._airwayLayer) { console.warn('[AW] no airwayLayer'); return; }
+      if (!this._airwayLayer) return;
       this._airwayLayer.clearLayers();
       const wps = this.result?.route?.waypoints;
-      if (!wps) { console.warn('[AW] no waypoints'); return; }
+      if (!wps) return;
 
       const awWps = wps.filter(w => w.is_airway_waypoint && !w.is_checkpoint);
-      console.log('[AW] awWps:', awWps.length, awWps.map(w => w.code));
-      if (awWps.length === 0) { console.warn('[AW] early return - no airway waypoints'); return; }
+      if (awWps.length === 0) return;
 
       // ── Helpers geométricos ────────────────────────────────────────────
       const toR = d => d * Math.PI / 180;
@@ -1248,7 +1246,6 @@ function app() {
 
       // ── Etiquetas estilo carta de navegación ───────────────────────────
       const allAwWps = wps.filter(w => w.is_airway_waypoint);
-      console.log('[AW] allAwWps for labels:', allAwWps.length);
       for (let i = 0; i < allAwWps.length - 1; i++) {
         const wpA = allAwWps[i];
         const wpB = allAwWps[i + 1];
@@ -1288,7 +1285,6 @@ function app() {
             <div style="font-size:7.5px;color:#484f58">${distKm} km</div>
           </div>`;
 
-        console.log('[AW] label', i, ':', awName, 'dist=', Math.round(dist), 'km', 'mea=', mea, 'mid=[', midLat.toFixed(3), midLon.toFixed(3), ']');
         try {
           L.marker([midLat, midLon], {
             icon: L.divIcon({

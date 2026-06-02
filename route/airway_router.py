@@ -27,9 +27,9 @@ from typing import Optional
 from data.airways import AIRWAY_NODES, AIRWAY_GRAPH, find_nearest_nodes
 from data.fir_zones import get_fir
 
-MAX_DETOUR_PCT  = 0.15   # maximo 15% sobre distancia directa
-MAX_ENTRY_KM    = 100.0  # radio maximo para buscar entry/exit nodes
-TOP_N_CANDIDATES = 5     # cantidad de candidatos entry/exit a evaluar
+MAX_DETOUR_PCT   = 0.15   # maximo 15% sobre distancia directa
+MAX_ENTRY_KM     = 150.0  # radio maximo para buscar entry/exit nodes
+TOP_N_CANDIDATES = 5      # cantidad de candidatos entry/exit a evaluar
 
 
 # ── Dataclass resultado ────────────────────────────────────────────────────────
@@ -149,6 +149,12 @@ def find_airways_for_leg(
     if not best_path:
         return []
 
+    # Si el camino entero es de aristas XFR (transferencia entre nodos co-ubicados
+    # en el mismo aeropuerto), no es una ruta de aerovia real.
+    real_edges = [s for s in best_path if s.get("ruta") and s["ruta"] != "XFR"]
+    if not real_edges:
+        return []
+
     # Construir lista de AirwayWaypoint
     result: list[AirwayWaypoint] = []
     entry_node_id = best_path[0]["node"]
@@ -158,11 +164,15 @@ def find_airways_for_leg(
     entry_pos = AIRWAY_NODES[entry_node_id]
     fir_name  = get_fir(entry_pos["lat"], entry_pos["lon"])
 
+    # Obtener la ruta real (no XFR) del primer segmento real del camino
+    first_real_ruta = next((s["ruta"] for s in best_path if s["ruta"] and s["ruta"] != "XFR"), "?")
+    first_real_mea  = next((s["mea"]  for s in best_path if s["mea"]  and s["ruta"] != "XFR"), 0)
+
     for i, step in enumerate(best_path):
         nid   = step["node"]
         pos   = AIRWAY_NODES[nid]
-        ruta  = step["ruta"] or (best_path[1]["ruta"] if len(best_path) > 1 else "?")
-        mea   = step["mea"] or (best_path[1]["mea"] if len(best_path) > 1 else 0)
+        ruta  = step["ruta"] if (step["ruta"] and step["ruta"] != "XFR") else first_real_ruta
+        mea   = step["mea"]  if (step["mea"]  and step["ruta"] != "XFR") else first_real_mea
         is_en = (nid == entry_node_id)
         is_ex = (nid == exit_node_id)
 
