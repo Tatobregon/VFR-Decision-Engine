@@ -481,10 +481,34 @@ def optimize(
         )
 
     # ── Llamar al algoritmo correspondiente ─────────────────────────────────
-    if mode == "suggested" and not avoid_restricted_zones:
+    from route.astar import AStarResult as _AStarResult
+
+    def _graph_for_seg(seg_origin, seg_dest, use_corridor=True):
+        """
+        Construye grafo para un segmento, aplicando el filtro de zonas
+        restringidas si corresponde. Devuelve grafo listo para A*.
+        """
+        if use_corridor:
+            g = _build_corridor_graph(seg_origin, seg_dest, aps, r, ac)
+        else:
+            g = build_graph(mode="shortest", r_map=r, airports=aps,
+                            aircraft=ac, max_leg_km=ac.range_km)
+        if avoid_restricted_zones:
+            g = _filter_restricted_edges(g, aps)
+        return g
+
+    def _astar_seg(seg_origin, seg_dest):
+        """A* con corredor + fallback para un segmento, respetando zonas restringidas."""
+        _rr = astar(_graph_for_seg(seg_origin, seg_dest, use_corridor=True), seg_origin, seg_dest)
+        if not _rr.found:
+            _rr = astar(_graph_for_seg(seg_origin, seg_dest, use_corridor=False), seg_origin, seg_dest)
+        return _rr
+
+    if mode == "suggested":
         # Para rutas largas norte-sur en Argentina, forzar paso por el hub de
         # Cordoba (SACO) que tiene buena cobertura de aerovias inferiores.
-        # Sin este split, el A* elige el corredor andino mas corto pero sin aerovias.
+        # Este hub routing se aplica independientemente de avoid_restricted_zones
+        # para que el corredor oriental (con aerovias) siempre sea evaluado.
         orig_ap_s = aps.get(origin)
         dest_ap_s = aps.get(dest)
         direct_km_s = haversine_km(orig_ap_s.lat, orig_ap_s.lon, dest_ap_s.lat, dest_ap_s.lon) if (orig_ap_s and dest_ap_s) else 0
@@ -499,34 +523,19 @@ def optimize(
             )
         )
 
-        # Hubs del corredor oriental argentino — tienen cobertura de aerovias
-        # W24/W5/W55/W9/W15 a MEA accesible para aeronaves VFR tipicas.
+        # Hubs del corredor oriental argentino — cobertura de aerovias W24/W5/W55/W9/W15
         _ARG_HUBS = ["SACO", "SAEZ"]
 
         if _force_hub:
-            # Seleccionar hubs intermedios disponibles en el grafo
             active_hubs = [h for h in _ARG_HUBS if h in aps and h not in (origin, dest)]
-
-            def _astar_via(seg_origin, seg_dest):
-                """Ejecuta A* con corridor+fallback para un segmento."""
-                _c = _build_corridor_graph(seg_origin, seg_dest, aps, r, ac)
-                _rr = astar(_c, seg_origin, seg_dest)
-                if not _rr.found:
-                    _ff = build_graph(mode="shortest", r_map=r, airports=aps, aircraft=ac, max_leg_km=ac.range_km)
-                    _rr = astar(_ff, seg_origin, seg_dest)
-                return _rr
-
-            from route.astar import AStarResult
-
-            # Construir cadena de segmentos: origin → hub1 → hub2 → dest
             chain = [origin] + active_hubs + [dest]
-            seg_results = [_astar_via(chain[i], chain[i+1]) for i in range(len(chain)-1)]
+            seg_results = [_astar_seg(chain[i], chain[i+1]) for i in range(len(chain)-1)]
 
             if all(s.found for s in seg_results):
                 merged = seg_results[0].path[:]
                 for sr in seg_results[1:]:
-                    merged += sr.path[1:]  # evitar duplicados en los hubs
-                _res = AStarResult(
+                    merged += sr.path[1:]
+                _res = _AStarResult(
                     found=True, path=merged,
                     total_weight=sum(s.total_weight for s in seg_results),
                     total_dist_km=sum(s.total_dist_km for s in seg_results),
@@ -534,12 +543,12 @@ def optimize(
                     nodes_explored=sum(s.nodes_explored for s in seg_results),
                 )
             else:
-                # Al menos un segmento fallo — intentar solo con SACO como hub
-                _r1 = _astar_via(origin, "SACO") if "SACO" in active_hubs else type("_R", (), {"found": False})()
-                _r2 = _astar_via("SACO", dest)    if "SACO" in active_hubs else type("_R", (), {"found": False})()
+                # Al menos un segmento fallo — intentar solo con SACO
+                _r1 = _astar_seg(origin, "SACO") if "SACO" in active_hubs else type("_R", (), {"found": False})()
+                _r2 = _astar_seg("SACO", dest)    if "SACO" in active_hubs else type("_R", (), {"found": False})()
                 if _r1.found and _r2.found:
                     merged = _r1.path + _r2.path[1:]
-                    _res = AStarResult(
+                    _res = _AStarResult(
                         found=True, path=merged,
                         total_weight=_r1.total_weight + _r2.total_weight,
                         total_dist_km=_r1.total_dist_km + _r2.total_dist_km,
@@ -551,27 +560,23 @@ def optimize(
             _res = type("_R", (), {"found": False})()
 
         if not _res.found:
-            # Camino sin hub forzado (ruta directa por corredor geometrico)
-            _corridor = _build_corridor_graph(origin, dest, aps, r, ac)
-            _res = astar(_corridor, origin, dest)
+            _res = astar(_graph_for_seg(origin, dest, use_corridor=True), origin, dest)
         if not _res.found:
-            _full = build_graph(
-                mode="shortest", r_map=r, airports=aps,
-                aircraft=ac, max_leg_km=ac.range_km,
-            )
-            _res = astar(_full, origin, dest)
+            _res = astar(_graph_for_seg(origin, dest, use_corridor=False), origin, dest)
         if not _res.found:
             return OptimizeResult(
                 found=False, mode=mode, path=[], legs=[],
                 total_dist_km=0.0, total_time_h=0.0, total_fuel_l=0.0,
                 needs_fuel_stop=False, fuel_ok=False, airspace_conflicts=[],
-                error="No se encontro ruta sugerida",
+                error=(
+                    "No se encontro ruta que evite todas las zonas restringidas. "
+                    "Desactivar 'Evitar espacios aereos' para ver ruta disponible."
+                ) if avoid_restricted_zones else "No se encontro ruta sugerida",
             )
         path = _res.path
 
     else:
-        # Modo A*: shortest/fastest/safest, o "suggested" con evasion de zonas
-        # (el GA no soporta evasion de zonas — se usa A* shortest como fallback)
+        # Modo A*: shortest/fastest/safest
         astar_mode = mode if mode != "suggested" else "shortest"
         graph = build_graph(
             mode        = astar_mode,
@@ -586,15 +591,14 @@ def optimize(
             graph = _filter_restricted_edges(graph, aps)
         astar_res = astar(graph, origin, dest)
         if not astar_res.found:
-            err = (
-                "No se encontro ruta que evite todas las zonas restringidas. "
-                "Desactivar 'Evitar espacios aereos restringidos' para ver ruta disponible."
-            ) if avoid_restricted_zones else f"A* no encontro ruta en modo {mode!r}"
             return OptimizeResult(
                 found=False, mode=mode, path=[], legs=[],
                 total_dist_km=0.0, total_time_h=0.0, total_fuel_l=0.0,
                 needs_fuel_stop=False, fuel_ok=False, airspace_conflicts=[],
-                error=err,
+                error=(
+                    "No se encontro ruta que evite todas las zonas restringidas. "
+                    "Desactivar 'Evitar espacios aereos' para ver ruta disponible."
+                ) if avoid_restricted_zones else f"A* no encontro ruta en modo {mode!r}",
             )
         path = astar_res.path
 
