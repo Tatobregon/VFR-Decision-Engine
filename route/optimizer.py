@@ -38,6 +38,7 @@ try:
     )
     from risk.aircraft_profiles import AircraftProfile, ALPHA_TRAINER
     from route.weather_sampler import sample_route_weather, blocked_legs, RouteWeatherPoint
+    from route.airway_router import find_airways_for_leg
 except ImportError:
     import sys, os
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -53,6 +54,7 @@ except ImportError:
     )
     from risk.aircraft_profiles import AircraftProfile, ALPHA_TRAINER
     from route.weather_sampler import sample_route_weather, blocked_legs, RouteWeatherPoint
+    from route.airway_router import find_airways_for_leg
 
 
 VALID_MODES = ("shortest", "fastest", "safest", "suggested")
@@ -85,12 +87,22 @@ def _dist_point_to_segment_km(
     return _math.sqrt(dx * dx + dy * dy)
 
 
+# Cap de longitud de tramo (km) para forzar paradas intermedias.
+# Tramos mas cortos permiten que el airway_router encuentre aerovias en cada
+# tramo (las aerovias se buscan dentro de 150 km de cada extremo). Un tramo de
+# 1500 km no puede ser cubierto por aerovias aunque exista una cadena de ellas.
+# Este valor es generico (no depende de un aeropuerto o aeronave especifica):
+# legos mas largos que esto rara vez tienen aerovias dentro del limite de desvio.
+DEFAULT_LEG_CAP_KM = 500.0
+
+
 def _build_corridor_graph(
     origin      : str,
     dest        : str,
     airports    : Dict[str, "AirportInfo"],
     r_map       : Dict[str, float],
     aircraft    : "AircraftProfile",
+    max_leg_cap : Optional[float] = DEFAULT_LEG_CAP_KM,
 ) -> "RouteGraph":
     """
     Construye un grafo A* limitado a aerodromos dentro del corredor geografico
@@ -98,57 +110,53 @@ def _build_corridor_graph(
 
     Ancho del corredor: max(80 km, 20% de la distancia directa) a cada lado.
     Siempre incluye origen y destino aunque queden fuera del corredor.
+
+    max_leg_cap limita la longitud de cada tramo del grafo. Tramos cortos
+    fuerzan paradas intermedias, lo que permite cobertura de aerovias en mas
+    tramos. Si es None, se usa el alcance de la aeronave (sin cap adicional).
     """
     orig_ap  = airports[origin]
     dest_ap  = airports[dest]
     ref_dist = haversine_km(orig_ap.lat, orig_ap.lon, dest_ap.lat, dest_ap.lon)
-    corridor = max(80.0, ref_dist * 0.20)
+    # Ancho del corredor: 20% de la distancia, acotado a [80, 250] km.
+    # El tope superior evita que rutas largas generen un corredor de cientos de
+    # km de ancho (que incluiria casi todos los aeropuertos del pais, haciendo
+    # el grafo enorme y el filtrado de zonas muy lento). 250 km a cada lado es
+    # holgura suficiente para encontrar aeropuertos intermedios alineados con
+    # las aerovias en cualquier corredor real de Argentina.
+    corridor = min(250.0, max(80.0, ref_dist * 0.20))
 
-    # Para rutas largas que cruzan el corredor central argentino (norte-sur),
-    # usar un corredor "doblado" que pasa por los hubs del eje oriental donde
-    # existen aerovias inferiores (SACO, SAEZ). El corredor recto a lo largo
-    # del piedemonte andino carece de aerovias accesibles para la mayoria de
-    # las aeronaves VFR.
-    is_long_north_south = (
-        ref_dist > 1500.0
-        and (
-            (orig_ap.lat > -29.0 and dest_ap.lat < -38.0)
-            or (orig_ap.lat < -38.0 and dest_ap.lat > -29.0)
-        )
-    )
-
-    # Puntos de referencia para el corredor: si la ruta es larga norte-sur,
-    # construir el corredor alrededor de la polilinea origin→hub→dest donde
-    # el hub es el nodo mas adecuado del eje Cordoba-BA (SACO o SAEZ).
-    ref_segments: list = [(orig_ap.lat, orig_ap.lon, dest_ap.lat, dest_ap.lon)]
-    max_leg = aircraft.range_km
-
-    if is_long_north_south:
-        # Elegir hub: usar SACO si el origen esta al norte, SAEZ si al sur
-        hub_code = "SACO" if orig_ap.lat > dest_ap.lat else "SAEZ"
-        hub_ap = airports.get(hub_code)
-        if hub_ap is None and hub_code == "SACO":
-            hub_ap = airports.get("SAEZ")
-        if hub_ap is not None and hub_code not in (origin, dest):
-            ref_segments = [
-                (orig_ap.lat, orig_ap.lon, hub_ap.lat, hub_ap.lon),
-                (hub_ap.lat, hub_ap.lon, dest_ap.lat, dest_ap.lon),
-            ]
-            corridor = max(corridor, 250.0)
-            max_leg  = min(max_leg, 800.0)
+    # Limite de longitud de tramo: el menor entre el alcance de la aeronave y el
+    # cap generico. Nunca menor al alcance si el cap es None.
+    if max_leg_cap is None:
+        max_leg = aircraft.range_km
+    else:
+        max_leg = min(aircraft.range_km, max_leg_cap)
 
     def _in_corridor(ap_lat, ap_lon):
-        for alat, alon, blat, blon in ref_segments:
-            if _dist_point_to_segment_km(ap_lat, ap_lon, alat, alon, blat, blon) <= corridor:
-                return True
-        return False
+        return _dist_point_to_segment_km(
+            ap_lat, ap_lon,
+            orig_ap.lat, orig_ap.lon, dest_ap.lat, dest_ap.lon,
+        ) <= corridor
+
+    # Tolerancia latitudinal: un aeropuerto puede estar hasta este margen
+    # "en dirección contraria" a la del destino. Impide que A* haga desvíos
+    # innecesarios hacia el norte para rutas hacia el sur (y viceversa).
+    lat_tolerance = 3.0   # grados de latitud de margen
+    lat_limit_min = min(orig_ap.lat, dest_ap.lat) - lat_tolerance
+    lat_limit_max = max(orig_ap.lat, dest_ap.lat) + lat_tolerance
 
     corridor_aps: Dict[str, "AirportInfo"] = {origin: orig_ap, dest: dest_ap}
     for code, ap in airports.items():
         if code in (origin, dest):
             continue
-        if _in_corridor(ap.lat, ap.lon):
-            corridor_aps[code] = ap
+        if not _in_corridor(ap.lat, ap.lon):
+            continue
+        # Excluir aeropuertos fuera de la banda latitudinal del trayecto
+        # (previene desvios extremos en sentido contrario al destino)
+        if not (lat_limit_min <= ap.lat <= lat_limit_max):
+            continue
+        corridor_aps[code] = ap
 
     return build_graph(
         mode       = "shortest",
@@ -481,89 +489,63 @@ def optimize(
         )
 
     # ── Llamar al algoritmo correspondiente ─────────────────────────────────
-    from route.astar import AStarResult as _AStarResult
-
-    def _graph_for_seg(seg_origin, seg_dest, use_corridor=True):
+    def _suggested_graph(max_leg_cap):
         """
-        Construye grafo para un segmento, aplicando el filtro de zonas
-        restringidas si corresponde. Devuelve grafo listo para A*.
+        Construye el grafo del corredor para modo 'suggested' con el cap de
+        tramo indicado, aplicando filtro de zonas restringidas si corresponde.
         """
-        if use_corridor:
-            g = _build_corridor_graph(seg_origin, seg_dest, aps, r, ac)
-        else:
-            g = build_graph(mode="shortest", r_map=r, airports=aps,
-                            aircraft=ac, max_leg_km=ac.range_km)
+        g = _build_corridor_graph(origin, dest, aps, r, ac, max_leg_cap=max_leg_cap)
         if avoid_restricted_zones:
             g = _filter_restricted_edges(g, aps)
         return g
 
-    def _astar_seg(seg_origin, seg_dest):
-        """A* con corredor + fallback para un segmento, respetando zonas restringidas."""
-        _rr = astar(_graph_for_seg(seg_origin, seg_dest, use_corridor=True), seg_origin, seg_dest)
-        if not _rr.found:
-            _rr = astar(_graph_for_seg(seg_origin, seg_dest, use_corridor=False), seg_origin, seg_dest)
-        return _rr
-
     if mode == "suggested":
-        # Para rutas largas norte-sur en Argentina, forzar paso por el hub de
-        # Cordoba (SACO) que tiene buena cobertura de aerovias inferiores.
-        # Este hub routing se aplica independientemente de avoid_restricted_zones
-        # para que el corredor oriental (con aerovias) siempre sea evaluado.
-        orig_ap_s = aps.get(origin)
-        dest_ap_s = aps.get(dest)
-        direct_km_s = haversine_km(orig_ap_s.lat, orig_ap_s.lon, dest_ap_s.lat, dest_ap_s.lon) if (orig_ap_s and dest_ap_s) else 0
-        _force_hub = (
-            direct_km_s > 1500.0
-            and orig_ap_s and dest_ap_s
-            and origin not in ("SACO", "SAEZ", "SACT")
-            and dest not in ("SACO", "SAEZ", "SACT")
-            and (
-                (orig_ap_s.lat > -38.0 and dest_ap_s.lat < -38.0)
-                or (orig_ap_s.lat < -38.0 and dest_ap_s.lat > -38.0)
+        # Estrategia escalable (sin hubs hardcodeados):
+        # Se generan varias rutas candidatas con distintos caps de tramo y se
+        # elige la que MAXIMIZA la cobertura de aerovias (km cubiertos por aerovia).
+        #
+        # Por que varios caps:
+        #   - Cap corto fuerza paradas intermedias → util en zonas donde la
+        #     aerovia requiere conectar varios aeropuertos (ej. Patagonia).
+        #   - Sin cap permite tramos directos largos → util cuando una sola
+        #     aerovia continua cubre todo el tramo (ej. A428 Corrientes→BA).
+        # Elegir por cobertura real evita tanto el desvio innecesario como la
+        # fragmentacion que pierde aerovias. Funciona para cualquier par O/D.
+        # El filtro de banda latitudinal (en _build_corridor_graph) evita desvios
+        # en sentido contrario al destino.
+
+        def _coverage_km(path_codes):
+            """Km del path cubiertos por aerovia accesible para la aeronave."""
+            cov = 0.0
+            for i in range(len(path_codes) - 1):
+                a = aps.get(path_codes[i]); b = aps.get(path_codes[i + 1])
+                if not a or not b:
+                    continue
+                aw = find_airways_for_leg(a.lat, a.lon, b.lat, b.lon, ac.cruise_alt_ft)
+                if aw:
+                    cov += haversine_km(a.lat, a.lon, b.lat, b.lon)
+            return cov
+
+        # Generar candidatos con distintos caps. None = sin cap (tramos directos).
+        candidates = []
+        for cap in (DEFAULT_LEG_CAP_KM, None):
+            cand = astar(_suggested_graph(cap), origin, dest)
+            if cand.found:
+                candidates.append(cand)
+
+        # Fallback: grafo completo sin corredor (ultimo recurso si nada conecto)
+        if not candidates:
+            _full = build_graph(
+                mode="shortest", r_map=r, airports=aps,
+                aircraft=ac, max_leg_km=ac.range_km,
             )
-        )
+            if avoid_restricted_zones:
+                _full = _filter_restricted_edges(_full, aps)
+            _full_res = astar(_full, origin, dest)
+            if _full_res.found:
+                candidates.append(_full_res)
 
-        # Hubs del corredor oriental argentino — cobertura de aerovias W24/W5/W55/W9/W15
-        _ARG_HUBS = ["SACO", "SAEZ"]
-
-        if _force_hub:
-            active_hubs = [h for h in _ARG_HUBS if h in aps and h not in (origin, dest)]
-            chain = [origin] + active_hubs + [dest]
-            seg_results = [_astar_seg(chain[i], chain[i+1]) for i in range(len(chain)-1)]
-
-            if all(s.found for s in seg_results):
-                merged = seg_results[0].path[:]
-                for sr in seg_results[1:]:
-                    merged += sr.path[1:]
-                _res = _AStarResult(
-                    found=True, path=merged,
-                    total_weight=sum(s.total_weight for s in seg_results),
-                    total_dist_km=sum(s.total_dist_km for s in seg_results),
-                    mode=seg_results[0].mode,
-                    nodes_explored=sum(s.nodes_explored for s in seg_results),
-                )
-            else:
-                # Al menos un segmento fallo — intentar solo con SACO
-                _r1 = _astar_seg(origin, "SACO") if "SACO" in active_hubs else type("_R", (), {"found": False})()
-                _r2 = _astar_seg("SACO", dest)    if "SACO" in active_hubs else type("_R", (), {"found": False})()
-                if _r1.found and _r2.found:
-                    merged = _r1.path + _r2.path[1:]
-                    _res = _AStarResult(
-                        found=True, path=merged,
-                        total_weight=_r1.total_weight + _r2.total_weight,
-                        total_dist_km=_r1.total_dist_km + _r2.total_dist_km,
-                        mode=_r1.mode, nodes_explored=_r1.nodes_explored + _r2.nodes_explored,
-                    )
-                else:
-                    _res = type("_R", (), {"found": False})()
-        else:
-            _res = type("_R", (), {"found": False})()
-
-        if not _res.found:
-            _res = astar(_graph_for_seg(origin, dest, use_corridor=True), origin, dest)
-        if not _res.found:
-            _res = astar(_graph_for_seg(origin, dest, use_corridor=False), origin, dest)
-        if not _res.found:
+        if not candidates:
             return OptimizeResult(
                 found=False, mode=mode, path=[], legs=[],
                 total_dist_km=0.0, total_time_h=0.0, total_fuel_l=0.0,
@@ -573,6 +555,13 @@ def optimize(
                     "Desactivar 'Evitar espacios aereos' para ver ruta disponible."
                 ) if avoid_restricted_zones else "No se encontro ruta sugerida",
             )
+
+        # Elegir el candidato con mayor cobertura de aerovia; desempate por menor
+        # distancia total (ruta mas directa).
+        _res = max(
+            candidates,
+            key=lambda c: (round(_coverage_km(c.path)), -c.total_dist_km),
+        )
         path = _res.path
 
     else:
