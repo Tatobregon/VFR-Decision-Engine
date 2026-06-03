@@ -141,8 +141,30 @@
     .dropdown-item:hover { background: #21262d; }
     .dropdown-item:last-child { border-bottom: none; }
 
-    /* Map container */
-    #map { height: 520px; border-radius: 8px; z-index: 0; }
+    /* Map container — altura controlada por Alpine (mapHeight) */
+    #map { height: 100%; border-radius: 8px; z-index: 0; }
+    #mapWrap { position: relative; border-radius: 8px; }
+    /* Barra inferior para arrastrar y redimensionar el mapa */
+    #mapResizer {
+      height: 14px; cursor: ns-resize; user-select: none;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 0 0 8px 8px; margin-top: 2px;
+      background: #161b22; border: 1px solid #30363d; border-top: none;
+      transition: background 0.15s;
+    }
+    #mapResizer:hover { background: #21262d; }
+    #mapResizer::before {
+      content: ''; width: 36px; height: 4px; border-radius: 2px;
+      background: #484f58;
+    }
+    /* Botones de tamaño de mapa */
+    .map-size-btn {
+      padding: 3px 8px; border-radius: 5px; border: 1px solid #30363d;
+      font-size: 10px; cursor: pointer; background: transparent;
+      color: #8b949e; transition: all 0.15s; white-space: nowrap;
+    }
+    .map-size-btn:hover { border-color: #484f58; color: #e6edf3; }
+    .map-size-btn.active { border-color: #58a6ff60; color: #58a6ff; }
 
     /* Layer toggle buttons */
     .layer-btn {
@@ -629,7 +651,16 @@
     <!-- ── MAPA DE RUTA ───────────────────────────────────────────── -->
     <div class="av-card mb-5" x-show="result?.route?.found">
       <div class="flex items-start justify-between mb-3 gap-4 flex-wrap">
-        <h3 class="text-[11px] font-bold tracking-widest uppercase text-muted shrink-0 mt-1">Ruta en mapa</h3>
+        <div class="flex items-center gap-2 shrink-0 mt-1">
+          <h3 class="text-[11px] font-bold tracking-widest uppercase text-muted">Ruta en mapa</h3>
+          <!-- Control de tamaño del mapa -->
+          <div class="flex items-center gap-1">
+            <button @click="setMapHeight(360)"  class="map-size-btn" :class="mapHeight===360 ? 'active':''" title="Compacto">S</button>
+            <button @click="setMapHeight(520)"  class="map-size-btn" :class="mapHeight===520 ? 'active':''" title="Normal">M</button>
+            <button @click="setMapHeight(700)"  class="map-size-btn" :class="mapHeight===700 ? 'active':''" title="Grande">L</button>
+            <button @click="setMapHeight(900)"  class="map-size-btn" :class="mapHeight===900 ? 'active':''" title="Alto">XL</button>
+          </div>
+        </div>
 
         <!-- Filtros de capas: 2 grupos -->
         <div class="flex flex-col gap-2 flex-1 min-w-0">
@@ -678,7 +709,11 @@
           </div>
         </div>
       </div>
-      <div id="map"></div>
+      <div id="mapWrap" :style="`height:${mapHeight}px`">
+        <div id="map"></div>
+      </div>
+      <!-- Barra para arrastrar y redimensionar el mapa -->
+      <div id="mapResizer" @mousedown="startMapResize($event)" title="Arrastrar para redimensionar"></div>
 
       <!-- Leyenda del mapa -->
       <div class="flex items-center gap-3 mt-2 px-1 flex-wrap" style="font-size:10px; color:#8b949e; font-family:monospace">
@@ -824,9 +859,14 @@ function app() {
     showDiversions: true,
     showAirspace: true,
     showAirways: true,
+    mapHeight: 520,   // altura del mapa en px (persistida en localStorage)
 
     // ── Init
     async init() {
+      // Restaurar altura del mapa guardada
+      const savedH = parseInt(localStorage.getItem('vfr_map_height'), 10);
+      if (savedH && savedH >= 260 && savedH <= 1400) this.mapHeight = savedH;
+
       // UTC clock
       const updateClock = () => {
         const now = new Date();
@@ -973,6 +1013,32 @@ function app() {
       } finally {
         this.loading = false;
       }
+    },
+
+    // ── Tamaño del mapa
+    setMapHeight(h) {
+      this.mapHeight = h;
+      localStorage.setItem('vfr_map_height', String(h));
+      // Leaflet necesita recalcular dimensiones tras el cambio de altura
+      this.$nextTick(() => { if (this._map) this._map.invalidateSize(); });
+    },
+
+    startMapResize(ev) {
+      ev.preventDefault();
+      const startY = ev.clientY;
+      const startH = this.mapHeight;
+      const onMove = (e) => {
+        const newH = Math.min(1400, Math.max(260, startH + (e.clientY - startY)));
+        this.mapHeight = newH;
+        if (this._map) this._map.invalidateSize();
+      };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        localStorage.setItem('vfr_map_height', String(this.mapHeight));
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
     },
 
     // ── Mapa Leaflet
