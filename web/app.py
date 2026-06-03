@@ -33,7 +33,7 @@ from data.fetcher_openmeteo import OpenMeteoFetcher
 from parsers.openmeteo_adapter import OpenMeteoAdapter
 from decision.engine import DecisionEngine
 from route.optimizer import optimize
-from route.airway_router import find_airways_for_leg, AirwayWaypoint as AirwayWpResult
+from route.airway_router import find_airways_for_leg, find_airways_for_route_legs, AirwayWaypoint as AirwayWpResult
 from output.briefing import generate_briefing
 from risk.aircraft_profiles import PROFILE_NAMES, get_profile, AircraftProfile
 from risk.soft_scoring import compute_soft_score
@@ -754,12 +754,31 @@ async def evaluate(req: EvaluateRequest):
     # Duración real desde la ruta calculada
     actual_duration = route_result.total_time_h if (route_result.found and route_result.total_time_h > 0) else rough_duration
 
-    # Buscar aerovías para cada tramo del path
+    # Buscar aerovías para la ruta.
+    # Estrategia: primero un camino de aerovía CONTINUO de origen a destino
+    # (end-to-end), repartido entre los tramos. Esto evita la fragmentación del
+    # enfoque por-tramo, donde una red de aerovías continua se rechazaba porque
+    # cada tramo aislado superaba el límite de desvío. Si no hay camino end-to-end,
+    # se cae al método por-tramo (útil cuando solo algunos tramos tienen aerovía).
     airway_map: dict = {}
     if route_result.found and len(route_result.path) >= 2:
+        leg_airports = [
+            (c, AIRPORTS[c].lat, AIRPORTS[c].lon)
+            for c in route_result.path if c in AIRPORTS
+        ]
+        try:
+            airway_map = find_airways_for_route_legs(leg_airports, aircraft.cruise_alt_ft)
+        except Exception as e:
+            logger.warning(f"Error buscando aerovia end-to-end: {e}")
+            airway_map = {}
+
+        # Fallback por-tramo: para tramos que el camino end-to-end no cubrió,
+        # intentar encontrar una aerovía local.
         for i in range(len(route_result.path) - 1):
             leg_orig = route_result.path[i]
             leg_dest = route_result.path[i + 1]
+            if (leg_orig, leg_dest) in airway_map:
+                continue
             orig_ap_aw = AIRPORTS.get(leg_orig)
             dest_ap_aw = AIRPORTS.get(leg_dest)
             if orig_ap_aw and dest_ap_aw:

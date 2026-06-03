@@ -108,11 +108,17 @@ def find_airways_for_leg(
     orig_lat: float, orig_lon: float,
     dest_lat: float, dest_lon: float,
     cruise_alt_ft: int,
+    max_detour_pct: float = MAX_DETOUR_PCT,
 ) -> list[AirwayWaypoint]:
     """
     Busca la mejor ruta por aerovias inferiores para el tramo dado.
     Retorna lista de AirwayWaypoint ordenados (entry → ... → exit),
     o lista vacia si no hay ruta adecuada.
+
+    max_detour_pct: desvio maximo permitido sobre la distancia directa.
+    Para una ruta completa (origen→destino) conviene un valor mas alto que
+    para un tramo corto, porque las aerovias zigzaguean y el camino end-to-end
+    es mas eficiente que concatenar caminos por tramo.
     """
     direct_km = _hav(orig_lat, orig_lon, dest_lat, dest_lon)
 
@@ -139,8 +145,8 @@ def find_airways_for_leg(
 
             total_km = dist_to_entry + airway_km + dist_to_exit
 
-            # Criterio: total <= direct * (1 + MAX_DETOUR_PCT)
-            if total_km <= direct_km * (1 + MAX_DETOUR_PCT) and total_km < best_total:
+            # Criterio: total <= direct * (1 + max_detour_pct)
+            if total_km <= direct_km * (1 + max_detour_pct) and total_km < best_total:
                 best_total       = total_km
                 best_path        = path_nodes
                 best_entry_dist  = dist_to_entry
@@ -188,3 +194,103 @@ def find_airways_for_leg(
         ))
 
     return result
+
+
+# ── Ruta completa: aerovias end-to-end distribuidas por tramo ───────────────────
+
+# Desvio maximo permitido para el camino de aerovia de TODA la ruta.
+# Mas alto que el de tramo porque las aerovias zigzaguean y, sobre una ruta
+# larga, el camino global sigue siendo eficiente aunque cada tramo aislado
+# parezca un desvio grande.
+ROUTE_DETOUR_PCT = 0.45
+
+
+def _dist_point_to_segment_km(plat, plon, alat, alon, blat, blon):
+    """Distancia aprox (km) del punto P al segmento AB (proyeccion plana local)."""
+    cos_lat = math.cos(math.radians((alat + blat) / 2))
+    px = (plon - alon) * 111.0 * cos_lat
+    py = (plat - alat) * 111.0
+    bx = (blon - alon) * 111.0 * cos_lat
+    by = (blat - alat) * 111.0
+    seg_sq = bx * bx + by * by
+    if seg_sq < 1e-9:
+        return math.sqrt(px * px + py * py)
+    t = max(0.0, min(1.0, (px * bx + py * by) / seg_sq))
+    dx = px - t * bx
+    dy = py - t * by
+    return math.sqrt(dx * dx + dy * dy)
+
+
+def find_airways_for_route_legs(
+    leg_airports: list,
+    cruise_alt_ft: int,
+) -> dict:
+    """
+    Calcula UN camino de aerovia continuo de origen a destino para toda la ruta
+    y reparte sus waypoints entre los tramos (pares de aerodromos consecutivos)
+    segun a que tramo pertenece geograficamente cada waypoint.
+
+    Esto evita la fragmentacion del enfoque por-tramo: una red de aerovias
+    continua se rechazaba tramo a tramo porque cada tramo aislado superaba el
+    limite de desvio, aunque el camino global fuera razonable.
+
+    leg_airports: lista de (code, lat, lon) de los aerodromos de la ruta, en orden.
+    Retorna: dict {(code_i, code_j): [AirwayWaypoint, ...]} listo para airway_map.
+    Si no hay camino de aerovia end-to-end, retorna {} (el caller puede caer al
+    metodo por-tramo).
+    """
+    if len(leg_airports) < 2:
+        return {}
+
+    orig_code, orig_lat, orig_lon = leg_airports[0]
+    dest_code, dest_lat, dest_lon = leg_airports[-1]
+
+    # Camino de aerovia end-to-end con tolerancia de ruta completa
+    full_path = find_airways_for_leg(
+        orig_lat, orig_lon, dest_lat, dest_lon,
+        cruise_alt_ft, max_detour_pct=ROUTE_DETOUR_PCT,
+    )
+    if not full_path:
+        return {}
+
+    # Repartir cada waypoint al tramo (segmento entre aerodromos consecutivos)
+    # de menor distancia perpendicular.
+    legs = [
+        (leg_airports[i][0], leg_airports[i + 1][0],
+         leg_airports[i][1], leg_airports[i][2],
+         leg_airports[i + 1][1], leg_airports[i + 1][2])
+        for i in range(len(leg_airports) - 1)
+    ]
+
+    airway_map: dict = {}
+    for wp in full_path:
+        best_leg = None
+        best_d = math.inf
+        for (ca, cb, alat, alon, blat, blon) in legs:
+            d = _dist_point_to_segment_km(wp.lat, wp.lon, alat, alon, blat, blon)
+            if d < best_d:
+                best_d = d
+                best_leg = (ca, cb)
+        if best_leg is not None:
+            airway_map.setdefault(best_leg, []).append(wp)
+
+    # Ordenar los waypoints dentro de cada tramo por progreso a lo largo del tramo
+    # (proyeccion sobre el segmento del tramo), para que la polilinea sea coherente.
+    for (ca, cb), wps in airway_map.items():
+        a = next((l for l in legs if l[0] == ca and l[1] == cb), None)
+        if not a:
+            continue
+        _, _, alat, alon, blat, blon = a
+        cos_lat = math.cos(math.radians((alat + blat) / 2))
+        bx = (blon - alon) * 111.0 * cos_lat
+        by = (blat - alat) * 111.0
+        seg_sq = bx * bx + by * by or 1e-9
+
+        def _progress(w):
+            px = (w.lon - alon) * 111.0 * cos_lat
+            py = (w.lat - alat) * 111.0
+            return (px * bx + py * by) / seg_sq
+
+        wps.sort(key=_progress)
+
+    return airway_map
