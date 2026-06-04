@@ -40,7 +40,8 @@ from risk.soft_scoring import compute_soft_score
 from risk.hard_blockers import check_hard_blockers_from_weather
 from features.crosswind import compute_crosswind
 from features.density_altitude import advisory as da_advisory
-from route.performance import haversine_km, bearing_deg, effective_groundspeed_kt, leg_time_hours
+from route.performance import haversine_km, bearing_deg, effective_groundspeed_kt, leg_time_hours, safe_altitude_ft
+from data.terrain import get_elevations_m, M_TO_FT
 from config import NWP_HOURS_AHEAD
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(name)s | %(message)s")
@@ -880,6 +881,109 @@ async def timeline(req: TimelineRequest):
         'origin': origin, 'dest': dest,
         'start_utc': start_utc, 'hours': req.hours,
         'series': combined,
+    }
+
+
+class ProfilePoint(BaseModel):
+    lat: float
+    lon: float
+    mea_ft: Optional[int] = None        # MEA de la aerovía en este punto (si aplica)
+    is_airport: bool = False
+    code: Optional[str] = None
+    is_fuel_stop: bool = False
+
+
+class ProfileRequest(BaseModel):
+    points: List[ProfilePoint]          # espina de la ruta, en orden
+    aircraft: Optional[str] = None      # nombre del avión → altitud de crucero real
+    cruise_alt_ft: int = 7500           # fallback si no se pasa aircraft
+    sample_km: float = Field(default=15.0, ge=5.0, le=50.0)
+    mock: bool = False
+
+
+@app.post("/api/profile")
+async def profile(req: ProfileRequest):
+    """
+    Perfil vertical de la ruta: terreno (SRTM), MEA de aerovías y altitud de
+    crucero a lo largo de la distancia. Recibe la espina ya calculada (no
+    recalcula la ruta) y muestrea el terreno entre sus puntos.
+    """
+    pts = req.points
+    if len(pts) < 2:
+        return {"profile": [], "airports": [], "total_km": 0.0}
+
+    # Altitud de crucero: la característica del avión (la que determina qué
+    # aerovías puede usar), no la del segmento. Fallback al valor del request.
+    cruise_alt = req.cruise_alt_ft
+    if req.aircraft:
+        try:
+            cruise_alt = get_profile(req.aircraft).cruise_alt_ft
+        except KeyError:
+            pass
+
+    # Distancia acumulada de cada punto de la espina
+    cum = [0.0]
+    for i in range(1, len(pts)):
+        cum.append(cum[-1] + haversine_km(pts[i-1].lat, pts[i-1].lon, pts[i].lat, pts[i].lon))
+    total = cum[-1]
+    if total <= 0:
+        return {"profile": [], "airports": [], "total_km": 0.0}
+
+    # Muestrear densamente a lo largo de la polilínea (cap de puntos para no
+    # saturar la API de terreno: el paso se agranda en rutas muy largas).
+    sample_km = max(req.sample_km, total / 200.0)
+    sampled: list = []   # (lat, lon, dist_km, mea_ft)
+    d = 0.0
+    seg = 0
+    while d <= total + 1e-6:
+        while seg < len(pts) - 2 and cum[seg + 1] < d:
+            seg += 1
+        seg_len = (cum[seg + 1] - cum[seg]) or 1e-9
+        t = max(0.0, min(1.0, (d - cum[seg]) / seg_len))
+        lat = pts[seg].lat + t * (pts[seg + 1].lat - pts[seg].lat)
+        lon = pts[seg].lon + t * (pts[seg + 1].lon - pts[seg].lon)
+        # MEA del segmento: el del waypoint destino (donde Dijkstra guarda el MEA),
+        # con respaldo en el de origen.
+        mea = pts[seg + 1].mea_ft or pts[seg].mea_ft
+        sampled.append((lat, lon, d, mea))
+        d += sample_km
+
+    # Terreno de los puntos muestreados (real SRTM o mock)
+    coords = [(s[0], s[1]) for s in sampled]
+    try:
+        elevs_m = get_elevations_m(coords, mock=req.mock)
+    except Exception as e:
+        logger.warning(f"Error obteniendo terreno: {e}")
+        elevs_m = [None] * len(coords)
+
+    profile_pts: List[dict] = []
+    for (lat, lon, dist, mea), em in zip(sampled, elevs_m):
+        terrain_ft = round(em * M_TO_FT) if em is not None else 0
+        profile_pts.append({
+            "dist_km":    round(dist, 1),
+            "terrain_ft": terrain_ft,
+            "mea_ft":     mea,
+            "safe_alt_ft": safe_altitude_ft(terrain_ft),
+        })
+
+    # Aeropuertos de la espina (origen, destino, escalas en línea)
+    airports: List[dict] = []
+    for i, p in enumerate(pts):
+        if not p.is_airport:
+            continue
+        elev_ft = AIRPORTS[p.code].elev_ft if (p.code and p.code in AIRPORTS) else None
+        airports.append({
+            "dist_km":  round(cum[i], 1),
+            "code":     p.code,
+            "elev_ft":  elev_ft,
+            "is_fuel_stop": p.is_fuel_stop,
+        })
+
+    return {
+        "profile": profile_pts,
+        "airports": airports,
+        "total_km": round(total, 1),
+        "cruise_alt_ft": cruise_alt,
     }
 
 

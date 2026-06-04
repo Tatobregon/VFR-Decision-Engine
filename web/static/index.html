@@ -845,6 +845,64 @@
       </div>
     </div>
 
+    <!-- ── PERFIL VERTICAL DE RUTA ─────────────────────────────────── -->
+    <div class="av-card mb-5" x-show="result?.route?.found && (profile || profileLoading)">
+      <div class="flex items-center justify-between mb-3 gap-3 flex-wrap">
+        <h3 class="text-[11px] font-bold tracking-widest uppercase text-muted">Perfil vertical de ruta</h3>
+        <div class="flex items-center gap-3 text-[10px] font-mono flex-wrap">
+          <span class="flex items-center gap-1"><span style="width:14px;height:7px;background:#5a4632;display:inline-block;border-radius:1px"></span>Terreno</span>
+          <span class="flex items-center gap-1"><span style="width:14px;height:0;border-top:2px solid #f85149;display:inline-block"></span>MEA aerovía</span>
+          <span class="flex items-center gap-1"><span style="width:14px;height:0;border-top:2px dashed #58a6ff;display:inline-block"></span>Crucero</span>
+          <template x-if="profCruiseBelowMea()">
+            <span class="text-nogo font-bold">⚠ Crucero por debajo del MEA</span>
+          </template>
+        </div>
+      </div>
+
+      <div x-show="profileLoading" class="text-xs text-muted font-mono py-6 text-center">Calculando perfil de terreno…</div>
+
+      <template x-if="profile && profile.profile && profile.profile.length">
+        <div>
+          <svg viewBox="0 0 1000 300" style="width:100%;height:auto;display:block" preserveAspectRatio="none">
+            <!-- Marcas y grilla del eje Y -->
+            <template x-for="t in profYTicks()" :key="t.alt">
+              <g>
+                <line :x1="profLeftMargin()" :y1="t.y" x2="988" :y2="t.y" stroke="#21262d" stroke-width="1"/>
+                <text :x="profLeftMargin() - 6" :y="t.y + 3" text-anchor="end" font-size="10" font-family="monospace" fill="#6e7681" x-text="t.alt.toLocaleString()"></text>
+              </g>
+            </template>
+            <text x="14" y="160" font-size="10" font-family="monospace" fill="#8b949e" transform="rotate(-90 14 160)" text-anchor="middle">Altitud (ft)</text>
+
+            <!-- Terreno -->
+            <path :d="profTerrainPath()" fill="#5a4632" fill-opacity="0.85" stroke="#7a6044" stroke-width="1"/>
+
+            <!-- Línea de crucero -->
+            <line :x1="profLeftMargin()" :y1="profCruiseY()" x2="988" :y2="profCruiseY()" stroke="#58a6ff" stroke-width="2" stroke-dasharray="7 4"/>
+
+            <!-- Segmentos de MEA -->
+            <template x-for="(seg, i) in profMeaSegments()" :key="i">
+              <polyline :points="seg" fill="none" stroke="#f85149" stroke-width="2" stroke-opacity="0.9"/>
+            </template>
+
+            <!-- Aeropuertos: línea vertical + etiqueta -->
+            <template x-for="ap in profile.airports" :key="ap.code + ap.dist_km">
+              <g>
+                <line :x1="profAirportX(ap.dist_km)" :y1="profPlotTop()" :x2="profAirportX(ap.dist_km)" :y2="profPlotBottom()"
+                      :stroke="ap.is_fuel_stop ? '#3fb950' : '#8b949e'" stroke-width="1" stroke-dasharray="2 3" opacity="0.7"/>
+                <text :x="profAirportX(ap.dist_km)" :y="profPlotBottom() + 14" text-anchor="middle" font-size="10" font-family="monospace" font-weight="bold"
+                      :fill="ap.is_fuel_stop ? '#3fb950' : '#c9d1d9'" x-text="(ap.is_fuel_stop ? '⛽' : '') + ap.code"></text>
+              </g>
+            </template>
+          </svg>
+          <div class="flex items-center justify-between mt-1 text-[10px] font-mono text-muted">
+            <span>0 km</span>
+            <span x-text="'Distancia · ' + (profile.total_km || 0).toLocaleString() + ' km total'"></span>
+            <span x-text="(profile.total_km || 0).toLocaleString() + ' km'"></span>
+          </div>
+        </div>
+      </template>
+    </div>
+
     <!-- ── BRIEFING ────────────────────────────────────────────────── -->
     <div class="av-card mb-5">
       <div class="flex items-center justify-between mb-3">
@@ -903,6 +961,10 @@ function app() {
     // ── Timeline meteorológica
     timeline:       null,
     timelineLoading: false,
+
+    // ── Perfil vertical de ruta
+    profile:        null,
+    profileLoading: false,
 
     // ── Mapa y capas
     _map: null,
@@ -1062,8 +1124,9 @@ function app() {
 
         this.result = await res.json();
 
-        // Cargar timeline meteorológica en paralelo (no bloquea el render)
+        // Cargar timeline meteorológica y perfil vertical en paralelo
         this.loadTimeline();
+        this.loadProfile();
 
         // Scroll suave a resultados
         this.$nextTick(() => {
@@ -1141,6 +1204,104 @@ function app() {
       let best = s[0];
       for (const p of s) if (p.r_max < best.r_max) best = p;
       return best;
+    },
+
+    // ── Perfil vertical de ruta (terreno + MEA + crucero)
+    async loadProfile() {
+      this.profile = null;
+      this.profileLoading = true;
+      try {
+        const wps = this.result?.route?.waypoints || [];
+        // Espina = puntos que forman la línea de ruta (sin aeródromos de emergencia)
+        const spine = wps.filter(w => !w.is_emergency_airport);
+        if (spine.length < 2) { this.profileLoading = false; return; }
+        const points = spine.map(w => ({
+          lat: w.lat, lon: w.lon,
+          mea_ft: w.airway_mea_ft || null,
+          is_airport: (!w.is_checkpoint && !w.is_airway_waypoint),
+          code: w.code,
+          is_fuel_stop: w.is_fuel_stop || false,
+        }));
+        const cruise = spine.find(w => w.cruise_alt_ft)?.cruise_alt_ft || 7500;
+        const res = await fetch('/api/profile', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ points, aircraft: this.form.aircraft, cruise_alt_ft: cruise, mock: this.form.mock }),
+        });
+        if (res.ok) this.profile = await res.json();
+      } catch(e) {
+        // silencioso — el perfil es complementario
+      } finally {
+        this.profileLoading = false;
+      }
+    },
+
+    // Geometría del gráfico SVG (viewBox 1000 x 300, con márgenes)
+    _profGeom() {
+      const p = this.profile;
+      if (!p || !p.profile?.length) return null;
+      const W = 1000, H = 300, ml = 52, mr = 12, mt = 12, mb = 28;
+      const plotW = W - ml - mr, plotH = H - mt - mb;
+      const total = p.total_km || 1;
+      // Techo del eje Y: el mayor entre terreno, MEA, crucero + 15 % de margen
+      let maxAlt = p.cruise_alt_ft || 0;
+      for (const pt of p.profile) {
+        if (pt.terrain_ft > maxAlt) maxAlt = pt.terrain_ft;
+        if (pt.mea_ft && pt.mea_ft > maxAlt) maxAlt = pt.mea_ft;
+      }
+      maxAlt = Math.ceil((maxAlt * 1.15) / 1000) * 1000 || 5000;
+      const X = d => ml + (d / total) * plotW;
+      const Y = a => mt + plotH - (Math.max(0, a) / maxAlt) * plotH;
+      return { W, H, ml, mr, mt, mb, plotW, plotH, total, maxAlt, X, Y };
+    },
+
+    // Polígono de terreno (área rellena desde la base)
+    profTerrainPath() {
+      const g = this._profGeom(); if (!g) return '';
+      const pts = this.profile.profile;
+      let d = `M ${g.X(0)} ${g.Y(0)}`;
+      for (const pt of pts) d += ` L ${g.X(pt.dist_km)} ${g.Y(pt.terrain_ft)}`;
+      d += ` L ${g.X(g.total)} ${g.Y(0)} Z`;
+      return d;
+    },
+
+    // Línea de MEA (solo segmentos con aerovía; se corta donde no hay)
+    profMeaSegments() {
+      const g = this._profGeom(); if (!g) return [];
+      const pts = this.profile.profile;
+      const segs = []; let cur = [];
+      for (const pt of pts) {
+        if (pt.mea_ft) {
+          cur.push(`${g.X(pt.dist_km)},${g.Y(pt.mea_ft)}`);
+        } else if (cur.length) {
+          segs.push(cur.join(' ')); cur = [];
+        }
+      }
+      if (cur.length) segs.push(cur.join(' '));
+      return segs;
+    },
+
+    // Línea de crucero (horizontal)
+    profCruiseY() { const g = this._profGeom(); return g ? g.Y(this.profile.cruise_alt_ft) : 0; },
+
+    // Marcas del eje Y (cada 5000 ft o ajustado)
+    profYTicks() {
+      const g = this._profGeom(); if (!g) return [];
+      const step = g.maxAlt > 20000 ? 5000 : g.maxAlt > 8000 ? 2000 : 1000;
+      const ticks = [];
+      for (let a = 0; a <= g.maxAlt; a += step) ticks.push({ alt: a, y: g.Y(a) });
+      return ticks;
+    },
+
+    // Posición X de un aeropuerto en el gráfico
+    profAirportX(distKm) { const g = this._profGeom(); return g ? g.X(distKm) : 0; },
+    profPlotBottom() { const g = this._profGeom(); return g ? (g.mt + g.plotH) : 0; },
+    profPlotTop() { const g = this._profGeom(); return g ? g.mt : 0; },
+    profLeftMargin() { const g = this._profGeom(); return g ? g.ml : 0; },
+
+    // ¿La altitud de crucero queda por debajo de algún MEA? (alerta)
+    profCruiseBelowMea() {
+      const p = this.profile; if (!p?.profile) return false;
+      return p.profile.some(pt => pt.mea_ft && p.cruise_alt_ft < pt.mea_ft);
     },
 
     // ── Tamaño del mapa

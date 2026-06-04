@@ -128,25 +128,37 @@ def get_elevations_m(
 
 def _mock_elevations(points: List[Tuple[float, float]]) -> List[float]:
     """
-    Elevaciones sinteticas para modo mock/offline.
+    Elevaciones sinteticas para modo mock/offline — modelo generico de
+    Argentina (NO hardcodeado a una region).
 
-    Usa un gradiente simple basado en la latitud y longitud dentro de
-    la provincia de Cordoba:
-      - Sierras (lat > -32, lon < -64): mayor elevacion
-      - Llanura (este): menor elevacion
+    Aproximacion: la cordillera de los Andes corre por el oeste (eje ~lon -70)
+    y la elevacion decae hacia el este (costa atlantica). La altura del macizo
+    andino varia por latitud (altiplano del NOA muy alto, Andes centrales,
+    mesetas patagonicas mas bajas). Suficiente para desarrollo; en produccion
+    se usan datos reales de SRTM via Open-Topo-Data.
     """
+    ANDES_AXIS_LON = -70.0   # longitud aproximada del eje andino
+    DECAY_M_PER_DEG = 350.0  # caida de elevacion por grado al este del eje
+
     elev = []
     for lat, lon in points:
-        if lat > -32.0 and lon < -64.0:
-            # Zona serrana: estima entre 500 y 1500m
-            base = 800.0 + (lat + 32.0) * -400.0 + (lon + 64.0) * -200.0
-        elif lon < -63.5:
-            # Zona intermedia
-            base = 300.0
-        else:
-            # Llanura
-            base = 150.0
-        elev.append(max(50.0, min(base, 1600.0)))
+        # Altura del macizo andino segun la latitud
+        if lat > -27.0:        # NOA / Puna / altiplano
+            andes_peak = 3800.0
+        elif lat > -35.0:      # Cuyo / Andes centrales (los mas altos)
+            andes_peak = 4500.0
+        elif lat > -40.0:      # Andes norpatagonicos
+            andes_peak = 2500.0
+        elif lat > -46.0:      # Patagonia central
+            andes_peak = 1800.0
+        else:                  # Patagonia austral / Fueguina
+            andes_peak = 1200.0
+
+        # Grados al este del eje andino (0 sobre los Andes, crece hacia el este)
+        east_of_andes = max(0.0, lon - ANDES_AXIS_LON)
+        elev_m = andes_peak - east_of_andes * DECAY_M_PER_DEG
+        # Piso de llanura (la pampa/litoral ronda 50-150m)
+        elev.append(max(50.0, min(elev_m, 6000.0)))
     return elev
 
 
