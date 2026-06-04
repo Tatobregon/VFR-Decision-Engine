@@ -979,9 +979,31 @@ async def profile(req: ProfileRequest):
             "is_fuel_stop": p.is_fuel_stop,
         })
 
+    # Todos los waypoints de la espina con su altura representativa.
+    # alt_ft = MEA si el punto está en aerovía; sino la elevación del aeródromo;
+    # sino la altitud de crucero (punto en ruta sin aerovía).
+    waypoints: List[dict] = []
+    for i, p in enumerate(pts):
+        elev_ft = AIRPORTS[p.code].elev_ft if (p.code and p.code in AIRPORTS) else None
+        if p.mea_ft:
+            alt_ft = p.mea_ft
+        elif p.is_airport and elev_ft is not None:
+            alt_ft = elev_ft
+        else:
+            alt_ft = cruise_alt
+        waypoints.append({
+            "dist_km":  round(cum[i], 1),
+            "code":     p.code,
+            "alt_ft":   alt_ft,
+            "mea_ft":   p.mea_ft,
+            "is_airport": p.is_airport,
+            "is_fuel_stop": p.is_fuel_stop,
+        })
+
     return {
         "profile": profile_pts,
         "airports": airports,
+        "waypoints": waypoints,
         "total_km": round(total, 1),
         "cruise_alt_ft": cruise_alt,
     }

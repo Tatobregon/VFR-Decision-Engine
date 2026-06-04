@@ -863,37 +863,8 @@
 
       <template x-if="profile && profile.profile && profile.profile.length">
         <div>
-          <svg viewBox="0 0 1000 300" style="width:100%;height:auto;display:block" preserveAspectRatio="none">
-            <!-- Marcas y grilla del eje Y -->
-            <template x-for="t in profYTicks()" :key="t.alt">
-              <g>
-                <line :x1="profLeftMargin()" :y1="t.y" x2="988" :y2="t.y" stroke="#21262d" stroke-width="1"/>
-                <text :x="profLeftMargin() - 6" :y="t.y + 3" text-anchor="end" font-size="10" font-family="monospace" fill="#6e7681" x-text="t.alt.toLocaleString()"></text>
-              </g>
-            </template>
-            <text x="14" y="160" font-size="10" font-family="monospace" fill="#8b949e" transform="rotate(-90 14 160)" text-anchor="middle">Altitud (ft)</text>
-
-            <!-- Terreno -->
-            <path :d="profTerrainPath()" fill="#5a4632" fill-opacity="0.85" stroke="#7a6044" stroke-width="1"/>
-
-            <!-- Línea de crucero -->
-            <line :x1="profLeftMargin()" :y1="profCruiseY()" x2="988" :y2="profCruiseY()" stroke="#58a6ff" stroke-width="2" stroke-dasharray="7 4"/>
-
-            <!-- Segmentos de MEA -->
-            <template x-for="(seg, i) in profMeaSegments()" :key="i">
-              <polyline :points="seg" fill="none" stroke="#f85149" stroke-width="2" stroke-opacity="0.9"/>
-            </template>
-
-            <!-- Aeropuertos: línea vertical + etiqueta -->
-            <template x-for="ap in profile.airports" :key="ap.code + ap.dist_km">
-              <g>
-                <line :x1="profAirportX(ap.dist_km)" :y1="profPlotTop()" :x2="profAirportX(ap.dist_km)" :y2="profPlotBottom()"
-                      :stroke="ap.is_fuel_stop ? '#3fb950' : '#8b949e'" stroke-width="1" stroke-dasharray="2 3" opacity="0.7"/>
-                <text :x="profAirportX(ap.dist_km)" :y="profPlotBottom() + 14" text-anchor="middle" font-size="10" font-family="monospace" font-weight="bold"
-                      :fill="ap.is_fuel_stop ? '#3fb950' : '#c9d1d9'" x-text="(ap.is_fuel_stop ? '⛽' : '') + ap.code"></text>
-              </g>
-            </template>
-          </svg>
+          <!-- El SVG se genera como string para evitar el problema de <template> dentro de <svg> -->
+          <div x-html="profSvg()" style="width:100%"></div>
           <div class="flex items-center justify-between mt-1 text-[10px] font-mono text-muted">
             <span>0 km</span>
             <span x-text="'Distancia · ' + (profile.total_km || 0).toLocaleString() + ' km total'"></span>
@@ -1235,14 +1206,14 @@ function app() {
       }
     },
 
-    // Geometría del gráfico SVG (viewBox 1000 x 300, con márgenes)
+    // Geometría del gráfico SVG (viewBox 1000 x 320, con márgenes)
     _profGeom() {
       const p = this.profile;
       if (!p || !p.profile?.length) return null;
-      const W = 1000, H = 300, ml = 52, mr = 12, mt = 12, mb = 28;
+      const W = 1000, H = 320, ml = 56, mr = 14, mt = 16, mb = 40;
       const plotW = W - ml - mr, plotH = H - mt - mb;
       const total = p.total_km || 1;
-      // Techo del eje Y: el mayor entre terreno, MEA, crucero + 15 % de margen
+      // Techo del eje Y: el mayor entre terreno, MEA y crucero + 15 % de margen
       let maxAlt = p.cruise_alt_ft || 0;
       for (const pt of p.profile) {
         if (pt.terrain_ft > maxAlt) maxAlt = pt.terrain_ft;
@@ -1254,54 +1225,74 @@ function app() {
       return { W, H, ml, mr, mt, mb, plotW, plotH, total, maxAlt, X, Y };
     },
 
-    // Polígono de terreno (área rellena desde la base)
-    profTerrainPath() {
-      const g = this._profGeom(); if (!g) return '';
-      const pts = this.profile.profile;
-      let d = `M ${g.X(0)} ${g.Y(0)}`;
-      for (const pt of pts) d += ` L ${g.X(pt.dist_km)} ${g.Y(pt.terrain_ft)}`;
-      d += ` L ${g.X(g.total)} ${g.Y(0)} Z`;
-      return d;
-    },
-
-    // Línea de MEA (solo segmentos con aerovía; se corta donde no hay)
-    profMeaSegments() {
-      const g = this._profGeom(); if (!g) return [];
-      const pts = this.profile.profile;
-      const segs = []; let cur = [];
-      for (const pt of pts) {
-        if (pt.mea_ft) {
-          cur.push(`${g.X(pt.dist_km)},${g.Y(pt.mea_ft)}`);
-        } else if (cur.length) {
-          segs.push(cur.join(' ')); cur = [];
-        }
-      }
-      if (cur.length) segs.push(cur.join(' '));
-      return segs;
-    },
-
-    // Línea de crucero (horizontal)
-    profCruiseY() { const g = this._profGeom(); return g ? g.Y(this.profile.cruise_alt_ft) : 0; },
-
-    // Marcas del eje Y (cada 5000 ft o ajustado)
-    profYTicks() {
-      const g = this._profGeom(); if (!g) return [];
-      const step = g.maxAlt > 20000 ? 5000 : g.maxAlt > 8000 ? 2000 : 1000;
-      const ticks = [];
-      for (let a = 0; a <= g.maxAlt; a += step) ticks.push({ alt: a, y: g.Y(a) });
-      return ticks;
-    },
-
-    // Posición X de un aeropuerto en el gráfico
-    profAirportX(distKm) { const g = this._profGeom(); return g ? g.X(distKm) : 0; },
-    profPlotBottom() { const g = this._profGeom(); return g ? (g.mt + g.plotH) : 0; },
-    profPlotTop() { const g = this._profGeom(); return g ? g.mt : 0; },
-    profLeftMargin() { const g = this._profGeom(); return g ? g.ml : 0; },
-
     // ¿La altitud de crucero queda por debajo de algún MEA? (alerta)
     profCruiseBelowMea() {
       const p = this.profile; if (!p?.profile) return false;
       return p.profile.some(pt => pt.mea_ft && p.cruise_alt_ft < pt.mea_ft);
+    },
+
+    // Genera el SVG completo del perfil como string (evita <template> en SVG).
+    profSvg() {
+      const g = this._profGeom();
+      if (!g) return '';
+      const p = this.profile;
+      const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      let s = `<svg viewBox="0 0 ${g.W} ${g.H}" style="width:100%;height:auto;display:block" xmlns="http://www.w3.org/2000/svg">`;
+
+      // Grilla + números del eje Y
+      const step = g.maxAlt > 20000 ? 5000 : g.maxAlt > 8000 ? 2000 : 1000;
+      for (let a = 0; a <= g.maxAlt; a += step) {
+        const y = g.Y(a);
+        s += `<line x1="${g.ml}" y1="${y}" x2="${g.W-g.mr}" y2="${y}" stroke="#21262d" stroke-width="1"/>`;
+        s += `<text x="${g.ml-7}" y="${y+3.5}" text-anchor="end" font-size="11" font-family="monospace" fill="#8b949e">${a.toLocaleString()}</text>`;
+      }
+      const yMid = g.mt + g.plotH/2;
+      s += `<text x="15" y="${yMid}" font-size="10" font-family="monospace" fill="#8b949e" transform="rotate(-90 15 ${yMid})" text-anchor="middle">Altitud (ft)</text>`;
+
+      // Terreno (área rellena)
+      let dT = `M ${g.X(0)} ${g.Y(0)}`;
+      for (const pt of p.profile) dT += ` L ${g.X(pt.dist_km)} ${g.Y(pt.terrain_ft)}`;
+      dT += ` L ${g.X(g.total)} ${g.Y(0)} Z`;
+      s += `<path d="${dT}" fill="#5a4632" fill-opacity="0.85" stroke="#7a6044" stroke-width="1"/>`;
+
+      // Línea de crucero + etiqueta
+      const cy = g.Y(p.cruise_alt_ft);
+      s += `<line x1="${g.ml}" y1="${cy}" x2="${g.W-g.mr}" y2="${cy}" stroke="#58a6ff" stroke-width="2" stroke-dasharray="7 4"/>`;
+      s += `<text x="${g.W-g.mr-3}" y="${cy-5}" text-anchor="end" font-size="10" font-family="monospace" fill="#58a6ff">Crucero ${(p.cruise_alt_ft||0).toLocaleString()} ft</text>`;
+
+      // Segmentos de MEA (se cortan donde no hay aerovía)
+      let cur = [];
+      const flush = () => { if (cur.length) { s += `<polyline points="${cur.join(' ')}" fill="none" stroke="#f85149" stroke-width="2" stroke-opacity="0.9"/>`; cur = []; } };
+      for (const pt of p.profile) {
+        if (pt.mea_ft) cur.push(`${g.X(pt.dist_km)},${g.Y(pt.mea_ft)}`);
+        else flush();
+      }
+      flush();
+
+      // Waypoints de aerovía: punto sobre su altura (MEA) + código rotado
+      for (const w of (p.waypoints || [])) {
+        if (w.is_airport) continue;            // los aeropuertos se dibujan aparte
+        const x = g.X(w.dist_km), y = g.Y(w.alt_ft);
+        const altTxt = w.mea_ft ? w.mea_ft.toLocaleString()+' ft (MEA)' : (w.alt_ft||0).toLocaleString()+' ft';
+        s += `<circle cx="${x}" cy="${y}" r="2.6" fill="#f0883e" stroke="#0d1117" stroke-width="0.8"><title>${esc(w.code)} · ${altTxt}</title></circle>`;
+        s += `<text x="${x}" y="${y-6}" font-size="8" font-family="monospace" fill="#a9b3bd" transform="rotate(-55 ${x} ${y-6})">${esc(w.code)}</text>`;
+      }
+
+      // Aeropuertos: línea vertical + punto a su elevación + código + elevación
+      for (const ap of (p.airports || [])) {
+        const x = g.X(ap.dist_km);
+        const col = ap.is_fuel_stop ? '#3fb950' : '#c9d1d9';
+        s += `<line x1="${x}" y1="${g.mt}" x2="${x}" y2="${g.mt+g.plotH}" stroke="${ap.is_fuel_stop?'#3fb950':'#8b949e'}" stroke-width="1" stroke-dasharray="2 3" opacity="0.6"/>`;
+        if (ap.elev_ft != null) {
+          const ey = g.Y(ap.elev_ft);
+          s += `<circle cx="${x}" cy="${ey}" r="3.2" fill="${col}" stroke="#0d1117" stroke-width="1"><title>${esc(ap.code)} · ${ap.elev_ft} ft</title></circle>`;
+        }
+        s += `<text x="${x}" y="${g.mt+g.plotH+15}" text-anchor="middle" font-size="10" font-family="monospace" font-weight="bold" fill="${col}">${ap.is_fuel_stop?'⛽':''}${esc(ap.code)}</text>`;
+        if (ap.elev_ft != null) s += `<text x="${x}" y="${g.mt+g.plotH+26}" text-anchor="middle" font-size="8" font-family="monospace" fill="#6e7681">${ap.elev_ft} ft</text>`;
+      }
+
+      s += `</svg>`;
+      return s;
     },
 
     // ── Tamaño del mapa
