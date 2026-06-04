@@ -64,7 +64,6 @@ class EvaluateRequest(BaseModel):
     aircraft: str = "Pipistrel Alpha Trainer"
     departure_time: str = ""       # "HH:MM" UTC; vacío = ahora + 1h
     duration_hours: float = Field(default=2.0, ge=0.3, le=12.0)
-    mock: bool = False
     avoid_airspace: bool = True    # si True, la ruta evita zonas R/P/D
     duration_hours: float = 0.0   # ignorado; calculado internamente desde la ruta
 
@@ -532,10 +531,19 @@ def _generate_route_waypoints(
 
         leg_km = leg_dists[i] if i < len(leg_dists) else 0.0
         track = int(bearing_deg(ap.lat, ap.lon, next_ap.lat, next_ap.lon))
+        # Altitud segura del tramo (para tramos SIN aerovía): terreno + buffer.
+        # Aproximada con la elevación de los aeródromos del tramo.
         cruise_alt = max(7500, max(ap.elev_ft, next_ap.elev_ft) + 3000)
 
         # Waypoints de aerovía para este tramo
         aw_wps: list = airway_map.get((code, path[i + 1]), [])
+
+        # Altitud de vuelo en la aerovía = MEA del segmento. La meteo en ruta se
+        # calcula a la altitud que el avión realmente vuela (la de la aerovía),
+        # NO a la altitud de crucero del avión. Fallback a la altitud segura del
+        # tramo si el MEA no está disponible.
+        def _aw_flight_alt(aw):
+            return aw.mea_ft if aw.mea_ft else cruise_alt
 
         # Insertar waypoints de aerovía como RouteWaypoints (sin meteo aún).
         # Se registra el índice de cada uno para actualizarlo después de la evaluación NWP.
@@ -556,7 +564,7 @@ def _generate_route_waypoints(
                 fir_contact=aw.fir_contact,
                 is_airway_entry=aw.is_entry,
                 is_airway_exit=aw.is_exit,
-                cruise_alt_ft=cruise_alt,
+                cruise_alt_ft=_aw_flight_alt(aw),
             ))
 
         if aw_wps:
@@ -572,7 +580,7 @@ def _generate_route_waypoints(
                     'lat':         aw.lat,
                     'lon':         aw.lon,
                     'elev_m':      0.0,
-                    'cruise_alt':  cruise_alt,
+                    'cruise_alt':  _aw_flight_alt(aw),   # meteo a la altitud de la aerovía (MEA)
                     'track':       track,
                     'dep_time':    chk_time,
                     '_fused_aw':   aw,
@@ -827,7 +835,6 @@ class TimelineRequest(BaseModel):
     origin_runway: int = 180
     dest_runway: int = 180
     hours: int = Field(default=24, ge=6, le=48)
-    mock: bool = False
 
 
 @app.post("/api/timeline")
@@ -855,9 +862,9 @@ async def timeline(req: TimelineRequest):
 
     with ThreadPoolExecutor(max_workers=2) as ex:
         fut_o = ex.submit(_nwp_series_at_coord, o_ap.lat, o_ap.lon, o_ap.elev_ft * 0.3048,
-                          req.origin_runway, aircraft, req.mock, start_utc, req.hours)
+                          req.origin_runway, aircraft, False, start_utc, req.hours)
         fut_d = ex.submit(_nwp_series_at_coord, d_ap.lat, d_ap.lon, d_ap.elev_ft * 0.3048,
-                          req.dest_runway, aircraft, req.mock, start_utc, req.hours)
+                          req.dest_runway, aircraft, False, start_utc, req.hours)
         ser_o = fut_o.result()
         ser_d = fut_d.result()
 
@@ -898,7 +905,6 @@ class ProfileRequest(BaseModel):
     aircraft: Optional[str] = None      # nombre del avión → altitud de crucero real
     cruise_alt_ft: int = 7500           # fallback si no se pasa aircraft
     sample_km: float = Field(default=15.0, ge=5.0, le=50.0)
-    mock: bool = False
 
 
 @app.post("/api/profile")
@@ -951,7 +957,7 @@ async def profile(req: ProfileRequest):
     # Terreno de los puntos muestreados (real SRTM o mock)
     coords = [(s[0], s[1]) for s in sampled]
     try:
-        elevs_m = get_elevations_m(coords, mock=req.mock)
+        elevs_m = get_elevations_m(coords, mock=False)
     except Exception as e:
         logger.warning(f"Error obteniendo terreno: {e}")
         elevs_m = [None] * len(coords)
@@ -1026,7 +1032,7 @@ async def evaluate(req: EvaluateRequest):
         raise HTTPException(400, f"Aeronave desconocida: {req.aircraft}")
 
     dep_time = _parse_dep_time(req.departure_time)
-    engine   = DecisionEngine(mock=req.mock, aircraft=aircraft)
+    engine   = DecisionEngine(mock=False, aircraft=aircraft)
 
     # Estimación rápida de duración para ventana meteorológica inicial
     orig_ap = AIRPORTS[origin]
@@ -1050,7 +1056,7 @@ async def evaluate(req: EvaluateRequest):
         suggest_alternate=True,
         evaluate_intermediate=False,
         avoid_restricted_zones=req.avoid_airspace,
-        mock=req.mock,
+        mock=False,
         dep_time=dep_time,
     )
 
@@ -1099,7 +1105,7 @@ async def evaluate(req: EvaluateRequest):
     notams_orig = notams_dest = []
     try:
         from data.fetcher_aviationweather import AviationWeatherFetcher
-        av = AviationWeatherFetcher(mock=req.mock)
+        av = AviationWeatherFetcher(mock=False)
         notams_orig = av.get_notams(origin)
         notams_dest = av.get_notams(dest)
     except Exception:
@@ -1122,7 +1128,7 @@ async def evaluate(req: EvaluateRequest):
         dep_time=dep_time,
         duration_hours=actual_duration,
         r_map=r_map,
-        mock=req.mock,
+        mock=False,
         airway_map=airway_map,
     )
 

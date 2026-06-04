@@ -344,17 +344,6 @@
     <!-- Toggles + Evaluar -->
     <div class="flex items-center justify-between flex-wrap gap-3">
       <div class="flex items-center gap-4 flex-wrap">
-        <!-- Mock toggle -->
-        <label class="flex items-center gap-2 cursor-pointer select-none">
-          <div class="relative">
-            <input type="checkbox" class="sr-only" x-model="form.mock"/>
-            <div class="w-9 h-5 rounded-full transition-colors"
-                 :class="form.mock ? 'bg-accent' : 'bg-border'"></div>
-            <div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform"
-                 :class="form.mock ? 'translate-x-4' : ''"></div>
-          </div>
-          <span class="text-xs text-muted">Modo demo (sin internet)</span>
-        </label>
         <!-- Evitar espacios aéreos toggle -->
         <label class="flex items-center gap-2 cursor-pointer select-none">
           <div class="relative">
@@ -904,7 +893,6 @@ function app() {
       dest_runway:    180,
       aircraft:       'Pipistrel Alpha Trainer',
       departure_time: '',
-      mock:           false,
       avoid_airspace: true,
     },
 
@@ -1078,7 +1066,6 @@ function app() {
           aircraft:       this.form.aircraft,
           departure_time: this.form.departure_time,
           duration_hours: this.form.duration_hours,
-          mock:           this.form.mock,
           avoid_airspace: this.form.avoid_airspace,
         };
 
@@ -1125,7 +1112,7 @@ function app() {
             aircraft: this.form.aircraft,
             origin_runway: this.form.origin_runway,
             dest_runway: this.form.dest_runway,
-            hours: 24, mock: this.form.mock,
+            hours: 24,
           }),
         });
         if (res.ok) this.timeline = await res.json();
@@ -1196,7 +1183,7 @@ function app() {
         const cruise = spine.find(w => w.cruise_alt_ft)?.cruise_alt_ft || 7500;
         const res = await fetch('/api/profile', {
           method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ points, aircraft: this.form.aircraft, cruise_alt_ft: cruise, mock: this.form.mock }),
+          body: JSON.stringify({ points, aircraft: this.form.aircraft, cruise_alt_ft: cruise }),
         });
         if (res.ok) this.profile = await res.json();
       } catch(e) {
@@ -1477,7 +1464,7 @@ function app() {
 
           const meteoBlock = cw ? `
             <div style="border-top:1px solid #30363d;margin-top:5px;padding-top:4px">
-              <div style="font-size:10px;color:#8b949e;margin-bottom:3px">NWP ALTITUD CRUCERO</div>
+              <div style="font-size:10px;color:#8b949e;margin-bottom:3px">NWP A ALTITUD DE RUTA${wp.is_airway_waypoint && wp.airway_mea_ft ? ' (MEA '+wp.airway_mea_ft.toLocaleString()+' ft)' : (wp.cruise_alt_ft ? ' ('+wp.cruise_alt_ft.toLocaleString()+' ft)' : '')}</div>
               <div style="font-size:10px;color:#e6edf3;margin-bottom:2px">
                 Viento: ${cw.wind_variable ? 'VRB' : (cw.wind_dir != null ? String(cw.wind_dir).padStart(3,'0')+'°' : '---')} / ${cw.wind_spd_kt != null ? cw.wind_spd_kt+' kt' : '--'}${cw.wind_gust_kt ? ' G'+cw.wind_gust_kt+' kt' : ''}
               </div>
@@ -1516,7 +1503,7 @@ function app() {
             <div style="font-size:11px;color:#e6edf3;margin:3px 0">${wp.name}</div>
             <div style="font-size:12px;font-weight:700;color:${chkColor}">R = ${wp.r_total.toFixed(2)} · ${wp.decision}</div>
             ${this.etaBlock(wp)}
-            ${wp.cruise_alt_ft ? `<div style="font-size:10px;color:#8b949e">Crucero: ${wp.cruise_alt_ft.toLocaleString()} ft</div>` : ''}
+            ${wp.cruise_alt_ft ? `<div style="font-size:10px;color:#8b949e">Altitud de ruta: ${wp.cruise_alt_ft.toLocaleString()} ft${wp.is_airway_waypoint ? ' (MEA aerovía)' : ''}</div>` : ''}
             ${awBlock}
             ${meteoBlock}
             ${altViaBlock}
