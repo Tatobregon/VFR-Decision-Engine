@@ -40,7 +40,7 @@ from risk.soft_scoring import compute_soft_score
 from risk.hard_blockers import check_hard_blockers_from_weather
 from features.crosswind import compute_crosswind
 from features.density_altitude import advisory as da_advisory
-from route.performance import haversine_km, bearing_deg
+from route.performance import haversine_km, bearing_deg, effective_groundspeed_kt, leg_time_hours
 from config import NWP_HOURS_AHEAD
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(name)s | %(message)s")
@@ -131,6 +131,8 @@ class CheckpointWeather(BaseModel):
     temp_c: Optional[float] = None
     spread_c: Optional[float] = None
     wx_codes: List[str] = []
+    cloud_cover_pct: Optional[int] = None    # cobertura de nubes 0-100 %
+    precip_mm: Optional[float] = None        # precipitación horaria en mm
     flight_category: Optional[str] = None
     r_vis: Optional[float] = None
     r_ceil: Optional[float] = None
@@ -163,6 +165,9 @@ class RouteWaypoint(BaseModel):
     is_emergency_airport: bool = False      # aeródromo cercano para emergencia/referencia
     is_fuel_stop: bool = False              # escala de combustible recomendada
     dist_from_prev_km: Optional[float] = None  # distancia desde el aeródromo previo de la ruta
+    # Estimación de tiempo en ruta
+    eta_utc: Optional[int] = None           # Unix UTC estimado de paso por el waypoint
+    elapsed_min: Optional[int] = None       # minutos transcurridos desde el despegue
 
 
 class RouteCard(BaseModel):
@@ -367,6 +372,50 @@ def _evaluate_nwp_at_coord(
     except Exception as e:
         logger.warning(f"Error evaluando NWP en coord ({lat:.2f},{lon:.2f}): {e}")
         return 0.0, "GO", None, None
+
+
+# ── Helper: serie horaria de R para un punto (timeline meteorológica) ─────────
+
+def _nwp_series_at_coord(
+    lat: float,
+    lon: float,
+    elev_m: float,
+    runway_heading: int,
+    aircraft: AircraftProfile,
+    mock: bool,
+    start_utc: int,
+    hours: int = 24,
+) -> List[dict]:
+    """
+    Devuelve la serie horaria de R_total para un punto, evaluando cada hora del
+    pronóstico NWP como un despegue/aterrizaje (superficie, con crosswind real).
+    Reutiliza un único fetch (el NWP ya trae todas las horas).
+    Retorna: [{'t': unix_utc, 'r': float, 'dec': str}, ...] ordenada por hora.
+    """
+    try:
+        fetcher = OpenMeteoFetcher(mock=mock)
+        adapter = OpenMeteoAdapter()
+        raw_nwp = fetcher.get_forecast(
+            lat=lat, lon=lon, elevation_m=elev_m, hours_ahead=NWP_HOURS_AHEAD,
+        )
+        if raw_nwp is None:
+            return []
+        all_wx = adapter.adapt_all(raw_nwp, station_id=f"TL_{abs(lat):.1f}_{abs(lon):.1f}")
+        end_utc = start_utc + hours * 3600
+        series: List[dict] = []
+        for w in sorted(all_wx, key=lambda x: x.obs_time):
+            if not (start_utc <= w.obs_time <= end_utc):
+                continue
+            blocker = check_hard_blockers_from_weather(w)
+            if blocker.is_blocked:
+                series.append({'t': w.obs_time, 'r': 1.0, 'dec': "NO GO"})
+                continue
+            s = compute_soft_score(w, runway_heading, aircraft)
+            series.append({'t': w.obs_time, 'r': round(s.r_total, 3), 'dec': s.decision})
+        return series
+    except Exception as e:
+        logger.warning(f"Error serie NWP en coord ({lat:.2f},{lon:.2f}): {e}")
+        return []
 
 
 # ── Helper: aeródromo alternativo más cercano a un checkpoint NO GO ────────────
@@ -588,6 +637,8 @@ def _generate_route_waypoints(
                         temp_c=ref_wx.temp_c,
                         spread_c=ref_wx.spread_c,
                         wx_codes=ref_wx.wx_codes or [],
+                        cloud_cover_pct=getattr(ref_wx, 'cloud_cover_pct', None),
+                        precip_mm=getattr(ref_wx, 'precip_mm', None),
                         flight_category=ref_wx.flight_category,
                         r_vis=getattr(worst, 'r_vis', None),
                         r_ceil=getattr(worst, 'r_ceil', None),
@@ -635,7 +686,35 @@ def _generate_route_waypoints(
                         alt_via=alt_via,
                     )
 
-    return [wp for wp in sequence if isinstance(wp, RouteWaypoint)]
+    final_wps = [wp for wp in sequence if isinstance(wp, RouteWaypoint)]
+
+    # Paso 3: ETA acumulado por waypoint a lo largo de la espina de la ruta.
+    # Se usa la velocidad de crucero ajustada por el viento NWP de cada punto
+    # (cuando está disponible). Los aeródromos de emergencia (fuera de la espina)
+    # heredan el ETA del último punto de la espina.
+    elapsed_h = 0.0
+    prev_pt = None        # (lat, lon) del punto de espina previo
+    last_spine_h = 0.0
+    for wp in final_wps:
+        if wp.is_emergency_airport:
+            wp.elapsed_min = round(last_spine_h * 60)
+            wp.eta_utc     = dep_time + int(last_spine_h * 3600)
+            continue
+        if prev_pt is not None:
+            dist_km = haversine_km(prev_pt[0], prev_pt[1], wp.lat, wp.lon)
+            if dist_km > 0.1:
+                track = bearing_deg(prev_pt[0], prev_pt[1], wp.lat, wp.lon)
+                gs = aircraft.cruise_kt
+                cw = wp.chk_weather
+                if cw and cw.wind_spd_kt is not None and cw.wind_dir is not None and not cw.wind_variable:
+                    gs = effective_groundspeed_kt(aircraft.cruise_kt, cw.wind_dir, cw.wind_spd_kt, track)
+                elapsed_h += leg_time_hours(dist_km, gs)
+        wp.elapsed_min = round(elapsed_h * 60)
+        wp.eta_utc     = dep_time + int(elapsed_h * 3600)
+        last_spine_h   = elapsed_h
+        prev_pt        = (wp.lat, wp.lon)
+
+    return final_wps
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -738,6 +817,70 @@ async def get_airspace():
         }
         result.append(entry)
     return result
+
+
+class TimelineRequest(BaseModel):
+    origin: str
+    dest: str
+    aircraft: str = "Pipistrel Alpha Trainer"
+    origin_runway: int = 180
+    dest_runway: int = 180
+    hours: int = Field(default=24, ge=6, le=48)
+    mock: bool = False
+
+
+@app.post("/api/timeline")
+async def timeline(req: TimelineRequest):
+    """
+    Serie horaria de R_total (GO/CAUTION/NO GO) para origen y destino a lo largo
+    de las próximas `hours` horas. Permite ver a qué hora conviene despegar y
+    derivar la tendencia (mejora/empeora) en la ventana del vuelo.
+    """
+    origin = req.origin.upper().strip()
+    dest   = req.dest.upper().strip()
+    if origin not in AIRPORTS:
+        raise HTTPException(400, f"Aeródromo desconocido: {origin}")
+    if dest not in AIRPORTS:
+        raise HTTPException(400, f"Aeródromo desconocido: {dest}")
+    try:
+        aircraft = get_profile(req.aircraft)
+    except KeyError:
+        raise HTTPException(400, f"Aeronave desconocida: {req.aircraft}")
+
+    o_ap, d_ap = AIRPORTS[origin], AIRPORTS[dest]
+    # Inicio: próxima hora en punto UTC
+    now = int(time.time())
+    start_utc = ((now // 3600) + 1) * 3600
+
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        fut_o = ex.submit(_nwp_series_at_coord, o_ap.lat, o_ap.lon, o_ap.elev_ft * 0.3048,
+                          req.origin_runway, aircraft, req.mock, start_utc, req.hours)
+        fut_d = ex.submit(_nwp_series_at_coord, d_ap.lat, d_ap.lon, d_ap.elev_ft * 0.3048,
+                          req.dest_runway, aircraft, req.mock, start_utc, req.hours)
+        ser_o = fut_o.result()
+        ser_d = fut_d.result()
+
+    # Combinar por hora: la peor de origen/destino manda
+    d_by_t = {p['t']: p for p in ser_d}
+    combined: List[dict] = []
+    for po in ser_o:
+        pd = d_by_t.get(po['t'])
+        if pd is None:
+            continue
+        r_max = max(po['r'], pd['r'])
+        dec = "NO GO" if r_max >= 0.50 else "CAUTION" if r_max >= 0.25 else "GO"
+        combined.append({
+            'hour_utc': po['t'],
+            'r_origin': po['r'], 'dec_origin': po['dec'],
+            'r_dest':   pd['r'], 'dec_dest':   pd['dec'],
+            'r_max': round(r_max, 3), 'dec': dec,
+        })
+
+    return {
+        'origin': origin, 'dest': dest,
+        'start_utc': start_utc, 'hours': req.hours,
+        'series': combined,
+    }
 
 
 @app.post("/api/evaluate", response_model=EvaluateResponse)

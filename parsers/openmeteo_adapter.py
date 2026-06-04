@@ -186,6 +186,12 @@ class OpenMeteoAdapter:
             spread_c        = spread,
             altimeter_hpa   = None,    # no disponible en NWP
             wx_codes        = wx_codes,
+            cloud_cover_pct = _max_cloud_cover(
+                nwp_hour.cloudcover_low_pct,
+                nwp_hour.cloudcover_mid_pct,
+                nwp_hour.cloudcover_high_pct,
+            ),
+            precip_mm       = nwp_hour.precipitation_mm,
             flight_category = flight_cat,
             lat             = lat,
             lon             = lon,
@@ -273,6 +279,12 @@ def _visibility_to_km(visibility_m: Optional[float]) -> Optional[float]:
     if visibility_m is None:
         return None
     return round(visibility_m / 1000.0, 3)
+
+
+def _max_cloud_cover(low, mid, high) -> Optional[int]:
+    """Cobertura total estimada como el maximo de las tres capas NWP (0-100 %)."""
+    vals = [c for c in (low, mid, high) if c is not None]
+    return max(vals) if vals else None
 
 
 def _pct_to_sky_cover(pct: int) -> Optional[str]:

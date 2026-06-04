@@ -442,6 +442,52 @@
       </div>
     </div>
 
+    <!-- ── TIMELINE METEOROLÓGICA ──────────────────────────────────── -->
+    <div class="av-card mb-5" x-show="result && (timeline || timelineLoading)">
+      <div class="flex items-center justify-between mb-3 gap-3 flex-wrap">
+        <h3 class="text-[11px] font-bold tracking-widest uppercase text-muted">Ventana de despegue · próximas horas</h3>
+        <div class="flex items-center gap-3">
+          <!-- Tendencia -->
+          <template x-if="weatherTrend()">
+            <span class="flex items-center gap-1 text-xs font-mono px-2 py-1 rounded-md"
+                  :style="`background:${weatherTrend().color}18; color:${weatherTrend().color}`">
+              <span x-text="weatherTrend().icon" style="font-weight:700"></span>
+              <span x-text="weatherTrend().dir === 'mejora' ? 'Mejorando' : weatherTrend().dir === 'empeora' ? 'Empeorando' : 'Estable'"></span>
+            </span>
+          </template>
+        </div>
+      </div>
+
+      <div x-show="timelineLoading" class="text-xs text-muted font-mono py-3">Cargando pronóstico horario…</div>
+
+      <template x-if="timeline && timeline.series && timeline.series.length">
+        <div>
+          <!-- Barra horaria clickeable -->
+          <div class="flex gap-1 overflow-x-auto pb-1">
+            <template x-for="(p, i) in timeline.series" :key="p.hour_utc">
+              <button @click="pickDeparture(p.hour_utc)"
+                      class="flex flex-col items-center shrink-0 rounded-md transition-all"
+                      style="min-width:30px; padding:5px 2px; border:1px solid transparent"
+                      :style="`background:${decCellColor(p.dec)}22; border-color:${decCellColor(p.dec)}55`"
+                      :title="`R=${p.r_max.toFixed(2)} · ${p.dec}\nOrigen R=${p.r_origin.toFixed(2)} · Destino R=${p.r_dest.toFixed(2)}`">
+                <span class="font-mono text-[10px] font-bold" :style="`color:${decCellColor(p.dec)}`" x-text="hourLabel(p.hour_utc)"></span>
+                <span style="width:7px;height:7px;border-radius:50%;margin-top:3px" :style="`background:${decCellColor(p.dec)}`"></span>
+              </button>
+            </template>
+          </div>
+          <div class="flex items-center justify-between mt-2 text-[10px] font-mono text-muted flex-wrap gap-2">
+            <span>Hora UTC · click para evaluar a esa hora de salida</span>
+            <template x-if="bestDepartureHour()">
+              <span class="text-go">
+                ✓ Mejor ventana: <b x-text="hourLabel(bestDepartureHour().hour_utc) + ':00Z'"></b>
+                (R=<span x-text="bestDepartureHour().r_max.toFixed(2)"></span>)
+              </span>
+            </template>
+          </div>
+        </div>
+      </template>
+    </div>
+
     <!-- WEATHER CARDS -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
       <template x-for="(card, role) in (result ? {origen: result.origin, destino: result.dest} : {})" :key="role">
@@ -694,6 +740,12 @@
               <span style="font-size:9px;font-weight:700;line-height:1" :style="showAirspace ? 'color:#f85149' : 'color:#8b949e'">R</span>
               Espacios aéreos
             </button>
+            <!-- Nubes / Lluvia -->
+            <button @click="toggleWeather()" class="layer-btn" :class="showWeather ? 'active' : ''"
+                    :style="showWeather ? 'border-color:#8b949e60' : ''">
+              <svg width="11" height="9" viewBox="0 0 16 12"><path d="M4 9 h7 a2.5 2.5 0 0 0 0-5 a3.5 3.5 0 0 0-6.7-1 A2.6 2.6 0 0 0 4 9 z" :fill="showWeather ? '#c9d1d9' : '#484f58'"/></svg>
+              Nubes/Lluvia
+            </button>
           </div>
           <!-- Fila 2: alertas -->
           <div class="flex items-center gap-3 text-xs">
@@ -728,6 +780,7 @@
         <span x-show="showDiversions" class="flex items-center gap-1"><svg width="9" height="9" viewBox="0 0 18 18"><polygon points="9,1 17,16 1,16" fill="#d29922"/></svg>Desvío</span>
         <span class="flex items-center gap-1"><span style="width:11px;height:11px;border-radius:3px;background:#3fb950;display:inline-flex;align-items:center;justify-content:center;font-size:7px">⛽</span>Escala combustible</span>
         <span class="flex items-center gap-1"><svg width="11" height="11" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5" fill="#161b22" stroke="#6e7681" stroke-width="1.5"/><path d="M7 4 V10 M4 7 H10" stroke="#6e7681" stroke-width="1.3"/></svg>Aeród. emergencia</span>
+        <span x-show="showWeather" class="flex items-center gap-1"><svg width="13" height="11" viewBox="0 0 16 14"><path d="M4 9 h7 a2.5 2.5 0 0 0 0-5 a3.5 3.5 0 0 0-6.7-1 A2.6 2.6 0 0 0 4 9 z" fill="#c9d1d9" opacity="0.7"/><g stroke="#58a6ff" stroke-width="1.2"><line x1="5.5" y1="10" x2="4.5" y2="13"/><line x1="8" y1="10" x2="7" y2="13"/></g></svg>Nubes/Lluvia</span>
         <span x-show="showAirports" class="flex items-center gap-1"><span style="width:7px;height:7px;border-radius:50%;background:#484f58;display:inline-block"></span>Aeródromo</span>
         <span x-show="showAirspace" class="flex items-center gap-1"><span style="width:7px;height:7px;border-radius:2px;background:#f85149;opacity:0.6;display:inline-block"></span>R/P</span>
         <span x-show="showAirspace" class="flex items-center gap-1"><span style="width:7px;height:7px;border-radius:2px;background:#f0883e;opacity:0.6;display:inline-block"></span>D</span>
@@ -847,6 +900,10 @@ function app() {
     error:         '',
     briefingCopied: false,
 
+    // ── Timeline meteorológica
+    timeline:       null,
+    timelineLoading: false,
+
     // ── Mapa y capas
     _map: null,
     _routeLayer: null,
@@ -854,12 +911,14 @@ function app() {
     _airportLayer: null,
     _airspaceLayer: null,
     _airwayLayer: null,
+    _weatherLayer: null,
     _allAirports: null,
     _airspaceData: null,
     showAirports: true,
     showDiversions: true,
     showAirspace: true,
     showAirways: true,
+    showWeather: true,
     mapHeight: 520,   // altura del mapa en px (persistida en localStorage)
 
     // ── Init
@@ -1003,6 +1062,9 @@ function app() {
 
         this.result = await res.json();
 
+        // Cargar timeline meteorológica en paralelo (no bloquea el render)
+        this.loadTimeline();
+
         // Scroll suave a resultados
         this.$nextTick(() => {
           const el = document.querySelector('.fade-in');
@@ -1014,6 +1076,71 @@ function app() {
       } finally {
         this.loading = false;
       }
+    },
+
+    // ── Timeline meteorológica (serie horaria de R en origen y destino)
+    async loadTimeline() {
+      this.timeline = null;
+      this.timelineLoading = true;
+      try {
+        const res = await fetch('/api/timeline', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            origin: this.form.origin, dest: this.form.dest,
+            aircraft: this.form.aircraft,
+            origin_runway: this.form.origin_runway,
+            dest_runway: this.form.dest_runway,
+            hours: 24, mock: this.form.mock,
+          }),
+        });
+        if (res.ok) this.timeline = await res.json();
+      } catch(e) {
+        // silencioso — la timeline es complementaria
+      } finally {
+        this.timelineLoading = false;
+      }
+    },
+
+    // Color según decisión
+    decCellColor(dec) {
+      return dec === 'NO GO' ? '#f85149' : dec === 'CAUTION' ? '#d29922' : '#3fb950';
+    },
+
+    // Hora corta HH desde unix UTC
+    hourLabel(ts) {
+      return String(new Date(ts * 1000).getUTCHours()).padStart(2, '0');
+    },
+
+    // Elegir una hora de la timeline como hora de despegue y re-evaluar
+    pickDeparture(ts) {
+      const d = new Date(ts * 1000);
+      this.form.departure_time = `${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')}`;
+      this.evaluate();
+    },
+
+    // Tendencia meteo: compara R en las primeras horas de la ventana del vuelo.
+    // Devuelve {dir: 'mejora'|'empeora'|'estable', delta, icon, color}.
+    weatherTrend() {
+      const s = this.timeline?.series;
+      if (!s || s.length < 2) return null;
+      // Ventana: primeras ~4 horas desde el inicio (aprox. duración típica)
+      const n = Math.min(4, s.length - 1);
+      const r0 = s[0].r_max;
+      const r1 = s[n].r_max;
+      const delta = r1 - r0;
+      if (Math.abs(delta) < 0.06) return { dir: 'estable', delta, icon: '→', color: '#8b949e' };
+      if (delta < 0) return { dir: 'mejora', delta, icon: '↓', color: '#3fb950' };
+      return { dir: 'empeora', delta, icon: '↑', color: '#f85149' };
+    },
+
+    // Mejor hora para despegar en las próximas horas (menor R_max)
+    bestDepartureHour() {
+      const s = this.timeline?.series;
+      if (!s || !s.length) return null;
+      let best = s[0];
+      for (const p of s) if (p.r_max < best.r_max) best = p;
+      return best;
     },
 
     // ── Tamaño del mapa
@@ -1050,7 +1177,7 @@ function app() {
         this._map.off();
         this._map.remove();
         this._map = null;
-        this._routeLayer = this._diversionLayer = this._airportLayer = this._airspaceLayer = this._airwayLayer = null;
+        this._routeLayer = this._diversionLayer = this._airportLayer = this._airspaceLayer = this._airwayLayer = this._weatherLayer = null;
       }
 
       const wps = this.result?.route?.waypoints;
@@ -1070,11 +1197,13 @@ function app() {
       this._routeLayer     = L.layerGroup().addTo(this._map);
       this._airwayLayer    = L.layerGroup().addTo(this._map);
       this._diversionLayer = L.layerGroup().addTo(this._map);
+      this._weatherLayer   = L.layerGroup().addTo(this._map);
       this._airportLayer   = L.layerGroup().addTo(this._map);
 
       this._buildRouteLayer();
       if (this.showAirways) this._buildAirwayLayer();
       if (this.showDiversions) this._buildDiversionLayer();
+      if (this.showWeather) this._buildWeatherLayer();
 
       // Zoom/pan → actualizar capa de aeródromos
       this._map.on('zoomend moveend', () => {
@@ -1127,6 +1256,7 @@ function app() {
             <div style="font-size:13px;font-weight:700;color:#e6edf3">${wp.code}</div>
             <div style="font-size:11px;color:#e6edf3;margin:3px 0">${wp.name}</div>
             ${wp.dist_from_prev_km != null ? `<div style="font-size:10px;color:#8b949e">${wp.dist_from_prev_km} km desde el punto previo</div>` : ''}
+            ${this.etaBlock(wp)}
             <div style="font-size:9px;color:#8b949e;margin-top:3px">${fuel ? 'Escala recomendada por alcance de la aeronave' : 'Disponible para desvío de emergencia'}</div>
           </div>`;
 
@@ -1233,6 +1363,7 @@ function app() {
             <div style="font-size:10px;font-weight:600;color:${isFused ? '#58a6ff' : '#8b949e'};margin-bottom:2px">${isFused ? '⊕ CHECKPOINT + AEROVÍA' : '◆ CHECKPOINT EN RUTA'}</div>
             <div style="font-size:11px;color:#e6edf3;margin:3px 0">${wp.name}</div>
             <div style="font-size:12px;font-weight:700;color:${chkColor}">R = ${wp.r_total.toFixed(2)} · ${wp.decision}</div>
+            ${this.etaBlock(wp)}
             ${wp.cruise_alt_ft ? `<div style="font-size:10px;color:#8b949e">Crucero: ${wp.cruise_alt_ft.toLocaleString()} ft</div>` : ''}
             ${awBlock}
             ${meteoBlock}
@@ -1261,6 +1392,7 @@ function app() {
             <div style="font-size:13px;font-weight:700;color:${color}">${wp.code}</div>
             <div style="font-size:11px;color:#e6edf3;margin:3px 0">${wp.name}</div>
             <div style="font-size:10px;color:#8b949e">R = ${wp.r_total.toFixed(2)} · ${wp.decision}</div>
+            ${this.etaBlock(wp)}
             ${fuelOnLine && wp.dist_from_prev_km != null ? `<div style="font-size:9px;color:#8b949e;margin-top:2px">${wp.dist_from_prev_km} km desde el punto previo</div>` : ''}
           </div>`;
 
@@ -1461,6 +1593,7 @@ function app() {
           </div>
           <div style="font-size:13px;font-weight:700;color:#e6edf3">${wp.code}</div>
           ${wp.airway_mea_ft ? `<div style="font-size:10px;color:#8b949e;margin-top:2px">MEA: ${wp.airway_mea_ft.toLocaleString()} ft</div>` : ''}
+          ${this.etaBlock(wp)}
           ${wp.fir_contact ? `
             <div style="border-top:1px solid #30363d;margin-top:5px;padding-top:4px">
               <div style="font-size:11px;font-weight:700;color:#58a6ff">📡 Contactar: ${wp.fir_contact}</div>
@@ -1697,6 +1830,58 @@ function app() {
       }
     },
 
+    toggleWeather() {
+      this.showWeather = !this.showWeather;
+      if (!this._map || !this._weatherLayer) return;
+      if (this.showWeather) this._buildWeatherLayer();
+      else this._weatherLayer.clearLayers();
+    },
+
+    // Capa de nubes/precipitación NWP a lo largo de la ruta.
+    // Dibuja un ícono sobre los puntos con cobertura significativa o lluvia.
+    _buildWeatherLayer() {
+      if (!this._weatherLayer) return;
+      this._weatherLayer.clearLayers();
+      const wps = this.result?.route?.waypoints;
+      if (!wps) return;
+
+      for (const wp of wps) {
+        const cw = wp.chk_weather;
+        if (!cw) continue;
+        const cloud = cw.cloud_cover_pct;
+        const precip = cw.precip_mm || 0;
+        // Omitir cielo despejado y sin lluvia (no satura el mapa)
+        if ((cloud == null || cloud < 35) && precip <= 0) continue;
+
+        // Intensidad de nube → opacidad; precipitación → gota azul
+        const cloudOp = cloud != null ? Math.min(0.9, 0.25 + cloud / 150) : 0;
+        const cloudCol = cloud >= 75 ? '#8b949e' : '#c9d1d9';
+        const rain = precip > 0;
+        const rainCol = precip >= 2 ? '#1f6feb' : '#58a6ff';
+
+        const cloudSvg = cloud != null && cloud >= 35
+          ? `<path d="M4 9 h7 a2.5 2.5 0 0 0 0-5 a3.5 3.5 0 0 0-6.7-1 A2.6 2.6 0 0 0 4 9 z" fill="${cloudCol}" opacity="${cloudOp}"/>`
+          : '';
+        const rainSvg = rain
+          ? `<g stroke="${rainCol}" stroke-width="1.2" stroke-linecap="round" opacity="0.9">
+               <line x1="5.5" y1="10" x2="4.5" y2="13"/><line x1="8" y1="10" x2="7" y2="13"/><line x1="10.5" y1="10" x2="9.5" y2="13"/>
+             </g>` : '';
+
+        const tip = `Nubes: ${cloud != null ? cloud + '%' : '—'}` + (rain ? ` · Lluvia: ${precip} mm/h` : '');
+
+        L.marker([wp.lat, wp.lon], {
+          icon: L.divIcon({
+            className: '',
+            html: `<div title="${tip}" style="margin-top:-15px;margin-left:6px;filter:drop-shadow(0 1px 2px #000)">
+              <svg width="17" height="15" viewBox="0 0 16 14" style="overflow:visible">${cloudSvg}${rainSvg}</svg>
+            </div>`,
+            iconSize: [17, 15], iconAnchor: [0, 0],
+          }),
+          interactive: false,
+        }).addTo(this._weatherLayer);
+      }
+    },
+
     // ── Helpers de display
     decisionColor(d) {
       return d === 'GO' ? '#3fb950' : d === 'CAUTION' ? '#d29922' : '#f85149';
@@ -1720,6 +1905,28 @@ function app() {
       const hh = String(d.getUTCHours()).padStart(2,'0');
       const mm = String(d.getUTCMinutes()).padStart(2,'0');
       return `${dd}/${mo} ${hh}:${mm}Z`;
+    },
+
+    // Hora ETA en formato HH:MMZ
+    formatEta(ts) {
+      if (!ts) return '';
+      const d = new Date(ts * 1000);
+      return `${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')}Z`;
+    },
+
+    // Tiempo transcurrido desde el despegue (+Hh MMm)
+    formatElapsed(min) {
+      if (min == null) return '';
+      const h = Math.floor(min / 60), m = min % 60;
+      return h > 0 ? `+${h}h ${String(m).padStart(2,'0')}m` : `+${m}m`;
+    },
+
+    // Bloque HTML de ETA para popups del mapa
+    etaBlock(wp) {
+      if (wp.eta_utc == null) return '';
+      return `<div style="font-size:10px;color:#8b949e;margin-top:2px">
+        🕓 ETA <span style="color:#e6edf3;font-weight:600">${this.formatEta(wp.eta_utc)}</span>
+        <span style="color:#6e7681">· ${this.formatElapsed(wp.elapsed_min)}</span></div>`;
     },
 
     async copyBriefing() {

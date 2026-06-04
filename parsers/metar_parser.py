@@ -100,6 +100,10 @@ class ParsedWeather:
     wx_codes      : list            = field(default_factory=list)
     # tokens individuales del wx_string, ej: ["-RA", "BR"] o ["TSRA"]
 
+    # ── Nubosidad y precipitacion (NWP; None en METAR) ────────────────────────
+    cloud_cover_pct : Optional[int]   = None   # cobertura total estimada 0-100 %
+    precip_mm       : Optional[float] = None   # precipitacion horaria en mm
+
     # ── Categoria de vuelo (ANAC/OACI) ────────────────────────────────────────
     flight_category : Optional[str] = None   # "VFR" | "MVFR" | "IFR" | "LIFR"
 
