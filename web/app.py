@@ -159,6 +159,10 @@ class RouteWaypoint(BaseModel):
     fir_contact: Optional[str] = None       # "Córdoba Control" — solo en entry
     is_airway_entry: bool = False
     is_airway_exit: bool = False
+    # Aeródromos intermedios (fuera de la línea de aerovía)
+    is_emergency_airport: bool = False      # aeródromo cercano para emergencia/referencia
+    is_fuel_stop: bool = False              # escala de combustible recomendada
+    dist_from_prev_km: Optional[float] = None  # distancia desde el aeródromo previo de la ruta
 
 
 class RouteCard(BaseModel):
@@ -420,6 +424,22 @@ def _generate_route_waypoints(
         leg_dists.append(haversine_km(a.lat, a.lon, b.lat, b.lon) if a and b else 0.0)
     total_route_dist = sum(leg_dists)
 
+    # Determinar escalas de combustible: caminando la ruta por distancia
+    # acumulada, cuando el próximo tramo superaría el alcance útil, el aeródromo
+    # actual (intermedio) se marca como escala de combustible recomendada.
+    fuel_stop_indices: set = set()
+    usable_range = aircraft.range_km * 0.90   # margen de seguridad sobre alcance útil
+    acc = 0.0
+    for i in range(len(leg_dists)):
+        leg = leg_dists[i]
+        if acc + leg > usable_range and i != 0:
+            fuel_stop_indices.add(i)   # repostar en el aeródromo i antes del tramo
+            acc = leg
+        else:
+            acc += leg
+
+    last_idx = len(path) - 1
+
     # Paso 1: construir secuencia ordenada — aeródromos ya completos,
     # waypoints de aerovía ya completos, checkpoints como specs pendientes.
     sequence: list = []
@@ -430,6 +450,17 @@ def _generate_route_waypoints(
         if not ap:
             continue
 
+        # Un aeródromo intermedio sale de la línea de ruta (pasa a ser marcador
+        # de emergencia) SOLO si la aerovía es continua a su alrededor, es decir,
+        # si ambos tramos adyacentes tienen aerovía. Así la aerovía es la espina
+        # de la ruta y el aeródromo queda al costado como referencia.
+        # Si algún tramo adyacente no tiene aerovía, el aeródromo es parte real
+        # de la línea (ruta directa entre aeródromos).
+        is_intermediate = (i != 0 and i != last_idx)
+        leg_before_aw = (path[i-1], path[i]) in airway_map if i > 0 else False
+        leg_after_aw  = (path[i], path[i+1]) in airway_map if i < last_idx else False
+        is_off_spine = is_intermediate and leg_before_aw and leg_after_aw
+
         r_val = r_map.get(code, 0.0)
         dec = "GO" if r_val < 0.25 else "CAUTION" if r_val < 0.50 else "NO GO"
         sequence.append(RouteWaypoint(
@@ -437,6 +468,9 @@ def _generate_route_waypoints(
             lat=ap.lat, lon=ap.lon,
             r_total=r_val, decision=dec,
             is_checkpoint=False, cruise_alt_ft=None,
+            is_emergency_airport=is_off_spine,
+            is_fuel_stop=(i in fuel_stop_indices and is_intermediate),
+            dist_from_prev_km=round(leg_dists[i-1], 1) if i > 0 and i-1 < len(leg_dists) else None,
         ))
 
         if i >= len(path) - 1:
