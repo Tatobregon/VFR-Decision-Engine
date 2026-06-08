@@ -220,6 +220,23 @@
 <!-- ═══════════════════════════════════════════════════════════ APP -->
 <main class="max-w-5xl mx-auto px-4 py-8" x-data="app()" x-init="init()">
 
+  <!-- ── SELECTOR DE MODO ──────────────────────────────────────────── -->
+  <div class="flex gap-1 mb-6 p-1 rounded-xl bg-surface border border-border w-fit">
+    <button @click="mode='ruta'"
+            class="px-4 py-1.5 rounded-lg text-xs font-semibold transition-all"
+            :class="mode==='ruta' ? 'bg-accent/20 text-accent' : 'text-muted hover:text-[#e6edf3]'">
+      ✈ Planificar ruta
+    </button>
+    <button @click="mode='consulta'"
+            class="px-4 py-1.5 rounded-lg text-xs font-semibold transition-all"
+            :class="mode==='consulta' ? 'bg-accent/20 text-accent' : 'text-muted hover:text-[#e6edf3]'">
+      🔎 Consultar aeródromo
+    </button>
+  </div>
+
+  <!-- ═══════════════════ MODO RUTA ═══════════════════ -->
+  <div x-show="mode==='ruta'">
+
   <!-- ── FORM CARD ─────────────────────────────────────────────────── -->
   <div class="av-card mb-6">
     <h2 class="text-[11px] font-semibold tracking-widest uppercase text-muted mb-5">
@@ -907,6 +924,190 @@
     </div>
 
   </div><!-- /results -->
+  </div><!-- /modo ruta -->
+
+  <!-- ═══════════════════ MODO CONSULTA DE AERÓDROMO ═══════════════════ -->
+  <div x-show="mode==='consulta'">
+
+    <!-- Buscador -->
+    <div class="av-card mb-6">
+      <h2 class="text-[11px] font-semibold tracking-widest uppercase text-muted mb-4">Consultar aeródromo</h2>
+      <label class="av-label">Buscar por código o nombre</label>
+      <div class="relative">
+        <input class="av-input" type="text" x-model="querySearch"
+               @input.debounce.300ms="searchQuery()" @focus="queryOpen=true"
+               @click.away="queryOpen=false"
+               placeholder="Ej: SACO, Córdoba, Ushuaia, SAEZ..."/>
+        <div x-show="queryOpen && queryResults.length"
+             class="absolute z-40 w-full mt-1 bg-surface border border-border rounded-lg shadow-xl max-h-72 overflow-y-auto">
+          <template x-for="r in queryResults" :key="r.code">
+            <div @click="selectQueryAirport(r.code)" class="dropdown-item flex items-center gap-2 cursor-pointer">
+              <span class="font-mono font-bold text-accent text-xs w-12" x-text="r.code"></span>
+              <span class="text-xs text-[#e6edf3] flex-1" x-text="r.name"></span>
+              <span class="text-[10px] text-muted" x-text="r.province"></span>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+
+    <!-- Loading -->
+    <div x-show="airportInfoLoading" class="av-card mb-6 text-center text-sm text-muted font-mono py-8">
+      Cargando ficha del aeródromo…
+    </div>
+
+    <!-- FICHA -->
+    <template x-if="airportInfo && !airportInfoLoading">
+      <div class="fade-in">
+        <!-- Encabezado -->
+        <div class="av-card mb-5">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <div class="font-bold text-lg text-[#e6edf3]" x-text="airportInfo.airport.name"></div>
+              <div class="flex items-center gap-2 mt-1 flex-wrap font-mono text-xs">
+                <span class="text-accent font-bold" x-text="airportInfo.airport.code"></span>
+                <span x-show="airportInfo.airport.icao" class="text-muted">ICAO <span x-text="airportInfo.airport.icao"></span></span>
+                <span x-show="airportInfo.airport.local_id" class="text-muted">LOC <span x-text="airportInfo.airport.local_id"></span></span>
+                <span x-show="airportInfo.airport.iata" class="text-muted">IATA <span x-text="airportInfo.airport.iata"></span></span>
+              </div>
+              <div class="text-xs text-muted mt-1">
+                <span x-text="airportInfo.airport.province"></span> ·
+                FIR <span x-text="airportInfo.airport.fir"></span>
+              </div>
+            </div>
+            <div class="flex flex-col items-end gap-1">
+              <span class="cat-tag font-mono text-[10px]"
+                    :style="airportInfo.airport.control==='CONTROLLED' ? 'background:#58a6ff22;color:#58a6ff' : 'background:#8b949e22;color:#8b949e'"
+                    x-text="airportInfo.airport.control==='CONTROLLED' ? 'CONTROLADO' : 'NO CONTROLADO'"></span>
+              <span class="cat-tag font-mono text-[10px]"
+                    :style="airportInfo.airport.is_public ? 'background:#3fb95022;color:#3fb950' : 'background:#d2992222;color:#d29922'"
+                    x-text="airportInfo.airport.is_public ? 'PÚBLICO' : 'PRIVADO'"></span>
+            </div>
+          </div>
+          <!-- Datos clave -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+            <div class="bg-surface rounded-lg px-3 py-2">
+              <div class="text-[9px] text-muted uppercase tracking-wide">Elevación</div>
+              <div class="font-mono text-sm text-[#e6edf3]"><span x-text="airportInfo.airport.elev_ft"></span> ft<span x-show="airportInfo.airport.elev_estimated" class="text-[9px] text-caution"> *est</span></div>
+            </div>
+            <div class="bg-surface rounded-lg px-3 py-2">
+              <div class="text-[9px] text-muted uppercase tracking-wide">Coordenadas</div>
+              <div class="font-mono text-[11px] text-[#e6edf3]" x-text="airportInfo.airport.lat.toFixed(3)+', '+airportInfo.airport.lon.toFixed(3)"></div>
+            </div>
+            <div class="bg-surface rounded-lg px-3 py-2">
+              <div class="text-[9px] text-muted uppercase tracking-wide">Pistas</div>
+              <div class="font-mono text-sm text-[#e6edf3]" x-text="airportInfo.airport.runways.length || '—'"></div>
+            </div>
+            <div class="bg-surface rounded-lg px-3 py-2">
+              <div class="text-[9px] text-muted uppercase tracking-wide">Combustible</div>
+              <div class="font-mono text-[11px] text-[#e6edf3]" x-text="airportInfo.airport.fuel || '—'"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pistas -->
+        <div class="av-card mb-5" x-show="airportInfo.airport.runways.length">
+          <h3 class="text-[11px] font-bold tracking-widest uppercase text-muted mb-3">Pistas</h3>
+          <div class="space-y-2">
+            <template x-for="(rw, i) in airportInfo.airport.runways" :key="i">
+              <div class="bg-surface rounded-lg px-3 py-2 flex items-center gap-3 flex-wrap">
+                <span class="font-mono text-sm font-bold text-accent" x-text="String(Math.round(rw.heading/10)).padStart(2,'0')"></span>
+                <span class="font-mono text-xs text-[#e6edf3]" x-text="rw.heading+'°'"></span>
+                <span class="text-xs text-muted" x-show="rw.length_m" x-text="rw.length_m+'m × '+(rw.width_m||'?')+'m'"></span>
+                <span class="cat-tag text-[10px]" style="background:#8b949e22;color:#8b949e" x-show="rw.surface" x-text="rw.surface"></span>
+              </div>
+            </template>
+          </div>
+        </div>
+        <div class="av-card mb-5" x-show="!airportInfo.airport.runways.length">
+          <div class="text-xs text-muted">Sin datos de pista en el registro MADHEL para este aeródromo.</div>
+        </div>
+
+        <!-- Meteo en vivo -->
+        <div class="av-card mb-5" x-show="airportInfo.weather">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-[11px] font-bold tracking-widest uppercase text-muted">Meteo en vivo</h3>
+            <div class="flex items-center gap-2">
+              <span class="cat-tag font-mono text-[10px]" x-show="airportInfo.weather?.flight_category"
+                    :style="`background:${catColor(airportInfo.weather?.flight_category)}22;color:${catColor(airportInfo.weather?.flight_category)}`"
+                    x-text="airportInfo.weather?.flight_category"></span>
+              <span class="text-[10px] font-mono px-1.5 py-0.5 rounded"
+                    :style="airportInfo.weather?.weather_source==='metar' ? 'background:#3fb95022;color:#3fb950' : 'background:#58a6ff22;color:#58a6ff'"
+                    x-text="airportInfo.weather?.weather_source==='metar' ? 'METAR · obs.' : 'NWP · pronóstico'"></span>
+            </div>
+          </div>
+          <div x-show="airportInfo.weather?.raw_metar" class="font-mono text-[11px] text-[#e6edf3] bg-surface border border-border rounded-lg px-3 py-2 mb-3 break-words" x-text="airportInfo.weather?.raw_metar"></div>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono">
+            <div><span class="text-muted">Viento:</span> <span class="text-[#e6edf3]" x-text="airportInfo.weather?.wind_variable ? 'VRB' : ((airportInfo.weather?.wind_dir!=null?String(airportInfo.weather.wind_dir).padStart(3,'0')+'° ':'')+(airportInfo.weather?.wind_spd_kt!=null?airportInfo.weather.wind_spd_kt+'kt':'—'))"></span></div>
+            <div><span class="text-muted">Vis:</span> <span class="text-[#e6edf3]" x-text="airportInfo.weather?.visibility_km!=null ? (airportInfo.weather.visibility_km>=9.9?'>10km':airportInfo.weather.visibility_km+'km') : '—'"></span></div>
+            <div><span class="text-muted">Techo:</span> <span class="text-[#e6edf3]" x-text="airportInfo.weather?.ceiling_ft!=null ? airportInfo.weather.ceiling_ft+'ft' : 'CLR'"></span></div>
+            <div><span class="text-muted">Temp:</span> <span class="text-[#e6edf3]" x-text="airportInfo.weather?.temp_c!=null ? airportInfo.weather.temp_c+'°C' : '—'"></span></div>
+            <div x-show="airportInfo.weather?.density_alt_ft!=null"><span class="text-muted">Dens.Alt:</span> <span class="text-[#e6edf3]" x-text="Math.round(airportInfo.weather?.density_alt_ft)+'ft'"></span></div>
+            <div x-show="airportInfo.weather?.altimeter_hpa!=null"><span class="text-muted">QNH:</span> <span class="text-[#e6edf3]" x-text="airportInfo.weather?.altimeter_hpa+'hPa'"></span></div>
+          </div>
+        </div>
+
+        <!-- NOTAMs -->
+        <div class="av-card mb-5" x-show="airportInfo.notams && airportInfo.notams.length">
+          <h3 class="text-[11px] font-bold tracking-widest uppercase mb-3" style="color:#d29922">
+            ⚠ NOTAMs activos <span class="text-muted" x-text="`(${airportInfo.notams?.length})`"></span>
+          </h3>
+          <div class="space-y-1.5">
+            <template x-for="n in airportInfo.notams" :key="n.notam_id">
+              <div class="bg-caution/5 border border-caution/25 rounded-lg px-3 py-2">
+                <div class="flex items-center justify-between gap-2 mb-1">
+                  <span class="font-mono text-[10px] font-bold" style="color:#d29922" x-text="n.notam_id"></span>
+                  <span class="font-mono text-[9px] text-muted" x-text="fmtNotamDates(n)"></span>
+                </div>
+                <div class="font-mono text-[10px] text-[#e6edf3] break-words leading-relaxed" x-text="n.message"></div>
+              </div>
+            </template>
+          </div>
+          <div class="text-[8px] text-muted mt-1">Fuente: AIS / ANAC</div>
+        </div>
+
+        <!-- Servicios y normas -->
+        <div class="av-card mb-5" x-show="airportInfo.airport.schedule || airportInfo.airport.phones.length || airportInfo.airport.norms">
+          <h3 class="text-[11px] font-bold tracking-widest uppercase text-muted mb-3">Servicios</h3>
+          <div class="space-y-2 text-xs">
+            <div x-show="airportInfo.airport.schedule"><span class="text-muted">Horario:</span> <span class="text-[#e6edf3]" x-text="airportInfo.airport.schedule"></span></div>
+            <div x-show="airportInfo.airport.phones.length"><span class="text-muted">Teléfonos:</span> <span class="text-[#e6edf3] font-mono" x-text="airportInfo.airport.phones.join(' · ')"></span></div>
+            <div x-show="airportInfo.airport.norms"><span class="text-muted">Normas particulares:</span> <div class="text-[#e6edf3] mt-1 leading-relaxed" x-text="airportInfo.airport.norms"></div></div>
+          </div>
+        </div>
+
+        <!-- Espacio aéreo y cercanos -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
+          <div class="av-card" x-show="airportInfo.airspace && airportInfo.airspace.length">
+            <h3 class="text-[11px] font-bold tracking-widest uppercase text-muted mb-3">Espacio aéreo cercano</h3>
+            <div class="space-y-1.5">
+              <template x-for="z in airportInfo.airspace" :key="z.name">
+                <div class="flex items-center gap-2 text-xs">
+                  <span class="cat-tag text-[9px] font-mono"
+                        :style="z.is_restricted ? 'background:#f8514922;color:#f85149' : 'background:#58a6ff22;color:#58a6ff'"
+                        x-text="z.zone_type"></span>
+                  <span class="text-[#e6edf3] flex-1" x-text="z.name"></span>
+                  <span class="text-muted font-mono text-[10px]" x-text="z.floor_ft+'-'+z.ceiling_ft+'ft'"></span>
+                </div>
+              </template>
+            </div>
+          </div>
+          <div class="av-card" x-show="airportInfo.nearby && airportInfo.nearby.length">
+            <h3 class="text-[11px] font-bold tracking-widest uppercase text-muted mb-3">Aeródromos cercanos</h3>
+            <div class="space-y-1.5">
+              <template x-for="n in airportInfo.nearby" :key="n.code">
+                <div @click="selectQueryAirport(n.code)" class="flex items-center gap-2 text-xs cursor-pointer hover:bg-surface rounded px-1 py-0.5">
+                  <span class="font-mono font-bold text-accent w-12" x-text="n.code"></span>
+                  <span class="text-[#e6edf3] flex-1" x-text="n.name"></span>
+                  <span class="text-muted font-mono text-[10px]" x-text="n.dist_km+'km'"></span>
+                </div>
+              </template>
+            </div>
+          </div>
+        </div>
+      </div>
+    </template>
+  </div><!-- /modo consulta -->
 
 </main>
 
@@ -953,6 +1154,14 @@ function app() {
     // ── Perfil vertical de ruta
     profile:        null,
     profileLoading: false,
+
+    // ── Modo / consulta de aeródromo
+    mode:           'ruta',
+    querySearch:    '',
+    queryResults:   [],
+    queryOpen:      false,
+    airportInfo:    null,
+    airportInfoLoading: false,
 
     // ── Mapa y capas
     _map: null,
@@ -1219,6 +1428,32 @@ function app() {
         // silencioso — el perfil es complementario
       } finally {
         this.profileLoading = false;
+      }
+    },
+
+    // ── Consulta de aeródromo
+    async searchQuery() {
+      const q = this.querySearch.trim();
+      if (q.length < 2) { this.queryResults = []; return; }
+      try {
+        const res = await fetch(`/api/airports?q=${encodeURIComponent(q)}&limit=8`);
+        if (res.ok) { this.queryResults = await res.json(); this.queryOpen = true; }
+      } catch(e) {}
+    },
+
+    async selectQueryAirport(code) {
+      this.queryOpen = false;
+      this.queryResults = [];
+      this.querySearch = code;
+      this.airportInfo = null;
+      this.airportInfoLoading = true;
+      try {
+        const res = await fetch(`/api/airport/${encodeURIComponent(code)}`);
+        if (res.ok) this.airportInfo = await res.json();
+      } catch(e) {
+        // silencioso
+      } finally {
+        this.airportInfoLoading = false;
       }
     },
 

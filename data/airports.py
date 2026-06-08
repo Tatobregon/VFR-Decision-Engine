@@ -13,15 +13,17 @@ Para regenerar el cache ejecutar:
     python data/fetcher_madhel.py --force
 """
 
+import csv
 import json
 import os
 import re
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Dict, List, Optional, Tuple
 
-_DATA_DIR     = os.path.dirname(os.path.abspath(__file__))
-_MADHEL_CACHE = os.path.join(_DATA_DIR, "madhel_cache.json")
+_DATA_DIR      = os.path.dirname(os.path.abspath(__file__))
+_MADHEL_CACHE  = os.path.join(_DATA_DIR, "madhel_cache.json")
+_RUNWAYS_CSV   = os.path.join(_DATA_DIR, "runways.csv")
 
 _NAME_RE = re.compile(r'^(.+?)\s+-\s+\(')
 _RWY_RE  = re.compile(r'(\d+)/(\d+)\s+(\d+)x(\d+)\s+M\s*[-–]\s*([A-Z]+)', re.IGNORECASE)
@@ -289,10 +291,99 @@ def _load_from_madhel(cache_path: str) -> Dict[str, AirportInfo]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Pistas de OurAirports (runways.csv) — completan los aeródromos a los que
+# MADHEL no les trae datos de pista (típicamente los grandes/controlados).
+# ─────────────────────────────────────────────────────────────────────────────
+
+_SURFACE_MAP = {
+    "ASP": "ASFALTO", "ASPH": "ASFALTO", "CON": "CONCRETO", "CONC": "CONCRETO",
+    "PEM": "PAVIMENTO", "PER": "PAVIMENTO", "BIT": "ASFALTO",
+    "GRS": "CESPED", "GRASS": "CESPED", "TURF": "CESPED",
+    "GVL": "RIPIO", "GRVL": "RIPIO", "GRE": "RIPIO",
+    "DIRT": "TIERRA", "EARTH": "TIERRA", "SAN": "ARENA", "CLAY": "TIERRA",
+}
+
+
+def _surface_label(code: str) -> str:
+    c = (code or "").strip().upper()
+    return _SURFACE_MAP.get(c, c or "")
+
+
+def _load_ourairports_runways(csv_path: str) -> Dict[str, List[RunwayInfo]]:
+    """
+    Lee runways.csv (OurAirports) y devuelve {ICAO: [RunwayInfo, ...]}.
+    Cada pista física genera una RunwayInfo por cabecera (le/he), como MADHEL.
+    """
+    if not os.path.exists(csv_path):
+        return {}
+
+    def _f(v):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    out: Dict[str, List[RunwayInfo]] = {}
+    with open(csv_path, encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            if (row.get("closed") or "0").strip() == "1":
+                continue
+            ident = (row.get("airport_ident") or "").strip().upper()
+            if not ident:
+                continue
+            length_ft = _f(row.get("length_ft"))
+            width_ft  = _f(row.get("width_ft"))
+            length_m  = int(round(length_ft * 0.3048)) if length_ft else None
+            width_m   = int(round(width_ft * 0.3048)) if width_ft else None
+            surface   = _surface_label(row.get("surface"))
+
+            for pfx in ("le", "he"):
+                rid = (row.get(f"{pfx}_ident") or "").strip()
+                if not rid:
+                    continue
+                hdg = _f(row.get(f"{pfx}_heading_degT"))
+                # Si no hay rumbo, derivarlo del número de pista (ej. "13" → 130°)
+                if hdg is None:
+                    num = re.match(r"(\d+)", rid)
+                    hdg = int(num.group(1)) * 10 if num else 0
+                hdg = int(round(hdg)) % 360
+                dims = []
+                if length_m: dims.append(f"{length_m}m")
+                if width_m:  dims.append(f"x {width_m}m")
+                if surface:  dims.append(f" {surface}")
+                dim_str = " ".join(dims).replace("m x", "m x")
+                out.setdefault(ident, []).append(RunwayInfo(
+                    label    = f"Pista {rid}  -  {hdg:03d}°" + (f"  ({dim_str})" if dim_str else ""),
+                    heading  = hdg,
+                    length_m = length_m,
+                    width_m  = width_m,
+                    surface  = surface,
+                    thr_lat  = _f(row.get(f"{pfx}_latitude_deg")),
+                    thr_lon  = _f(row.get(f"{pfx}_longitude_deg")),
+                ))
+    return out
+
+
+def _complete_runways(airports: Dict[str, AirportInfo]) -> Dict[str, AirportInfo]:
+    """Completa con OurAirports las pistas de aeródromos que MADHEL dejó vacías."""
+    oa = _load_ourairports_runways(_RUNWAYS_CSV)
+    if not oa:
+        return airports
+    for code, info in list(airports.items()):
+        if info.runways:
+            continue
+        key = (info.icao_code or code or "").upper()
+        rwys = oa.get(key)
+        if rwys:
+            airports[code] = replace(info, runways=tuple(rwys))
+    return airports
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Carga al importar
 # ─────────────────────────────────────────────────────────────────────────────
 
-AIRPORTS: Dict[str, AirportInfo] = _load_from_madhel(_MADHEL_CACHE)
+AIRPORTS: Dict[str, AirportInfo] = _complete_runways(_load_from_madhel(_MADHEL_CACHE))
 
 # Solo aerodromos publicos — para grafo de rutas (waypoints)
 AIRPORTS_PUBLIC: Dict[str, AirportInfo] = {

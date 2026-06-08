@@ -29,6 +29,8 @@ from pydantic import BaseModel, Field
 
 from data.airports import AIRPORTS, AirportInfo
 from data.airspace import AIRSPACE_ZONES
+from data.fir_zones import get_fir
+from data.fetcher_aviationweather import AviationWeatherFetcher
 from data.fetcher_openmeteo import OpenMeteoFetcher
 from parsers.openmeteo_adapter import OpenMeteoAdapter
 from decision.engine import DecisionEngine
@@ -788,6 +790,107 @@ async def search_airports(q: str = "", limit: int = 10):
         x["name"],
     ))
     return results[:limit]
+
+
+@app.get("/api/airport/{code}")
+async def airport_info(code: str):
+    """
+    Ficha completa de un aeródromo: datos físicos (MADHEL/ANAC), pistas,
+    servicios, meteo en vivo (METAR/NWP + categoría + density altitude),
+    NOTAMs activos (ANAC), espacio aéreo cercano y aeródromos cercanos.
+    """
+    code = code.upper().strip()
+    ap = AIRPORTS.get(code)
+    if ap is None:
+        raise HTTPException(404, f"Aeródromo desconocido: {code}")
+
+    rwh = ap.runways[0].heading if ap.runways else 180
+
+    # NOTAMs (ANAC) y meteo (engine) en paralelo
+    notams = []
+    weather_card = None
+    try:
+        av = AviationWeatherFetcher(mock=False)
+    except Exception:
+        av = None
+
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        fut_notam = ex.submit(av.get_notams, code) if av else None
+        def _eval_weather():
+            try:
+                engine = DecisionEngine(mock=False, aircraft=get_profile("Pipistrel Alpha Trainer"))
+                return engine.evaluate(code, rwh, int(time.time()) + 600, 1.0)
+            except Exception as e:
+                logger.warning(f"Error meteo ficha {code}: {e}")
+                return None
+        fut_wx = ex.submit(_eval_weather)
+        if fut_notam is not None:
+            try:
+                notams = fut_notam.result() or []
+            except Exception:
+                notams = []
+        wx_result = fut_wx.result()
+
+    if wx_result is not None:
+        try:
+            weather_card = _to_card(wx_result, rwh, ap, notams)
+        except Exception as e:
+            logger.warning(f"Error armando card ficha {code}: {e}")
+
+    # Si la meteo falló, igual exponer los NOTAMs sueltos
+    notam_models = [
+        Notam(notam_id=n.notam_id, message=n.message, start_date=n.start_date,
+              end_date=n.end_date, q_code=n.q_code)
+        for n in notams
+    ]
+
+    # Espacio aéreo: zonas cuyo aeródromo cae dentro o muy cerca
+    airspace = []
+    for z in AIRSPACE_ZONES:
+        d = haversine_km(ap.lat, ap.lon, z.center_lat, z.center_lon)
+        if d <= z.radius_km + 15.0:   # dentro de la zona o en su borde
+            airspace.append({
+                "name": z.name, "zone_type": z.zone_type,
+                "is_restricted": z.is_restricted, "is_controlled": z.is_controlled,
+                "floor_ft": z.floor_ft, "ceiling_ft": z.ceiling_ft,
+                "dist_km": round(d, 1), "notes": z.notes,
+            })
+    airspace.sort(key=lambda x: x["dist_km"])
+
+    # Aeródromos cercanos (otros, dentro de 60 km)
+    nearby = []
+    for c2, ap2 in AIRPORTS.items():
+        if c2 == code:
+            continue
+        d = haversine_km(ap.lat, ap.lon, ap2.lat, ap2.lon)
+        if d <= 60.0:
+            nearby.append({"code": c2, "name": ap2.name, "dist_km": round(d, 1),
+                           "elev_ft": ap2.elev_ft, "lat": ap2.lat, "lon": ap2.lon})
+    nearby.sort(key=lambda x: x["dist_km"])
+
+    return {
+        "airport": {
+            "code": ap.code, "name": ap.name,
+            "icao": ap.icao_code, "local_id": ap.local_id, "iata": ap.iata_code,
+            "lat": ap.lat, "lon": ap.lon,
+            "elev_ft": ap.elev_ft, "elev_estimated": ap.elev_estimated,
+            "province": ap.province, "municipality": ap.municipality,
+            "fir": get_fir(ap.lat, ap.lon),
+            "is_public": ap.is_public, "condition": ap.condition, "control": ap.control,
+            "fuel": ap.fuel, "schedule": ap.schedule, "phones": list(ap.phones),
+            "norms": ap.norms_particular,
+            "runways": [
+                {"label": r.label, "heading": r.heading, "length_m": r.length_m,
+                 "width_m": r.width_m, "surface": r.surface,
+                 "thr_lat": r.thr_lat, "thr_lon": r.thr_lon}
+                for r in ap.runways
+            ],
+        },
+        "weather": weather_card,
+        "notams": notam_models,
+        "airspace": airspace[:8],
+        "nearby": nearby[:6],
+    }
 
 
 @app.get("/api/aircraft")
