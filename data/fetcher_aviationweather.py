@@ -472,17 +472,16 @@ def _parse_anac_notams(code: str, html_text: str) -> list:
         start = end = ""
         text_parts: list = []
         for p in re.findall(r"<p[^>]*>(.*?)</p>", info_m.group(1), re.DOTALL | re.IGNORECASE):
-            # El span de "Versión en Español" separa inglés/español: convertir a salto
-            p2 = re.sub(r"<span[^>]*>(.*?)</span>", r"\n\1 ", p, flags=re.DOTALL | re.IGNORECASE)
-            # Limpiar respetando el salto introducido
-            txt = "\n".join(_clean_html(line) for line in p2.split("\n") if _clean_html(line))
-            flat = txt.replace("\n", " ")
+            # El NOTAM original (formato ICAO) está antes del span
+            # "Versión en Español:". Descartar la traducción duplicada.
+            p_main = re.split(r"<span[^>]*>", p, maxsplit=1, flags=re.IGNORECASE)[0]
+            flat = _clean_html(p_main)
             if flat.startswith("Desde:"):
                 start = flat.replace("Desde:", "").strip()
             elif flat.startswith("Hasta:"):
                 end = flat.replace("Hasta:", "").strip()
-            elif txt:
-                text_parts.append(txt)
+            elif flat:
+                text_parts.append(flat)
 
         message = "\n".join(text_parts).strip()
         if not notam_id or notam_id == "?":
