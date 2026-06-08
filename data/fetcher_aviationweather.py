@@ -19,6 +19,9 @@ Para desarrollo sin conexion, activar modo mock:
     fetcher = AviationWeatherFetcher(mock=True)
 """
 
+import os
+import re
+import html as _html
 import time
 import logging
 from dataclasses import dataclass, field
@@ -35,7 +38,12 @@ logger = logging.getLogger(__name__)
 BASE_URL       = "https://aviationweather.gov/api/data"
 METAR_ENDPOINT = f"{BASE_URL}/metar"
 TAF_ENDPOINT   = f"{BASE_URL}/taf"
-NOTAM_ENDPOINT = f"{BASE_URL}/notam"
+
+# NOTAMs: aviationweather.gov NO sirve NOTAMs internacionales. Se usa la fuente
+# oficial argentina (AIS de ANAC). Endpoint POST que devuelve una tabla HTML
+# de NOTAMs por aeródromo. El parámetro 'indicador' es el código local del
+# aeródromo (local_id de MADHEL: CBA=Córdoba, AER=Aeroparque, EZE=Ezeiza...).
+ANAC_NOTAM_URL = "https://ais.anac.gob.ar/notam/pib"
 
 DEFAULT_HEADERS = {
     "User-Agent" : "VFR-GONOGO/1.0 (aviation decision support tool)",
@@ -381,33 +389,126 @@ class AviationWeatherFetcher:
     def get_metar_and_taf(self, icao: str) -> tuple[Optional[RawMetar], Optional[RawTaf]]:
         return self.get_metar(icao), self.get_taf(icao)
 
-    def get_notams(self, icao: str) -> list:
+    def get_notams(self, code: str) -> list:
         """
-        Devuelve lista de RawNotam activos para el aeropuerto.
-        Retorna lista vacia si no hay NOTAMs o si el aeropuerto no tiene ICAO.
-        """
-        icao = icao.upper().strip()
-        logger.info(f"Obteniendo NOTAMs para {icao} (mock={self.mock})")
-        if self.mock:
-            raw_data = _mock_notams_saco() if icao == "SACO" else []
-        else:
-            try:
-                raw_data = self._get(NOTAM_ENDPOINT, params={"ids": icao, "format": "json"})
-            except Exception as exc:
-                logger.warning(f"Error obteniendo NOTAMs para {icao}: {exc}")
-                return []
+        Devuelve lista de RawNotam activos para el aeródromo, desde el AIS de
+        ANAC (fuente oficial argentina).
 
-        notams = []
-        for item in raw_data:
-            notams.append(RawNotam(
-                icao_id   = icao,
-                notam_id  = str(item.get("id", "?")),
-                message   = str(item.get("message", "")).strip(),
-                start_date= str(item.get("startDate", "")),
-                end_date  = str(item.get("endDate", "N/A")),
-                q_code    = str(item.get("Qcode", "")),
-            ))
-        return notams
+        `code` puede ser código ICAO o local_id; se resuelve al código local
+        (indicador) que usa ANAC. Retorna lista vacía ante cualquier fallo.
+        """
+        code = code.upper().strip()
+        indicador = _resolve_anac_indicador(code)
+        logger.info(f"Obteniendo NOTAMs para {code} (indicador={indicador}, mock={self.mock})")
+
+        if self.mock:
+            raw_items = _mock_notams_saco() if code in ("SACO", "CBA") else []
+            return [_parse_mock_notam(code, it) for it in raw_items]
+
+        if not indicador:
+            return []
+
+        try:
+            resp = requests.post(
+                ANAC_NOTAM_URL,
+                data={"indicador": indicador},
+                headers={
+                    "User-Agent":       DEFAULT_HEADERS["User-Agent"],
+                    "Content-Type":     "application/x-www-form-urlencoded; charset=UTF-8",
+                    "X-Requested-With": "XMLHttpRequest",
+                    "Referer":          "https://ais.anac.gob.ar/notam",
+                    "Accept":           "*/*",
+                },
+                timeout=REQUEST_TIMEOUT,
+            )
+            resp.raise_for_status()
+            html_text = resp.text
+        except Exception as exc:
+            logger.warning(f"Error obteniendo NOTAMs ANAC para {code}: {exc}")
+            return []
+
+        return _parse_anac_notams(code, html_text)
+
+
+def _resolve_anac_indicador(code: str) -> str:
+    """
+    Resuelve el código local (indicador ANAC) de un aeródromo a partir de su
+    código ICAO o local_id. ANAC usa el local_id de MADHEL (CBA, AER, EZE...).
+    """
+    try:
+        from data.airports import AIRPORTS
+        ap = AIRPORTS.get(code)
+        if ap and ap.local_id:
+            return ap.local_id.upper()
+    except Exception:
+        pass
+    return code
+
+
+def _clean_html(s: str) -> str:
+    """Quita tags HTML, desescapa entidades y normaliza espacios."""
+    s = re.sub(r"<[^>]+>", " ", s)
+    s = _html.unescape(s)
+    return " ".join(s.split())
+
+
+def _parse_anac_notams(code: str, html_text: str) -> list:
+    """
+    Parsea la tabla HTML del AIS de ANAC. Cada fila tiene:
+      <td id="place"><p>ID</p><p>nombre</p><p>(cod)</p></td>
+      <td id="info"><p>Desde: ...</p><p>Hasta: ...</p><p>texto EN <span>Versión en Español:</span> texto ES</p></td>
+    """
+    notams: list = []
+    rows = re.findall(r"<tr>(.*?)</tr>", html_text, re.DOTALL | re.IGNORECASE)
+    for row in rows:
+        place_m = re.search(r'id="place".*?>(.*?)</td>', row, re.DOTALL | re.IGNORECASE)
+        info_m  = re.search(r'id="info".*?>(.*?)</td>',  row, re.DOTALL | re.IGNORECASE)
+        if not place_m or not info_m:
+            continue
+
+        place_ps = re.findall(r"<p[^>]*>(.*?)</p>", place_m.group(1), re.DOTALL | re.IGNORECASE)
+        notam_id = _clean_html(place_ps[0]) if place_ps else "?"
+
+        start = end = ""
+        text_parts: list = []
+        for p in re.findall(r"<p[^>]*>(.*?)</p>", info_m.group(1), re.DOTALL | re.IGNORECASE):
+            # El span de "Versión en Español" separa inglés/español: convertir a salto
+            p2 = re.sub(r"<span[^>]*>(.*?)</span>", r"\n\1 ", p, flags=re.DOTALL | re.IGNORECASE)
+            # Limpiar respetando el salto introducido
+            txt = "\n".join(_clean_html(line) for line in p2.split("\n") if _clean_html(line))
+            flat = txt.replace("\n", " ")
+            if flat.startswith("Desde:"):
+                start = flat.replace("Desde:", "").strip()
+            elif flat.startswith("Hasta:"):
+                end = flat.replace("Hasta:", "").strip()
+            elif txt:
+                text_parts.append(txt)
+
+        message = "\n".join(text_parts).strip()
+        if not notam_id or notam_id == "?":
+            continue
+        notams.append(RawNotam(
+            icao_id   = code,
+            notam_id  = notam_id,
+            message   = message,
+            start_date= start,
+            end_date  = end,
+            q_code    = "",
+            source    = "ais.anac.gob.ar",
+        ))
+    return notams
+
+
+def _parse_mock_notam(icao: str, item: dict) -> RawNotam:
+    """Convierte un NOTAM mock (formato legacy) en RawNotam."""
+    return RawNotam(
+        icao_id   = icao,
+        notam_id  = str(item.get("id", "?")),
+        message   = str(item.get("message", "")).strip(),
+        start_date= str(item.get("startDate", "")),
+        end_date  = str(item.get("endDate", "N/A")),
+        q_code    = str(item.get("Qcode", "")),
+    )
 
 
 # ──────────────────────────────────────────────────────────────────────────────

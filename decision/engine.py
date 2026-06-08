@@ -165,10 +165,15 @@ class DecisionEngine:
             f"dep={departure_time} | dur={flight_duration_h}h"
         )
 
-        if sid in NWP_STATIONS:
-            return self._evaluate_nwp(sid, runway_heading, departure_time, flight_duration_h)
-        else:
+        # Preferir METAR (observación real) cuando el aeródromo tiene código ICAO
+        # —requisito para reportar METAR—. Si el aeródromo no tiene METAR
+        # disponible, _evaluate_metar cae automáticamente a NWP (pronóstico).
+        # Aeródromos sin ICAO (rurales solo con identificador local) usan NWP
+        # directamente, sin intentar METAR.
+        ap = AIRPORTS.get(sid)
+        if ap is not None and ap.icao_code:
             return self._evaluate_metar(sid, runway_heading, departure_time, flight_duration_h)
+        return self._evaluate_nwp(sid, runway_heading, departure_time, flight_duration_h)
 
     # ── Path NWP (SACC y similares) ───────────────────────────────────────────
 
@@ -258,7 +263,9 @@ class DecisionEngine:
         raw_metar, raw_taf = self._aw.get_metar_and_taf(sid)
 
         if raw_metar is None:
-            return self._no_data(sid, "metar")
+            # El aeródromo tiene ICAO pero no reporta METAR (ej. SACC) → NWP.
+            logger.info(f"{sid} sin METAR disponible — usando NWP")
+            return self._evaluate_nwp(sid, runway_heading, departure_time, flight_duration_h)
 
         weather = self._metar_parser.parse(raw_metar)
 

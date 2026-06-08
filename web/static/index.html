@@ -496,7 +496,10 @@
               <div class="flex items-center gap-2 mt-1">
                 <span class="font-mono text-xs text-accent font-bold" x-text="card.station_id"></span>
                 <span class="text-xs text-muted" x-text="`${card.elev_ft} ft MSL`"></span>
-                <span class="text-xs text-muted" x-text="card.weather_source === 'nwp' ? '· NWP' : '· METAR'"></span>
+                <span class="text-[10px] font-mono px-1.5 py-0.5 rounded"
+                      :style="card.weather_source === 'metar' ? 'background:#3fb95022;color:#3fb950' : 'background:#58a6ff22;color:#58a6ff'"
+                      :title="card.weather_source === 'metar' ? 'Observación real de estación' : 'Pronóstico numérico (modelo)'"
+                      x-text="card.weather_source === 'metar' ? 'METAR · obs.' : 'NWP · pronóstico'"></span>
               </div>
             </div>
             <div class="flex flex-col items-end gap-2">
@@ -509,6 +512,32 @@
                     :style="`background:${catColor(card.flight_category)}22; color:${catColor(card.flight_category)}`"
                     x-text="card.flight_category">
               </span>
+            </div>
+          </div>
+
+          <!-- METAR crudo (observación real) -->
+          <div x-show="card.raw_metar" class="mb-3">
+            <div class="text-[9px] text-muted uppercase tracking-widest mb-1">METAR observado</div>
+            <div class="font-mono text-[11px] text-[#e6edf3] bg-surface border border-border rounded-lg px-3 py-2 break-words leading-relaxed"
+                 x-text="card.raw_metar"></div>
+          </div>
+
+          <!-- NOTAMs activos -->
+          <div x-show="card.notams && card.notams.length" class="mb-3">
+            <div class="text-[9px] uppercase tracking-widest mb-1" style="color:#d29922">
+              ⚠ NOTAM<span x-show="card.notams.length > 1">s</span>
+              <span class="text-muted" x-text="`(${card.notams?.length})`"></span>
+            </div>
+            <div class="space-y-1.5">
+              <template x-for="n in card.notams" :key="n.notam_id">
+                <div class="bg-caution/5 border border-caution/25 rounded-lg px-3 py-2">
+                  <div class="flex items-center justify-between gap-2 mb-1">
+                    <span class="font-mono text-[10px] font-bold" style="color:#d29922" x-text="n.notam_id"></span>
+                    <span class="font-mono text-[9px] text-muted" x-text="fmtNotamDates(n)"></span>
+                  </div>
+                  <div class="font-mono text-[10px] text-[#e6edf3] break-words leading-relaxed whitespace-pre-wrap" x-text="n.message"></div>
+                </div>
+              </template>
             </div>
           </div>
 
@@ -2058,6 +2087,20 @@ function app() {
       if (min == null) return '';
       const h = Math.floor(min / 60), m = min % 60;
       return h > 0 ? `+${h}h ${String(m).padStart(2,'0')}m` : `+${m}m`;
+    },
+
+    // Rango de fechas de un NOTAM (compacto, UTC)
+    fmtNotamDates(n) {
+      const fmt = (s) => {
+        if (!s) return '';
+        if (/perm/i.test(s)) return 'PERM';
+        const m = String(s).match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+        return m ? `${m[3]}/${m[2]} ${m[4]}:${m[5]}Z` : String(s).slice(0, 16);
+      };
+      const a = fmt(n.start_date), b = fmt(n.end_date);
+      if (a && b) return `${a} → ${b}`;
+      if (b) return `hasta ${b}`;
+      return a;
     },
 
     // Bloque HTML de ETA para popups del mapa

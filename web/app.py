@@ -68,6 +68,14 @@ class EvaluateRequest(BaseModel):
     duration_hours: float = 0.0   # ignorado; calculado internamente desde la ruta
 
 
+class Notam(BaseModel):
+    notam_id: str
+    message: str
+    start_date: str = ""
+    end_date: str = ""
+    q_code: str = ""
+
+
 class WeatherCard(BaseModel):
     station_id: str
     name: str
@@ -75,6 +83,8 @@ class WeatherCard(BaseModel):
     decision: str
     r_total: float
     weather_source: str
+    raw_metar: Optional[str] = None    # texto crudo del METAR (si la fuente es metar)
+    notams: List[Notam] = []           # NOTAMs activos del aeródromo
     hard_blocked: bool
     blocker_summary: str
     wind_dir: Optional[int] = None
@@ -209,8 +219,18 @@ def _parse_dep_time(s: str) -> int:
         return int(time.time()) + 3600
 
 
-def _to_card(result, runway_heading: int, ap: AirportInfo) -> WeatherCard:
+def _to_card(result, runway_heading: int, ap: AirportInfo, notams: list = None) -> WeatherCard:
     wx = result.weather
+    notam_models = [
+        Notam(
+            notam_id   = n.notam_id,
+            message    = n.message,
+            start_date = n.start_date,
+            end_date   = n.end_date,
+            q_code     = n.q_code,
+        )
+        for n in (notams or [])
+    ]
 
     xwind = headwind = None
     if wx:
@@ -243,6 +263,8 @@ def _to_card(result, runway_heading: int, ap: AirportInfo) -> WeatherCard:
         decision        = result.decision,
         r_total         = round(result.r_total, 3),
         weather_source  = result.weather_source,
+        raw_metar       = (wx.raw_string if (wx and result.weather_source == "metar") else None),
+        notams          = notam_models,
         hard_blocked    = result.hard_blocked,
         blocker_summary = result.blocker_summary,
         wind_dir        = wx.wind_dir if wx else None,
@@ -1172,8 +1194,8 @@ async def evaluate(req: EvaluateRequest):
 
     return EvaluateResponse(
         global_decision = global_dec,
-        origin          = _to_card(origin_result, req.origin_runway, orig_ap),
-        dest            = _to_card(dest_result,   req.dest_runway,   dest_ap),
+        origin          = _to_card(origin_result, req.origin_runway, orig_ap, notams_orig),
+        dest            = _to_card(dest_result,   req.dest_runway,   dest_ap, notams_dest),
         route           = route_card,
         briefing        = briefing_text,
     )
