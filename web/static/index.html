@@ -78,6 +78,23 @@
 
     .fade-in { animation: fadeIn 0.5s ease forwards; }
 
+    [x-cloak] { display: none !important; }
+
+    /* Disclaimer modal */
+    .disclaimer-backdrop {
+      position: fixed; inset: 0; z-index: 100;
+      background: rgba(8,11,16,0.72);
+      backdrop-filter: blur(7px); -webkit-backdrop-filter: blur(7px);
+      display: flex; align-items: center; justify-content: center;
+      padding: 20px;
+    }
+    .disclaimer-card {
+      max-width: 560px; width: 100%;
+      background: #0f141b; border: 1px solid #30363d; border-radius: 14px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+      padding: 28px 26px;
+    }
+
     /* Input & Select estilos */
     .av-input {
       background: #0d1117;
@@ -219,6 +236,47 @@
 
 <!-- ═══════════════════════════════════════════════════════════ APP -->
 <main class="max-w-5xl mx-auto px-4 py-8" x-data="app()" x-init="init()">
+
+  <!-- ── DISCLAIMER (cobertura de responsabilidad) ─────────────────── -->
+  <div x-show="showDisclaimer" x-cloak class="disclaimer-backdrop" x-transition.opacity>
+    <div class="disclaimer-card">
+      <div class="flex items-center gap-3 mb-4">
+        <span class="text-2xl">⚠️</span>
+        <div>
+          <div class="text-[10px] font-bold tracking-widest uppercase text-caution">Aviso importante</div>
+          <div class="font-bold text-base text-[#e6edf3]">Uso bajo responsabilidad del piloto</div>
+        </div>
+      </div>
+
+      <div class="text-[13px] text-[#c9d1d9] leading-relaxed space-y-3">
+        <p>
+          Este sistema es una <b class="text-[#e6edf3]">herramienta de apoyo</b> a la decisión meteorológica
+          para vuelos VFR. <b class="text-[#e6edf3]">No reemplaza el criterio, el análisis ni la decisión final
+          del piloto al mando</b>, quien es el único responsable de la seguridad del vuelo.
+        </p>
+        <ul class="space-y-1.5 text-[12px] text-muted">
+          <li class="flex gap-2"><span class="text-caution shrink-0">•</span> Los datos provienen de modelos de pronóstico (NWP) y fuentes externas (METAR, NOTAMs, terreno) que pueden contener errores, demoras o estar incompletos o desactualizados.</li>
+          <li class="flex gap-2"><span class="text-caution shrink-0">•</span> No sustituye el briefing oficial ni la consulta de las fuentes aeronáuticas oficiales (SMN, AIS/ANAC).</li>
+          <li class="flex gap-2"><span class="text-caution shrink-0">•</span> Es un desarrollo académico, sin validación ni aprobación de la autoridad aeronáutica.</li>
+        </ul>
+        <p class="text-[12px]">
+          Al continuar, usted reconoce que utiliza esta herramienta bajo su exclusiva responsabilidad y que la
+          decisión final <b class="text-[#e6edf3]">GO / NO GO es siempre suya</b>.
+        </p>
+      </div>
+
+      <label class="flex items-center gap-2 mt-5 text-[11px] text-muted cursor-pointer select-none">
+        <input type="checkbox" x-model="disclaimerDontShow" class="accent-[#58a6ff]"/>
+        No volver a mostrar en este dispositivo
+      </label>
+
+      <button @click="acceptDisclaimer()"
+              class="w-full mt-4 py-2.5 rounded-lg font-semibold text-sm transition-colors"
+              style="background:#58a6ff; color:#0d1117">
+        Entendido, acepto
+      </button>
+    </div>
+  </div>
 
   <!-- ── SELECTOR DE MODO ──────────────────────────────────────────── -->
   <div class="flex gap-1 mb-6 p-1 rounded-xl bg-surface border border-border w-fit">
@@ -1147,6 +1205,10 @@ function app() {
     error:         '',
     briefingCopied: false,
 
+    // ── Disclaimer de responsabilidad
+    showDisclaimer:    false,
+    disclaimerDontShow: false,
+
     // ── Timeline meteorológica
     timeline:       null,
     timelineLoading: false,
@@ -1182,6 +1244,9 @@ function app() {
 
     // ── Init
     async init() {
+      // Disclaimer: mostrar salvo que el usuario haya pedido no volver a verlo
+      this.showDisclaimer = localStorage.getItem('vfr_disclaimer_ok') !== '1';
+
       // Restaurar altura del mapa guardada
       const savedH = parseInt(localStorage.getItem('vfr_map_height'), 10);
       if (savedH && savedH >= 260 && savedH <= 1400) this.mapHeight = savedH;
@@ -1429,6 +1494,12 @@ function app() {
       } finally {
         this.profileLoading = false;
       }
+    },
+
+    // ── Disclaimer
+    acceptDisclaimer() {
+      this.showDisclaimer = false;
+      if (this.disclaimerDontShow) localStorage.setItem('vfr_disclaimer_ok', '1');
     },
 
     // ── Consulta de aeródromo
