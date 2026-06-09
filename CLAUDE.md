@@ -3,9 +3,18 @@
 Sistema de decision meteorologica para vuelos VFR de aviacion general en Argentina.
 Evalua condiciones reales y pronosticadas y devuelve GO / CAUTION / NO GO.
 
-Aeronave objetivo v1.0: **Pipistrel Alpha Trainer** (LSA, unica aeronave).
-Aerodromos cubiertos: 8 aeroclubes de la provincia de Cordoba — todos usan NWP (Open-Meteo).
-No se usa METAR en v1.0: todos los aerodromos son rurales sin METAR propio.
+**Aeronaves**: 5 perfiles seleccionables — Pipistrel Alpha Trainer (LSA), Cessna 152,
+Cessna 172 Skyhawk, Piper PA-28 Cherokee, Diamond DA40 (SEP). Altitudes de crucero de
+6000 a 16500 ft (el perfil determina que aerovias puede usar segun el MEA).
+
+**Cobertura**: todo el territorio argentino — 561 aerodromos del registro oficial
+ANAC/MADHEL, con rutas largas (ej. Salta-Ushuaia) y aerovias inferiores del AIP (ENR-3.1).
+(El alcance v1.0 original eran 8 aeroclubes de Cordoba; el proyecto crecio a escala nacional.)
+
+**Fuentes meteo por aerodromo**: METAR + TAF (aviationweather.gov) cuando el aerodromo
+tiene estacion; NWP (Open-Meteo) cuando no (la mayoria de los rurales). El engine elige
+automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a NWP.
+**NOTAMs**: AIS oficial de ANAC (POST a ais.anac.gob.ar/notam/pib, todos los aerodromos).
 
 ---
 
@@ -131,11 +140,17 @@ la resuelve `features/taf_window.py`, no el parser.
 
 ### Fuentes de datos
 
-- **aviationweather.gov**: METAR + TAF para SACO, SAVY, SADX, SANC. Sin API key.
-  - 204 = aeropuerto sin datos (devuelve None, no lanza excepcion).
-- **Open-Meteo**: NWP punto a punto para SACC y cualquier coordenada. Sin API key.
-  - SACC: lat=-31.00, lon=-64.52, elev=1141m AMSL.
-  - Penalizacion orografica: +0.05 al R_total final (solo NWP).
+- **aviationweather.gov**: METAR + TAF para cualquier aerodromo argentino con estacion
+  (los controlados: SAEZ, SACO, SASA, SAME, SAWH, SARE, SAAR, etc.). Sin API key.
+  - 204 = aeropuerto sin datos (devuelve None, el engine cae a NWP).
+- **Open-Meteo**: NWP punto a punto para cualquier coordenada (aerodromos sin METAR y
+  checkpoints en ruta). Sin API key. Penalizacion orografica +0.05 al R_total (solo NWP).
+- **AIS / ANAC** (`ais.anac.gob.ar/notam/pib`): NOTAMs oficiales argentinos. POST con
+  `indicador=<local_id>` y header `X-Requested-With: XMLHttpRequest`. Cubre todos los
+  aerodromos (incluso rurales). Parser HTML → RawNotam.
+- **MADHEL/ANAC** (`madhel_cache.json`): registro de 561 aerodromos (coords, elevacion,
+  pistas, servicios). **OurAirports** (`runways.csv`): completa las pistas que MADHEL no trae
+  (~62 aerodromos grandes). **Open-Topo-Data** (SRTM): terreno para el perfil vertical.
 - **Iowa State Mesonet**: archivo historico. NO implementar en v1.0.
 
 ### Normativa: ANAC/OACI (NO FAA)
@@ -184,19 +199,22 @@ R < 0.25           → GO
 R >= 0.50          → NO GO
 ```
 
-### Perfil de aeronave: Pipistrel Alpha Trainer
+### Perfiles de aeronave (5)
 
-```python
-ALPHA_TRAINER = {
-    "crosswind_max_kt"  : 12,
-    "gust_max_kt"       : 20,
-    "vis_min_km"        : 5.0,
-    "ceiling_min_ft"    : 1000,
-    "vs0_kt"            : 44,
-    "cruise_kt"         : 97,
-    "category"          : "LSA",
-}
-```
+Definidos en `risk/aircraft_profiles.py`. Cada uno tiene limites (crosswind/gust max,
+minimos VFR), velocidades (vs0, cruise_kt), `cruise_alt_ft` (clave: determina que
+aerovias puede usar segun el MEA) y datos de combustible (consumo, capacidad, reserva).
+
+| Perfil | cruise_alt_ft | cruise_kt | crosswind_max | Categoria |
+|---|---|---|---|---|
+| Pipistrel Alpha Trainer | 6000 | 97 | 12 kt | LSA |
+| Cessna 152 | 5500 | 90 | 12 kt | SEP |
+| Piper PA-28 Cherokee | 7500 | 108 | 17 kt | SEP |
+| Cessna 172 Skyhawk | 10000 | 110 | 15 kt | SEP |
+| Diamond DA40 | 16500 | 130 | 20 kt | SEP |
+
+Regla critica: las soluciones deben ser escalables a TODAS las aeronaves y aerodromos.
+Nunca basar tests solo en el Alpha Trainer o en un aerodromo unico (ej. SACC).
 
 ### Modulo TAF — ventana temporal
 
