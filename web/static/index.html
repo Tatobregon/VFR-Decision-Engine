@@ -871,6 +871,10 @@
             <span x-show="result?.route?.waypoints?.some(w => w.is_airway_entry)" class="text-accent font-semibold">
               → Vuelo por aerovía disponible
             </span>
+            <span x-show="result?.route?.waypoints?.some(w => w.is_corridor_waypoint)"
+                  class="font-semibold" style="color:#a371f7">
+              ⇢ Transita <span x-text="[...new Set(result?.route?.waypoints?.filter(w=>w.is_corridor_waypoint).map(w=>w.corridor_region))].join(' y ')"></span> por corredor VFR
+            </span>
           </div>
         </div>
       </div>
@@ -1533,7 +1537,7 @@ function app() {
         const points = spine.map(w => ({
           lat: w.lat, lon: w.lon,
           mea_ft: w.airway_mea_ft || null,
-          is_airport: (!w.is_checkpoint && !w.is_airway_waypoint),
+          is_airport: (!w.is_checkpoint && !w.is_airway_waypoint && !w.is_corridor_waypoint),
           code: w.code,
           is_fuel_stop: w.is_fuel_stop || false,
         }));
@@ -1773,15 +1777,34 @@ function app() {
 
       const decCol = { 'GO': '#3fb950', 'CAUTION': '#d29922', 'NO GO': '#f85149' };
       // Solo aeródromos reales para detección de origen/destino
-      const airportWps = wps.filter(w => !w.is_checkpoint && !w.is_emergency_airport);
-      // La línea de ruta sigue la ESPINA (aerovía + checkpoints), excluyendo los
-      // aeródromos intermedios de emergencia para que no genere desvíos.
-      const spineLatlngs = wps.filter(w => !w.is_emergency_airport).map(w => [w.lat, w.lon]);
+      const airportWps = wps.filter(w => !w.is_checkpoint && !w.is_emergency_airport && !w.is_corridor_waypoint);
+      // La línea de ruta sigue la ESPINA (aerovía + checkpoints + corredores),
+      // excluyendo los aeródromos intermedios de emergencia.
+      const spine = wps.filter(w => !w.is_emergency_airport);
+      const spineLatlngs = spine.map(w => [w.lat, w.lon]);
 
       // Trazar línea de ruta
       L.polyline(spineLatlngs, {
         color: '#58a6ff', weight: 2.5, opacity: 0.75, dashArray: '8 5',
       }).addTo(this._routeLayer);
+
+      // Resaltar en violeta los tramos que transitan por corredor VFR (incluye
+      // los aeródromos de entrada/salida para que el corredor quede conectado).
+      let _run = [];
+      const _flushRun = () => {
+        if (_run.length >= 2) L.polyline(_run, {color:'#a371f7', weight:3.5, opacity:0.9}).addTo(this._routeLayer);
+        _run = [];
+      };
+      for (let k = 0; k < spine.length; k++) {
+        const w = spine[k];
+        if (w.is_corridor_waypoint) {
+          if (_run.length === 0 && k > 0) _run.push([spine[k-1].lat, spine[k-1].lon]);
+          _run.push([w.lat, w.lon]);
+        } else if (_run.length) {
+          _run.push([w.lat, w.lon]); _flushRun();
+        }
+      }
+      _flushRun();
 
       wps.forEach((wp, idx) => {
         // Waypoints de aerovía puros (sin checkpoint meteo) van a _airwayLayer
@@ -1838,6 +1861,22 @@ function app() {
                 iconAnchor: [0, 0] }), interactive: false,
             }).addTo(this._routeLayer);
           }
+          return;
+        }
+
+        // Waypoints de corredor VFR: punto violeta sobre el corredor
+        if (wp.is_corridor_waypoint) {
+          const limit = wp.corridor_limit_ft ? `${wp.corridor_limit_ft.toLocaleString()} ft ${wp.corridor_limit_ref||''}`.trim() : '';
+          const popup = `<div style="font-family:monospace;min-width:180px;padding:4px 0">
+            <div style="font-size:10px;font-weight:700;color:#a371f7;margin-bottom:2px">CORREDOR VFR · ${wp.corridor_region||''}</div>
+            <div style="font-size:12px;font-weight:700;color:#58a6ff">${wp.corridor_id||''}</div>
+            ${wp.corridor_name ? `<div style="font-size:10px;color:#e6edf3;margin:3px 0">${wp.corridor_name}</div>` : ''}
+            ${limit ? `<div style="font-size:10px;color:#8b949e">Límite superior: ${limit}</div>` : ''}
+            ${this.etaBlock(wp)}
+          </div>`;
+          L.circleMarker([wp.lat, wp.lon], {
+            radius: 4, color: '#0d1117', weight: 1, fillColor: '#a371f7', fillOpacity: 0.95,
+          }).bindPopup(popup, {maxWidth: 250}).addTo(this._routeLayer);
           return;
         }
 

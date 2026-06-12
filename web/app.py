@@ -36,6 +36,7 @@ from parsers.openmeteo_adapter import OpenMeteoAdapter
 from decision.engine import DecisionEngine
 from route.optimizer import optimize
 from route.airway_router import find_airways_for_leg, find_airways_for_route_legs, AirwayWaypoint as AirwayWpResult
+from route.vfr_corridors import corridor_path_for_leg
 from output.briefing import generate_briefing
 from risk.aircraft_profiles import PROFILE_NAMES, get_profile, AircraftProfile
 from risk.soft_scoring import compute_soft_score
@@ -175,6 +176,13 @@ class RouteWaypoint(BaseModel):
     fir_contact: Optional[str] = None       # "Córdoba Control" — solo en entry
     is_airway_entry: bool = False
     is_airway_exit: bool = False
+    # Corredores VFR (transito de TMA BA / Córdoba)
+    is_corridor_waypoint: bool = False
+    corridor_id: Optional[str] = None
+    corridor_name: Optional[str] = None       # nombre del corredor (ej. "BRANDSEN - CAÑUELAS")
+    corridor_region: Optional[str] = None     # "TMA Buenos Aires" | "TMA Córdoba"
+    corridor_limit_ft: Optional[int] = None   # límite superior publicado
+    corridor_limit_ref: Optional[str] = None  # "MSL" | "AGL"
     # Aeródromos intermedios (fuera de la línea de aerovía)
     is_emergency_airport: bool = False      # aeródromo cercano para emergencia/referencia
     is_fuel_stop: bool = False              # escala de combustible recomendada
@@ -574,6 +582,31 @@ def _generate_route_waypoints(
             # aproximada con la elevación de los aeródromos del tramo.
             cruise_alt = max(7500, max(ap.elev_ft, next_ap.elev_ft) + 3000)
 
+        # VFR: si el tramo directo atraviesa la TMA de Buenos Aires o Córdoba,
+        # se debe transitar por el corredor visual publicado. Insertamos los
+        # waypoints del corredor (la línea de ruta pasa a seguir el corredor).
+        corridor_wps: list = []
+        if flight_rules == "VFR":
+            try:
+                corridor_wps = corridor_path_for_leg(ap.lat, ap.lon, next_ap.lat, next_ap.lon)
+            except Exception as e:
+                logger.warning(f"Error ruteando corredor VFR {code}->{path[i+1]}: {e}")
+        for cw in corridor_wps:
+            sequence.append(RouteWaypoint(
+                code=cw["corridor_id"] or "VFR-COR",
+                name=f"Corredor {cw['corridor_id']}",
+                lat=cw["lat"], lon=cw["lon"],
+                r_total=0.0, decision="GO",
+                is_checkpoint=False,
+                is_corridor_waypoint=True,
+                corridor_id=cw["corridor_id"],
+                corridor_name=cw["corridor_name"],
+                corridor_region=cw["region_name"],
+                corridor_limit_ft=cw["upper_limit_ft"],
+                corridor_limit_ref=cw["limit_reference"],
+                cruise_alt_ft=cw["upper_limit_ft"],
+            ))
+
         # Waypoints de aerovía para este tramo
         aw_wps: list = airway_map.get((code, path[i + 1]), [])
 
@@ -625,8 +658,8 @@ def _generate_route_waypoints(
                     '_fused_aw':   aw,
                     '_update_idx': aw_ncp_start + j,
                 })
-        elif leg_km > step_km:
-            # Tramo sin aerovía: checkpoints interpolados cada step_km
+        elif leg_km > step_km and not corridor_wps:
+            # Tramo sin aerovía ni corredor: checkpoints interpolados cada step_km
             n_chk = int(leg_km // step_km)
             for j in range(1, n_chk + 1):
                 frac = (j * step_km) / leg_km
