@@ -17,8 +17,8 @@ directamente entre si. No se imponen restricciones de alcance en el grafo
 """
 
 import math
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from typing import Dict, List, Optional
 
 try:
     from data.airports import AIRPORTS, AirportInfo

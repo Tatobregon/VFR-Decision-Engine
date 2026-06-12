@@ -40,7 +40,6 @@ from typing import Optional
 
 try:
     from parsers.metar_parser import (
-        ParsedWeather,
         _parse_visibility_km,
         _parse_sky_layers,
         _extract_ceiling_ft,
@@ -49,7 +48,6 @@ try:
     )
 except ImportError:
     from metar_parser import (
-        ParsedWeather,
         _parse_visibility_km,
         _parse_sky_layers,
         _extract_ceiling_ft,

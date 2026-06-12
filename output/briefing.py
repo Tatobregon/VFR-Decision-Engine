@@ -15,22 +15,19 @@ Funcion principal:
 Retorna un string multi-linea listo para mostrar en la GUI o imprimir.
 """
 
-import time as _time
 from datetime import datetime, timezone
 from typing import Optional, List
 
 try:
     from decision.engine import DecisionResult
-    from route.optimizer import OptimizeResult, IntermediateResult, AlternateInfo
-    from risk.aircraft_profiles import AircraftProfile
+    from route.optimizer import OptimizeResult
     from parsers.metar_parser import ParsedWeather
     from risk.soft_scoring import SoftScoreResult
 except ImportError:
     import sys, os
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from decision.engine import DecisionResult
-    from route.optimizer import OptimizeResult, IntermediateResult, AlternateInfo
-    from risk.aircraft_profiles import AircraftProfile
+    from route.optimizer import OptimizeResult
     from parsers.metar_parser import ParsedWeather
     from risk.soft_scoring import SoftScoreResult
 
@@ -551,7 +548,7 @@ if __name__ == "__main__":
     # ── Construir datos de prueba con mock ──
     from decision.engine import DecisionEngine
     from route.optimizer import optimize
-    from risk.aircraft_profiles import ALPHA_TRAINER, CESSNA_172
+    from risk.aircraft_profiles import ALPHA_TRAINER
 
     engine = DecisionEngine(mock=True, aircraft=ALPHA_TRAINER)
     import time
@@ -563,7 +560,6 @@ if __name__ == "__main__":
     route_r = optimize(
         "SACC", "SAOM",
         mode="suggested",
-        ga_seed=42,
         aircraft=ALPHA_TRAINER,
         suggest_alternate=True,
         evaluate_intermediate=True,

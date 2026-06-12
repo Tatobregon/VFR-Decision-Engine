@@ -15,7 +15,7 @@ import os
 import time
 import logging
 import copy
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict
 from pathlib import Path
@@ -35,7 +35,7 @@ from data.fetcher_openmeteo import OpenMeteoFetcher
 from parsers.openmeteo_adapter import OpenMeteoAdapter
 from decision.engine import DecisionEngine
 from route.optimizer import optimize
-from route.airway_router import find_airways_for_leg, find_airways_for_route_legs, AirwayWaypoint as AirwayWpResult
+from route.airway_router import find_airways_for_leg, find_airways_for_route_legs
 from route.vfr_corridors import corridor_path_for_leg
 from output.briefing import generate_briefing
 from risk.aircraft_profiles import PROFILE_NAMES, get_profile, AircraftProfile

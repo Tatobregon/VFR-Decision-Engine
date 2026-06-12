@@ -24,7 +24,6 @@ Niveles de advertencia (conservadores para LSA)
   HIGH     : DA > 8000 ft           → degradación severa, POH obligatorio
 """
 
-import math
 import logging
 from dataclasses import dataclass
 from typing import Optional

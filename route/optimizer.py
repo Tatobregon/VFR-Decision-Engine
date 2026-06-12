@@ -28,32 +28,30 @@ _logger = _logging.getLogger(__name__)
 try:
     from data.airports import AIRPORTS, AIRPORTS_PUBLIC, AirportInfo
     from data.airspace import zones_along_route, AirspaceZone
-    from route.graph import RouteGraph, build_graph, get_edge
-    from route.astar import astar, AStarResult
+    from route.graph import RouteGraph, build_graph
+    from route.astar import astar
 
     from route.performance import (
         haversine_km, bearing_deg, leg_time_hours, leg_fuel_liters,
-        route_summary, needs_fuel_stop, safe_altitude_ft,
-        CRUISE_KT, FUEL_FLOW_LPH, FUEL_USABLE_L,
+        route_summary,
     )
     from risk.aircraft_profiles import AircraftProfile, ALPHA_TRAINER
-    from route.weather_sampler import sample_route_weather, blocked_legs, RouteWeatherPoint
+    from route.weather_sampler import sample_route_weather, blocked_legs
     from route.airway_router import find_airways_for_leg
 except ImportError:
     import sys, os
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from data.airports import AIRPORTS, AIRPORTS_PUBLIC, AirportInfo
     from data.airspace import zones_along_route, AirspaceZone
-    from route.graph import RouteGraph, build_graph, get_edge
-    from route.astar import astar, AStarResult
+    from route.graph import RouteGraph, build_graph
+    from route.astar import astar
 
     from route.performance import (
         haversine_km, bearing_deg, leg_time_hours, leg_fuel_liters,
-        route_summary, needs_fuel_stop, safe_altitude_ft,
-        CRUISE_KT, FUEL_FLOW_LPH, FUEL_USABLE_L,
+        route_summary,
     )
     from risk.aircraft_profiles import AircraftProfile, ALPHA_TRAINER
-    from route.weather_sampler import sample_route_weather, blocked_legs, RouteWeatherPoint
+    from route.weather_sampler import sample_route_weather, blocked_legs
     from route.airway_router import find_airways_for_leg
 
 
@@ -423,7 +421,6 @@ def optimize(
     avoid_restricted_zones: bool                         = False,
     airports              : Optional[Dict[str, AirportInfo]] = None,
     aircraft              : Optional[AircraftProfile]    = None,
-    ga_seed               : Optional[int]                = None,
     evaluate_intermediate : bool                         = False,
     suggest_alternate     : bool                         = False,
     mock                  : bool                         = False,
@@ -446,7 +443,6 @@ def optimize(
                             Para modo "suggested", el GA se reemplaza por A* shortest.
     airports              : diccionario de aerodromos (por defecto: AIRPORTS global)
     aircraft              : perfil de aeronave (por defecto: ALPHA_TRAINER)
-    ga_seed               : semilla para el GA (reproducibilidad en tests)
     evaluate_intermediate : si True, evalua meteo en aerodromos intermedios del path
     suggest_alternate     : si True, busca y evalua el mejor alternativo al destino
     mock                  : si True, usa datos mock para evaluaciones meteorologicas
@@ -706,7 +702,6 @@ def optimize(
                     e for e in _edge_list
                     if (_orig_code, e.dest) not in _blocked_edges
                 ]
-            from route.graph import RouteGraph
             _filtered = RouteGraph(
                 nodes  = _graph.nodes,
                 edges  = _new_edges,
@@ -850,11 +845,11 @@ if __name__ == "__main__":
     print_result("safest SACC-SAOL", r3)
 
     # ── Modo suggested ──
-    r4 = optimize("SACC", "SAOM", mode="suggested", ga_seed=42)
+    r4 = optimize("SACC", "SAOM", mode="suggested")
     check("suggested SACC-SAOM: found", r4.found)
     check("suggested SACC-SAOM: legs correctos",
           r4.found and len(r4.legs) == len(r4.path) - 1)
-    print_result("suggested SACC-SAOM (GA)", r4)
+    print_result("suggested SACC-SAOM", r4)
 
     # ── Alternativo automatico (mock) ──
     r5 = optimize("SACC", "SAOM", mode="shortest",
@@ -869,9 +864,8 @@ if __name__ == "__main__":
     print_result("shortest con alternativo", r5)
 
     # ── Meteo intermedia (mock, ruta con intermedios) ──
-    # GA puede producir rutas con intermedios
     r6 = optimize("SACC", "SAOE", mode="suggested",
-                  evaluate_intermediate=True, mock=True, ga_seed=7)
+                  evaluate_intermediate=True, mock=True)
     check("Meteo intermedia: found", r6.found)
     if len(r6.path) > 2:
         check("Meteo intermedia: results presentes",
@@ -898,7 +892,7 @@ if __name__ == "__main__":
         for src in codes[:3]:
             for dst in codes[:3]:
                 if src != dst:
-                    res = optimize(src, dst, mode=mode, ga_seed=0)
+                    res = optimize(src, dst, mode=mode)
                     if not res.found:
                         any_fail = True
     check("Todos los modos corren en subset de pares", not any_fail)

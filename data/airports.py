@@ -390,20 +390,9 @@ AIRPORTS_PUBLIC: Dict[str, AirportInfo] = {
     code: info for code, info in AIRPORTS.items() if info.is_public
 }
 
-AIRPORTS_BY_NAME: Dict[str, AirportInfo] = {
-    info.name: info for info in AIRPORTS.values()
-}
-
-AIRPORT_NAMES: List[str] = sorted(info.name for info in AIRPORTS.values())
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # API publica
 # ─────────────────────────────────────────────────────────────────────────────
-
-def get_by_name(name: str) -> Optional[AirportInfo]:
-    return AIRPORTS_BY_NAME.get(name)
-
 
 def get_by_code(code: str) -> Optional[AirportInfo]:
     return AIRPORTS.get(code)

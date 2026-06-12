@@ -13,19 +13,19 @@ La heuristica es siempre la distancia en linea recta al destino
 """
 
 import heapq
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from typing import Dict, List, Optional
 
 try:
-    from data.airports import AIRPORTS, AirportInfo
+    from data.airports import AIRPORTS
     from route.graph import RouteGraph, build_graph, get_edge, neighbors
-    from route.performance import haversine_km, CRUISE_KT, KT_TO_KMH
+    from route.performance import haversine_km, CRUISE_KT
 except ImportError:
     import sys, os
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from data.airports import AIRPORTS, AirportInfo
+    from data.airports import AIRPORTS
     from route.graph import RouteGraph, build_graph, get_edge, neighbors
-    from route.performance import haversine_km, CRUISE_KT, KT_TO_KMH
+    from route.performance import haversine_km, CRUISE_KT
 
 
 # ────────────────────────────────────────────────────────────────────────────

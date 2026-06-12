@@ -17,7 +17,6 @@ Mock integrado: usar mock=True para desarrollo sin conexion.
 import json
 import logging
 import time
-from math import radians, sin, cos, sqrt, atan2, degrees
 from typing import List, Optional, Tuple
 
 logger = logging.getLogger(__name__)

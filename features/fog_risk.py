@@ -188,7 +188,6 @@ def _wx_score(wx_codes: list) -> tuple:
 if __name__ == "__main__":
     import sys
     import os
-    import math
 
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

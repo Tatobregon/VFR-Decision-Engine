@@ -24,7 +24,7 @@ import re
 import html as _html
 import time
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 import requests
@@ -537,7 +537,8 @@ def _to_int(value) -> Optional[int]:
 # ──────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    import json, sys, os
+    import sys
+    import os
     from datetime import datetime, timezone
 
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

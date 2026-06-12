@@ -31,8 +31,6 @@ exactamente sobre el limite del semicirculo.
     rumbo_magnetico = rumbo_verdadero - declinacion   (declinacion Oeste < 0)
 """
 
-import math
-from typing import Optional
 
 
 # ──────────────────────────────────────────────────────────────────────────────

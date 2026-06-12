@@ -24,17 +24,17 @@ import json
 import logging
 import os
 from dataclasses import dataclass
-from math import radians, sin, cos, sqrt, atan2, degrees
+from math import radians, cos, sqrt
 from typing import List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
 try:
-    from route.performance import haversine_km, bearing_deg
+    from route.performance import haversine_km
 except ImportError:
     import sys
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from route.performance import haversine_km, bearing_deg
+    from route.performance import haversine_km
 
 _DATA_DIR   = os.path.dirname(os.path.abspath(__file__))
 _CACHE_PATH = os.path.join(_DATA_DIR, "ar-airspace.json")

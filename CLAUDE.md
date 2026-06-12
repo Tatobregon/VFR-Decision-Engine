@@ -26,7 +26,7 @@ automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a
 |---|---|---|
 | `data/fetcher_aviationweather.py` | **COMPLETO** | METAR + TAF de aviationweather.gov. Produce `RawMetar`, `RawTaf`, `RawTafPeriod`. Mock de SACO incluido. |
 | `data/fetcher_openmeteo.py` | **COMPLETO** | Pronostico NWP de Open-Meteo. Produce `RawNWP` + `RawNWPHour`. Mock de SACC incluido. |
-| `data/airports.py` | **COMPLETO** | Registro canonico de aerodromos. `AirportInfo`, `RunwayInfo` dataclasses. `AIRPORTS`, `AIRPORTS_BY_NAME`, `AIRPORT_NAMES`. Fuente unica de verdad para coords, elevacion y cabeceras. |
+| `data/airports.py` | **COMPLETO** | Registro canonico de aerodromos. `AirportInfo`, `RunwayInfo` dataclasses. `AIRPORTS`, `AIRPORTS_PUBLIC`. Fuente unica de verdad para coords, elevacion y cabeceras. |
 
 ### PARSING LAYER
 
@@ -43,8 +43,8 @@ automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a
 | `features/crosswind.py` | **COMPLETO** | `compute_crosswind()`, `crosswind_risk_score()`. VRB → worst-case conservador. |
 | `features/fog_risk.py` | **COMPLETO** | `r_fog = max(r_spread, r_wx)`. Spread lineal 2-5°C, matching exacto por token wx. |
 | `features/taf_window.py` | **COMPLETO** | `TafAnalyzer.analyze()`: herencia BASE→TEMPO/BECMG, worst-case, `r_taf`, `next_go_from`. |
-| `features/flight_category.py` | **COMPLETO** | Categoria ANAC + evaluacion contra minimos de aeronave. `is_worse_than()`. |
 | `features/orographic.py` | **COMPLETO** | `delta_r = 0.05` si `nwp_estimated=True` y `station_id="SACC"`. Dict extensible. |
+| `features/vfr_altitude.py` | **COMPLETO** | `hemispheric_vfr_altitude()`: altitud de crucero VFR por regla de los semicirculos (rumbo magnetico). `magnetic_declination_ar()` aprox AR. |
 | `features/density_altitude.py` | **COMPLETO** | `compute_density_altitude(temp_c, elevation_ft, qnh_hpa)` → `DensityAltitudeResult`. Niveles NORMAL/ELEVATED(>5000ft)/HIGH(>8000ft). |
 
 ### RISK ENGINE
@@ -62,9 +62,9 @@ automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a
 |---|---|---|
 | `config.py` | **COMPLETO** | Constantes globales: `NWP_STATIONS` (SACC coords), `METAR_STATIONS`, `NWP_HOURS_AHEAD`. |
 | `decision/engine.py` | **COMPLETO** | `DecisionEngine.evaluate()` → `DecisionResult`. Pipeline completo: fetch→parse→hard_blockers→soft_score+taf_window→decision. NWP para SACC, METAR+TAF para SACO/etc. |
-| `output/formatter.py` | **COMPLETO** | `format_decision(result)` → texto multi-linea para el piloto. `format_short()` para una linea. |
-| `main.py` | **COMPLETO** | CLI entry point. Args: station_id, runway_heading, --time, --date, --duration, --mock, --short, --verbose. Exit 0=GO, 1=CAUTION/NO GO, 2=error. |
-| `gui.py` | **COMPLETO** | GUI Tkinter. Selector de aeropuerto con cabeceras automaticas, origen + destino, hora UTC, duracion. Evaluacion en thread. Decision global GO/CAUTION/NO GO con colores. |
+| `output/briefing.py` | **COMPLETO** | `generate_briefing(...)` → briefing meteorologico multi-linea para el piloto (origen, destino, ruta, NOTAMs). |
+| `web/app.py` | **COMPLETO** | Backend FastAPI + frontend HTML (`web/static`). Interfaz principal. Endpoints: `/api/evaluate`, `/api/profile`, `/api/timeline`, `/api/airport/{code}`, `/api/vfr_corridors`, `/api/airspace`. Switch VFR/IFR, corredores VFR, perfil vertical. |
+| `route/vfr_corridors.py` | **COMPLETO** | Ruteo VFR por corredores visuales de las TMA BA/Cordoba (grafo + Dijkstra por cluster). `corridor_path_for_leg()`. |
 
 ---
 
@@ -237,12 +237,12 @@ Capas 1-11 completas. Data → Parsing → Feature → Risk → Integracion (eng
 Todas las capas del sistema v1.0 estan completas y testeadas:
 - Data layer (fetchers METAR+TAF, NWP)
 - Parsing layer (metar_parser, openmeteo_adapter, taf_parser)
-- Feature layer (crosswind, fog_risk, taf_window, flight_category, orographic)
-- Risk engine (aircraft_profiles, weights, hard_blockers, soft_scoring)
+- Feature layer (crosswind, fog_risk, taf_window, orographic, density_altitude, vfr_altitude)
+- Risk engine (aircraft_profiles, weights/ahp_weights, hard_blockers, soft_scoring)
 - Integracion (config, decision/engine)
-- Output + CLI (output/formatter, main.py)
+- Output + Web (output/briefing, web/app.py + web/static)
 
-El sistema es completamente funcional con `python main.py SACC 150 --mock`.
+El sistema corre como web app: `uvicorn web.app:app --reload --port 8000`.
 
 ### Interfaz del engine (referencia para implementacion)
 

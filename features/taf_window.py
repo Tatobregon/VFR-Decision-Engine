@@ -443,13 +443,13 @@ def _fmt(ts: int) -> str:
 if __name__ == "__main__":
     import sys
     import os
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timezone
 
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(message)s")
 
-    from parsers.taf_parser import ParsedTaf, ParsedTafPeriod, TafParser
+    from parsers.taf_parser import ParsedTaf, ParsedTafPeriod
 
     print("=" * 68)
     print("  TEST: taf_window.py")

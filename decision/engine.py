@@ -33,7 +33,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 try:
-    from config import NWP_STATIONS, METAR_STATIONS, NWP_HOURS_AHEAD
+    from config import NWP_STATIONS, NWP_HOURS_AHEAD
     from data.fetcher_aviationweather import AviationWeatherFetcher
     from data.fetcher_openmeteo        import OpenMeteoFetcher
     from parsers.metar_parser          import MetarParser, ParsedWeather
@@ -43,7 +43,6 @@ try:
     from risk.hard_blockers            import (
         check_hard_blockers,
         check_hard_blockers_from_weather,
-        HARD_BLOCKER_TOKENS,
     )
     from risk.soft_scoring             import compute_soft_score, SoftScoreResult
     from risk.aircraft_profiles        import AircraftProfile, ALPHA_TRAINER
@@ -53,7 +52,7 @@ except ImportError:
     import sys as _sys
     import os as _os
     _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
-    from config import NWP_STATIONS, METAR_STATIONS, NWP_HOURS_AHEAD
+    from config import NWP_STATIONS, NWP_HOURS_AHEAD
     from data.fetcher_aviationweather import AviationWeatherFetcher
     from data.fetcher_openmeteo        import OpenMeteoFetcher
     from parsers.metar_parser          import MetarParser, ParsedWeather
@@ -63,7 +62,6 @@ except ImportError:
     from risk.hard_blockers            import (
         check_hard_blockers,
         check_hard_blockers_from_weather,
-        HARD_BLOCKER_TOKENS,
     )
     from risk.soft_scoring             import compute_soft_score, SoftScoreResult
     from risk.aircraft_profiles        import AircraftProfile, ALPHA_TRAINER
@@ -424,7 +422,6 @@ class DecisionEngine:
 if __name__ == "__main__":
     import sys
     import os
-    import time
 
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(message)s")

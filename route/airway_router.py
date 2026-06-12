@@ -21,11 +21,17 @@ Estructura devuelta:
 
 import heapq
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
-from data.airways import AIRWAY_NODES, AIRWAY_GRAPH, find_nearest_nodes
-from data.fir_zones import get_fir
+try:
+    from data.airways import AIRWAY_NODES, AIRWAY_GRAPH, find_nearest_nodes
+    from data.fir_zones import get_fir
+except ImportError:
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from data.airways import AIRWAY_NODES, AIRWAY_GRAPH, find_nearest_nodes
+    from data.fir_zones import get_fir
 
 MAX_DETOUR_PCT   = 0.20   # maximo 20% sobre distancia directa
 MAX_ENTRY_KM     = 150.0  # radio maximo para buscar entry/exit nodes
@@ -131,8 +137,6 @@ def find_airways_for_leg(
 
     best_total  = math.inf
     best_path   = []
-    best_entry_dist = 0.0
-    best_exit_dist  = 0.0
 
     for entry_id, dist_to_entry in entry_candidates:
         for exit_id, dist_to_exit in exit_candidates:
@@ -149,8 +153,6 @@ def find_airways_for_leg(
             if total_km <= direct_km * (1 + max_detour_pct) and total_km < best_total:
                 best_total       = total_km
                 best_path        = path_nodes
-                best_entry_dist  = dist_to_entry
-                best_exit_dist   = dist_to_exit
 
     if not best_path:
         return []

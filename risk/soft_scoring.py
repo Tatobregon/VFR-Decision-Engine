@@ -31,7 +31,6 @@ Uso tipico
 
 import logging
 from dataclasses import dataclass
-from typing import Optional
 
 try:
     from risk.weights          import (
