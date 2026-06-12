@@ -384,9 +384,9 @@ if __name__ == "__main__":
 
     all_pass = True
 
-    # Hora 3 del mock: vis 4.5km + WMO 45 (niebla) → MVFR + FG
+    # Hora 3 del mock: vis 4.5km + WMO 45 (niebla) → VFR marginal + FG
     fog_slots = [p for p in parsed if p.wx_codes == ["FG"]]
-    ok_fog = len(fog_slots) == 1 and fog_slots[0].flight_category in ("MVFR", "IFR", "LIFR")
+    ok_fog = len(fog_slots) == 1 and fog_slots[0].flight_category in ("VFR marginal", "IFR", "IFR bajo mínimos")
     all_pass = all_pass and ok_fog
     print(f"  [{'OK' if ok_fog else 'FALLO'}] Slot niebla (WMO 45): cat={fog_slots[0].flight_category if fog_slots else 'N/A'}, wx={fog_slots[0].wx_codes if fog_slots else 'N/A'}")
 

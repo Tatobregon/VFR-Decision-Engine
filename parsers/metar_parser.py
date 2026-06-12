@@ -105,7 +105,7 @@ class ParsedWeather:
     precip_mm       : Optional[float] = None   # precipitacion horaria en mm
 
     # ── Categoria de vuelo (ANAC/OACI) ────────────────────────────────────────
-    flight_category : Optional[str] = None   # "VFR" | "MVFR" | "IFR" | "LIFR"
+    flight_category : Optional[str] = None   # "VFR" | "VFR marginal" | "IFR" | "IFR bajo mínimos"
 
     # ── Posicion geografica ───────────────────────────────────────────────────
     lat           : Optional[float] = None
@@ -346,12 +346,13 @@ def _compute_flight_category(
     vis  = vis_km    if vis_km    is not None else 99.0
     ceil = ceiling_ft if ceiling_ft is not None else 99999
 
+    # Categorias OACI/ANAC (no FAA): se evitan los rotulos MVFR/LIFR (NWS/FAA).
     if vis < 0.8 or ceil < 200:
-        return "LIFR"
+        return "IFR bajo mínimos"
     if vis < 3.0 or ceil < 500:
         return "IFR"
     if vis < 5.0 or ceil < 1000:
-        return "MVFR"
+        return "VFR marginal"
     return "VFR"
 
 
@@ -431,13 +432,13 @@ if __name__ == "__main__":
     casos = [
         ("CAVOK (9999, sin ceiling)",        10.0, None,  "VFR"),
         ("VFR justo al limite",               5.0, 1000,  "VFR"),
-        ("MVFR por visibilidad",              4.0, 2000,  "MVFR"),
-        ("MVFR por ceiling",                  8.0,  800,  "MVFR"),
+        ("VFR marginal por visibilidad",      4.0, 2000,  "VFR marginal"),
+        ("VFR marginal por ceiling",          8.0,  800,  "VFR marginal"),
         ("IFR por visibilidad",               1.5, 2000,  "IFR"),
         ("IFR por ceiling",                   6.0,  300,  "IFR"),
-        ("LIFR por visibilidad",              0.5, 2000,  "LIFR"),
-        ("LIFR por ceiling",                  6.0,  150,  "LIFR"),
-        ("LIFR por ambos",                    0.3,   50,  "LIFR"),
+        ("IFR bajo minimos por visibilidad",  0.5, 2000,  "IFR bajo mínimos"),
+        ("IFR bajo minimos por ceiling",      6.0,  150,  "IFR bajo mínimos"),
+        ("IFR bajo minimos por ambos",        0.3,   50,  "IFR bajo mínimos"),
         ("Sin datos (None, None)",           None,  None,  "VFR"),
     ]
 

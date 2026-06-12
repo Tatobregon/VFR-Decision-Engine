@@ -169,6 +169,47 @@ def compute_crosswind_from_weather(weather, runway_heading: int) -> CrosswindRes
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Seleccion automatica de pista favorable
+# ──────────────────────────────────────────────────────────────────────────────
+
+def favored_runway(
+    runway_headings : list,
+    wind_dir        : Optional[int],
+    wind_spd_kt     : Optional[float],
+    wind_variable   : bool = False,
+    default         : int = 180,
+) -> int:
+    """
+    Devuelve el rumbo de la cabecera mas conveniente para el viento dado.
+
+    Considera AMBAS cabeceras de cada pista. Criterio: menor componente cruzada
+    y, ante empate, mayor componente de proa (evita viento de cola). Esto modela
+    que el piloto siempre usa la pista mas alineada con el viento.
+
+    Viento variable, sin direccion o calmo -> primera cabecera (no hay preferencia).
+    """
+    cands = set()
+    for h in runway_headings or []:
+        if h is None:
+            continue
+        cands.add(int(h) % 360)
+        cands.add((int(h) + 180) % 360)
+    if not cands:
+        return default
+    if wind_variable or wind_dir is None or not wind_spd_kt:
+        return sorted(cands)[0]
+
+    best, best_key = default, None
+    for h in cands:
+        cw = compute_crosswind(wind_dir, wind_spd_kt, h, None, wind_variable)
+        # minimizar |crosswind|, luego maximizar headwind (evita tailwind)
+        key = (round(cw.crosswind_kt, 1), -round(cw.headwind_kt, 1))
+        if best_key is None or key < best_key:
+            best_key, best = key, h
+    return best
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Helper de evaluacion contra limite de aeronave
 # ──────────────────────────────────────────────────────────────────────────────
 

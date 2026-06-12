@@ -84,6 +84,11 @@ def r_ceiling(ceil_ft: Optional[int]) -> float:
       ceil <= 500 ft  → 1.0  (muy bajo, IFR)
       ceil >= 2000 ft → 0.0  (holgado para VFR)
       None            → 0.0  (CLR o FEW/SCT: sin techo efectivo)
+
+    NOTA: el "techo" es un PROXY conservador de la condicion VMC real. El VFR no
+    exige un techo minimo per se, sino separacion de nubes y referencia visual
+    con la superficie. Techo>=1000 ft aproxima "poder volar VFR por debajo de las
+    nubes", pero no es el minimo legal literal.
     """
     if ceil_ft is None:
         return 0.0

@@ -44,6 +44,8 @@ from risk.hard_blockers import check_hard_blockers_from_weather
 from features.crosswind import compute_crosswind
 from features.density_altitude import advisory as da_advisory
 from features.vfr_altitude import hemispheric_vfr_altitude
+from features.daylight import daylight_status
+from features.notam_impact import assess_notam_impact, runway_designators
 from route.performance import haversine_km, bearing_deg, effective_groundspeed_kt, leg_time_hours, safe_altitude_ft
 from data.terrain import get_elevations_m, M_TO_FT
 from config import NWP_HOURS_AHEAD
@@ -63,8 +65,8 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 class EvaluateRequest(BaseModel):
     origin: str
     dest: str
-    origin_runway: int = 180
-    dest_runway: int = 180
+    origin_runway: Optional[int] = None   # None = auto (pista favorable al viento)
+    dest_runway: Optional[int] = None
     aircraft: str = "Pipistrel Alpha Trainer"
     departure_time: str = ""       # "HH:MM" UTC; vacío = ahora + 1h
     duration_hours: float = Field(default=2.0, ge=0.3, le=12.0)
@@ -121,6 +123,14 @@ class WeatherCard(BaseModel):
     r_taf: Optional[float] = None
     dominant_factor: Optional[str] = None
     next_go_from: Optional[int] = None
+    # Luz diurna (bloqueo nocturno)
+    is_night: bool = False
+    daylight_tight: bool = False        # de día pero a < 45 min del ocaso
+    sunrise_unix: Optional[int] = None
+    sunset_unix: Optional[int] = None
+    min_to_sunset: Optional[int] = None
+    # NOTAM operacional
+    notam_blocked: bool = False
     fetch_ok: bool = True
     error_message: str = ""
 
@@ -314,6 +324,45 @@ def _to_card(result, runway_heading: int, ap: AirportInfo, notams: list = None) 
     )
 
 
+def _apply_operational_blockers(
+    card: WeatherCard, ap: AirportInfo, when_unix: int, notams: list, phase: str,
+) -> None:
+    """
+    Aplica los bloqueos operacionales NO meteorológicos sobre una ficha ya
+    construida (muta el card y su decisión):
+
+      - Luz diurna: si el momento (`when_unix`) cae de noche/anochecer en el
+        aeródromo → NO GO. Si es de día pero a < 45 min del ocaso → CAUTION.
+      - NOTAM: si el aeródromo está cerrado o todas sus pistas cerradas → NO GO.
+
+    `phase` ("despegue" | "aterrizaje") solo se usa para el mensaje.
+    """
+    # ── Luz diurna ──
+    dl = daylight_status(ap.lat, ap.lon, when_unix)
+    card.sunrise_unix  = dl["sunrise_unix"]
+    card.sunset_unix   = dl["sunset_unix"]
+    card.min_to_sunset = dl["min_to_sunset"]
+    if not dl["is_day"]:
+        card.is_night        = True
+        card.decision        = "NO GO"
+        card.hard_blocked    = True
+        card.blocker_summary = (f"Vuelo nocturno: el {phase} cae fuera de luz diurna. "
+                                f"VFR diurno solamente.")
+    elif dl["tight"]:
+        card.daylight_tight = True
+        if card.decision == "GO":
+            card.decision = "CAUTION"
+
+    # ── NOTAM operacional ──
+    designators = runway_designators([r.heading for r in ap.runways])
+    impact = assess_notam_impact(notams, designators)
+    if impact.blocking:
+        card.notam_blocked   = True
+        card.decision        = "NO GO"
+        card.hard_blocked    = True
+        card.blocker_summary = (card.blocker_summary + " · " if card.blocker_summary else "") + impact.reason
+
+
 # ── Helper: aeródromos de desvío por waypoint ────────────────────────────────
 
 def _find_diversions(
@@ -358,6 +407,7 @@ def _evaluate_nwp_at_coord(
     mock: bool,
     cruise_alt_ft: int = 7500,
     track_bearing: int = 0,
+    flight_rules: str = "VFR",
 ) -> tuple:
     """
     Evalúa riesgo NWP en coordenadas arbitrarias (no airport code).
@@ -403,7 +453,18 @@ def _evaluate_nwp_at_coord(
 
         scores = [compute_soft_score(_inflight_wx(w), track_bearing, aircraft) for w in window_wx]
         worst = max(scores, key=lambda s: s.r_total)
-        return worst.r_total, worst.decision, ref_wx, worst
+        decision = worst.decision
+
+        # Regla de visibilidad VFR a altitud: a FL100 (10.000 ft) o más, el
+        # mínimo VFR es 8 km, no 5. Si en ruta, a esa altitud, la visibilidad
+        # cae por debajo de 8 km, la operación VFR queda marginal → CAUTION.
+        # (Solo VFR: en IFR no se requiere VMC.)
+        if flight_rules == "VFR" and cruise_alt_ft >= 10000 and decision == "GO" \
+                and ref_wx is not None and ref_wx.visibility_km is not None \
+                and ref_wx.visibility_km < 8.0:
+            decision = "CAUTION"
+
+        return worst.r_total, decision, ref_wx, worst
     except Exception as e:
         logger.warning(f"Error evaluando NWP en coord ({lat:.2f},{lon:.2f}): {e}")
         return 0.0, "GO", None, None
@@ -694,6 +755,7 @@ def _generate_route_waypoints(
             dep_time=spec['dep_time'], duration_hours=1.0,
             aircraft=aircraft, mock=mock,
             cruise_alt_ft=spec['cruise_alt'], track_bearing=spec['track'],
+            flight_rules=flight_rules,
         )
         return idx, spec, r, dec, ref_wx, worst
 
@@ -1365,7 +1427,16 @@ async def evaluate(req: EvaluateRequest):
         notams_dest=notams_dest,
     )
 
-    decisions = [origin_result.decision, dest_result.decision]
+    # Fichas + bloqueos operacionales no meteorológicos (noche / NOTAM).
+    # El despegue se evalúa a la hora de salida; el aterrizaje, a la ETA (para
+    # que un vuelo que aterriza de noche sea NO GO aunque despegue de día).
+    arr_time = dep_time + int(actual_duration * 3600)
+    origin_card = _to_card(origin_result, origin_result.runway_heading, orig_ap, notams_orig)
+    dest_card   = _to_card(dest_result,   dest_result.runway_heading,   dest_ap, notams_dest)
+    _apply_operational_blockers(origin_card, orig_ap, dep_time, notams_orig, "despegue")
+    _apply_operational_blockers(dest_card,   dest_ap, arr_time, notams_dest, "aterrizaje")
+
+    decisions = [origin_card.decision, dest_card.decision]
     global_dec = "NO GO" if "NO GO" in decisions else "CAUTION" if "CAUTION" in decisions else "GO"
 
     # Generar waypoints con checkpoints intermedios cada ~230 km
@@ -1421,8 +1492,8 @@ async def evaluate(req: EvaluateRequest):
 
     return EvaluateResponse(
         global_decision = global_dec,
-        origin          = _to_card(origin_result, req.origin_runway, orig_ap, notams_orig),
-        dest            = _to_card(dest_result,   req.dest_runway,   dest_ap, notams_dest),
+        origin          = origin_card,
+        dest            = dest_card,
         route           = route_card,
         briefing        = briefing_text,
     )

@@ -47,6 +47,7 @@ try:
     from risk.soft_scoring             import compute_soft_score, SoftScoreResult
     from risk.aircraft_profiles        import AircraftProfile, ALPHA_TRAINER
     from features.density_altitude     import compute_density_altitude, DensityAltitudeResult
+    from features.crosswind            import favored_runway
     from data.airports                 import AIRPORTS
 except ImportError:
     import sys as _sys
@@ -66,6 +67,7 @@ except ImportError:
     from risk.soft_scoring             import compute_soft_score, SoftScoreResult
     from risk.aircraft_profiles        import AircraftProfile, ALPHA_TRAINER
     from features.density_altitude     import compute_density_altitude, DensityAltitudeResult
+    from features.crosswind            import favored_runway
     from data.airports                 import AIRPORTS
 
 logger = logging.getLogger(__name__)
@@ -103,6 +105,7 @@ class DecisionResult:
     error_message   : str                       # "" si sin error
 
     density_altitude: Optional[DensityAltitudeResult] = None  # None si sin temperatura
+    runway_heading  : int = 0                   # pista usada (favorable si fue auto)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -136,10 +139,25 @@ class DecisionEngine:
 
     # ── Entrada publica ───────────────────────────────────────────────────────
 
+    def _resolve_runway(self, sid: str, runway_heading, weather) -> int:
+        """
+        Resuelve el rumbo de pista a usar. Si `runway_heading` es None ("auto"),
+        elige la cabecera favorable segun el viento de `weather` y las pistas del
+        aerodromo. Si se especifico una pista, la respeta (override del usuario).
+        """
+        if runway_heading is not None:
+            return runway_heading
+        ap = AIRPORTS.get(sid)
+        headings = [r.heading for r in ap.runways] if (ap and ap.runways) else []
+        if not headings or weather is None:
+            return 180
+        return favored_runway(headings, weather.wind_dir, weather.wind_spd_kt,
+                              getattr(weather, "wind_variable", False))
+
     def evaluate(
         self,
         station_id        : str,
-        runway_heading    : int,
+        runway_heading    : Optional[int],     # None = auto (pista favorable)
         departure_time    : int,          # Unix UTC
         flight_duration_h : float = 1.0,
     ) -> DecisionResult:
@@ -204,6 +222,10 @@ class DecisionEngine:
             # No hay hora exacta en la ventana: usar la mas cercana al despegue
             window_wx = [min(all_wx, key=lambda w: abs(w.obs_time - departure_time))]
 
+        # Pista a usar (favorable si fue auto), segun el viento representativo.
+        ref_wx = min(window_wx, key=lambda w: abs(w.obs_time - departure_time))
+        rwy    = self._resolve_runway(sid, runway_heading, ref_wx)
+
         # ── Hard blockers: verificar toda la ventana ──────────────────────────
         for wx in window_wx:
             blocker = check_hard_blockers_from_weather(wx)
@@ -223,14 +245,14 @@ class DecisionEngine:
                     weather         = wx,
                     fetch_ok        = True,
                     error_message   = "",
+                    runway_heading  = rwy,
                 )
 
         # ── Soft scoring: peor caso dentro de la ventana ─────────────────────
-        scores  = [compute_soft_score(w, runway_heading, self.aircraft) for w in window_wx]
+        scores  = [compute_soft_score(w, rwy, self.aircraft) for w in window_wx]
         worst   = max(scores, key=lambda s: s.r_total)
-        ref_wx  = min(window_wx, key=lambda w: abs(w.obs_time - departure_time))
 
-        logger.info(f"NWP {sid}: R_total={worst.r_total:.3f} [{worst.decision}]")
+        logger.info(f"NWP {sid}: R_total={worst.r_total:.3f} [{worst.decision}] pista={rwy}")
 
         return DecisionResult(
             station_id       = sid,
@@ -247,6 +269,7 @@ class DecisionEngine:
             fetch_ok         = True,
             error_message    = "",
             density_altitude = self._compute_da(sid, ref_wx),
+            runway_heading   = rwy,
         )
 
     # ── Path METAR (SACO, SAVY, etc.) ─────────────────────────────────────────
@@ -266,6 +289,9 @@ class DecisionEngine:
             return self._evaluate_nwp(sid, runway_heading, departure_time, flight_duration_h)
 
         weather = self._metar_parser.parse(raw_metar)
+
+        # Pista a usar (favorable si fue auto), segun el viento observado.
+        rwy = self._resolve_runway(sid, runway_heading, weather)
 
         # ── Hard blockers: observacion actual ────────────────────────────────
         blocker = check_hard_blockers_from_weather(weather)
@@ -310,14 +336,15 @@ class DecisionEngine:
                 weather         = weather,
                 fetch_ok        = True,
                 error_message   = "",
+                runway_heading  = rwy,
             )
 
         # ── Soft scoring ─────────────────────────────────────────────────────
         r_taf = taf_result.r_taf if taf_result else 0.0
-        score = compute_soft_score(weather, runway_heading, self.aircraft, taf_r_taf=r_taf)
+        score = compute_soft_score(weather, rwy, self.aircraft, taf_r_taf=r_taf)
 
         next_go = taf_result.next_go_from if taf_result else None
-        logger.info(f"METAR {sid}: R_total={score.r_total:.3f} [{score.decision}]")
+        logger.info(f"METAR {sid}: R_total={score.r_total:.3f} [{score.decision}] pista={rwy}")
 
         return DecisionResult(
             station_id       = sid,
@@ -334,6 +361,7 @@ class DecisionEngine:
             fetch_ok         = True,
             error_message    = "",
             density_altitude = self._compute_da(sid, weather),
+            runway_heading   = rwy,
         )
 
     # ── Helpers ───────────────────────────────────────────────────────────────

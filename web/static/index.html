@@ -336,6 +336,7 @@
             <label class="av-label" style="margin-bottom:4px">Cabecera</label>
             <template x-if="originAirport && originAirport.runways && originAirport.runways.length > 0">
               <select class="av-select text-xs" x-model.number="form.origin_runway">
+                <option :value="null">Auto · pista favorable al viento</option>
                 <template x-for="rwy in originAirport.runways" :key="rwy.heading">
                   <option :value="rwy.heading" x-text="`RWY ${rwy.heading}° ${rwy.label || ''}`"></option>
                 </template>
@@ -344,7 +345,7 @@
             <template x-if="!originAirport || !originAirport.runways || originAirport.runways.length === 0">
               <input class="av-input text-xs" type="number"
                      x-model.number="form.origin_runway"
-                     min="0" max="360" step="10" placeholder="180"/>
+                     min="0" max="360" step="10" placeholder="Auto"/>
             </template>
           </div>
         </div>
@@ -381,6 +382,7 @@
             <label class="av-label" style="margin-bottom:4px">Cabecera</label>
             <template x-if="destAirport && destAirport.runways && destAirport.runways.length > 0">
               <select class="av-select text-xs" x-model.number="form.dest_runway">
+                <option :value="null">Auto · pista favorable al viento</option>
                 <template x-for="rwy in destAirport.runways" :key="rwy.heading">
                   <option :value="rwy.heading" x-text="`RWY ${rwy.heading}° ${rwy.label || ''}`"></option>
                 </template>
@@ -389,7 +391,7 @@
             <template x-if="!destAirport || !destAirport.runways || destAirport.runways.length === 0">
               <input class="av-input text-xs" type="number"
                      x-model.number="form.dest_runway"
-                     min="0" max="360" step="10" placeholder="180"/>
+                     min="0" max="360" step="10" placeholder="Auto"/>
             </template>
           </div>
         </div>
@@ -751,6 +753,14 @@
             <span class="text-muted ml-2"
                   x-text="`PA ${card.pressure_alt_ft} ft · ISA ${card.isa_deviation_c > 0 ? '+' : ''}${card.isa_deviation_c}°C`">
             </span>
+            <!-- Aviso de performance (no afecta el score; es advertencia operativa) -->
+            <div x-show="card.da_level === 'HIGH' || card.da_level === 'ELEVATED'"
+                 class="mt-1.5 leading-snug"
+                 :class="card.da_level === 'HIGH' ? 'text-nogo' : 'text-caution'">
+              ⚠ Altitud de densidad <span x-text="card.da_level === 'HIGH' ? 'ALTA' : 'elevada'"></span> —
+              revisá la performance de despegue y ascenso de la aeronave (carrera de despegue más larga,
+              menor régimen de ascenso). Crítico en pista corta o terreno alto.
+            </div>
           </div>
 
           <!-- Score total + breakdown -->
@@ -1258,8 +1268,8 @@ function app() {
     form: {
       origin:         '',
       dest:           '',
-      origin_runway:  180,
-      dest_runway:    180,
+      origin_runway:  null,   // null = auto (pista favorable al viento)
+      dest_runway:    null,
       aircraft:       'Pipistrel Alpha Trainer',
       departure_time: '',
       avoid_airspace: true,
@@ -1402,9 +1412,7 @@ function app() {
       this.originSearch     = `${ap.code} – ${ap.name}`;
       this.originOpen       = false;
       this.originResults    = [];
-      if (ap.runways && ap.runways.length > 0) {
-        this.form.origin_runway = ap.runways[0].heading;
-      }
+      this.form.origin_runway = null;   // auto: el sistema elige la pista favorable
     },
 
     // ── Autocomplete destino
@@ -1434,9 +1442,7 @@ function app() {
       this.destSearch       = `${ap.code} – ${ap.name}`;
       this.destOpen         = false;
       this.destResults      = [];
-      if (ap.runways && ap.runways.length > 0) {
-        this.form.dest_runway = ap.runways[0].heading;
-      }
+      this.form.dest_runway = null;   // auto: el sistema elige la pista favorable
     },
 
     // ── Evaluación principal
@@ -1449,8 +1455,9 @@ function app() {
         const payload = {
           origin:         this.form.origin,
           dest:           this.form.dest,
-          origin_runway:  this.form.origin_runway,
-          dest_runway:    this.form.dest_runway,
+          // null = auto (el backend elige la pista favorable al viento)
+          origin_runway:  Number.isFinite(this.form.origin_runway) ? this.form.origin_runway : null,
+          dest_runway:    Number.isFinite(this.form.dest_runway) ? this.form.dest_runway : null,
           aircraft:       this.form.aircraft,
           departure_time: this.form.departure_time,
           duration_hours: this.form.duration_hours,
@@ -1499,8 +1506,9 @@ function app() {
           body: JSON.stringify({
             origin: this.form.origin, dest: this.form.dest,
             aircraft: this.form.aircraft,
-            origin_runway: this.form.origin_runway,
-            dest_runway: this.form.dest_runway,
+            // timeline requiere int: si es auto (null) usa 180 de referencia
+            origin_runway: Number.isFinite(this.form.origin_runway) ? this.form.origin_runway : 180,
+            dest_runway: Number.isFinite(this.form.dest_runway) ? this.form.dest_runway : 180,
             hours: 24,
           }),
         });
@@ -2554,7 +2562,9 @@ function app() {
     },
 
     catColor(cat) {
-      return cat === 'VFR' ? '#3fb950' : cat === 'MVFR' ? '#d29922' : '#f85149';
+      if (cat === 'VFR') return '#3fb950';
+      if (cat === 'VFR marginal') return '#d29922';
+      return '#f85149';  // IFR / IFR bajo mínimos
     },
 
     formatTime(h) {

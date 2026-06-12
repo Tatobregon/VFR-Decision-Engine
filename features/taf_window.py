@@ -62,7 +62,7 @@ logger = logging.getLogger(__name__)
 # ──────────────────────────────────────────────────────────────────────────────
 
 # Menor rank = condicion mas restrictiva
-CATEGORY_RANK = {"LIFR": 0, "IFR": 1, "MVFR": 2, "VFR": 3}
+CATEGORY_RANK = {"IFR bajo mínimos": 0, "IFR": 1, "VFR marginal": 2, "VFR": 3}
 _RANK_DEFAULT = 3   # None o cualquier desconocido = sin restriccion
 
 # Tokens que producen r_taf = 1.0 si aparecen en un periodo transitorio
@@ -306,10 +306,10 @@ class TafAnalyzer:
             ind = p.change_indicator
 
             # Score por categoria de vuelo efectiva
-            if   cat == "LIFR": cat_score = 1.00
-            elif cat == "IFR":  cat_score = 0.75
-            elif cat == "MVFR": cat_score = 0.45
-            else:               cat_score = 0.15  # VFR con alguna degradacion
+            if   cat == "IFR bajo mínimos": cat_score = 1.00
+            elif cat == "IFR":              cat_score = 0.75
+            elif cat == "VFR marginal":     cat_score = 0.45
+            else:                           cat_score = 0.15  # VFR con alguna degradacion
 
             # Modificador por certeza del deterioro
             if   ind == "TEMPO":  modifier = 1.00
@@ -589,9 +589,9 @@ if __name__ == "__main__":
     # Escenario 2: ventana 13-16 intersecta PROB40(14-16)
     check("Esc2: PROB40 detectado",
           r2.has_prob)
-    # vis=3.0 + ceil=800 -> MVFR segun ANAC (vis>=3 AND ceil>=500)
-    check("Esc2: peor caso es MVFR (PROB40: vis=3.0, ceil=800 -> MVFR ANAC)",
-          r2.worst_case.flight_category == "MVFR")
+    # vis=3.0 + ceil=800 -> VFR marginal segun ANAC (vis>=3 AND ceil>=500)
+    check("Esc2: peor caso es VFR marginal (PROB40: vis=3.0, ceil=800)",
+          r2.worst_case.flight_category == "VFR marginal")
     check("Esc2: r_taf < 1.0 (PROB40 sin hard blocker)",
           r2.r_taf < 1.0)
     check("Esc2: r_taf > 0 (hay PROB40 con IFR)",

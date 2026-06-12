@@ -35,8 +35,12 @@ class AircraftProfile:
     name               : str    # Nombre identificador del modelo
 
     # Limites de viento (kt)
-    crosswind_max_kt   : float  # Componente cruzado maximo demostrado
-    gust_max_kt        : float  # Rafaga maxima para operacion normal
+    # NOTA: el "maximum demonstrated crosswind component" del POH NO es un limite
+    # operacional legal, sino el mayor cruzado demostrado durante la certificacion.
+    # Aqui se usa como ANCLA conservadora para normalizar el riesgo de cruzado
+    # (r_xwind = xw / crosswind_max_kt), no como un techo prohibido.
+    crosswind_max_kt   : float  # Componente cruzado maximo DEMOSTRADO (ancla, no limite)
+    gust_max_kt        : float  # Rafaga maxima de referencia para operacion normal
 
     # Minimos meteorologicos VFR (ANAC Argentina)
     vis_min_km         : float  # Visibilidad minima en km
