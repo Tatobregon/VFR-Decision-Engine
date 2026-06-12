@@ -39,6 +39,7 @@ from route.airway_router import find_airways_for_leg, find_airways_for_route_leg
 from route.vfr_corridors import corridor_path_for_leg
 from output.briefing import generate_briefing
 from risk.aircraft_profiles import PROFILE_NAMES, get_profile, AircraftProfile
+from risk.personal_minima import get_minima, LEVEL_NAMES
 from risk.soft_scoring import compute_soft_score
 from risk.hard_blockers import check_hard_blockers_from_weather
 from features.crosswind import compute_crosswind
@@ -72,6 +73,7 @@ class EvaluateRequest(BaseModel):
     duration_hours: float = Field(default=2.0, ge=0.3, le=12.0)
     avoid_airspace: bool = True    # si True, la ruta evita zonas R/P/D
     flight_rules: str = "VFR"      # "VFR" (default) | "IFR" — define routing/altitud
+    experience: str = "PPL"        # "Alumno" | "PPL" | "Avanzado" — mínimos personales
     duration_hours: float = 0.0   # ignorado; calculado internamente desde la ruta
 
 
@@ -131,6 +133,8 @@ class WeatherCard(BaseModel):
     min_to_sunset: Optional[int] = None
     # NOTAM operacional
     notam_blocked: bool = False
+    # Nubes: capa BKN/OVC por debajo del crucero (volaría sobre la capa)
+    cloud_below_cruise: bool = False
     fetch_ok: bool = True
     error_message: str = ""
 
@@ -326,32 +330,35 @@ def _to_card(result, runway_heading: int, ap: AirportInfo, notams: list = None) 
 
 def _apply_operational_blockers(
     card: WeatherCard, ap: AirportInfo, when_unix: int, notams: list, phase: str,
+    flight_rules: str = "VFR", cruise_alt_ft: int = 7500,
 ) -> None:
     """
     Aplica los bloqueos operacionales NO meteorológicos sobre una ficha ya
     construida (muta el card y su decisión):
 
-      - Luz diurna: si el momento (`when_unix`) cae de noche/anochecer en el
-        aeródromo → NO GO. Si es de día pero a < 45 min del ocaso → CAUTION.
-      - NOTAM: si el aeródromo está cerrado o todas sus pistas cerradas → NO GO.
+      - Luz diurna (SOLO VFR): si el momento (`when_unix`) cae de noche/anochecer
+        en el aeródromo → NO GO. Si es de día pero a < 45 min del ocaso → CAUTION.
+        En IFR no aplica: el vuelo nocturno es válido (con habilitación/equipo).
+      - NOTAM (todo régimen): aeródromo cerrado o todas sus pistas cerradas → NO GO.
 
     `phase` ("despegue" | "aterrizaje") solo se usa para el mensaje.
     """
-    # ── Luz diurna ──
-    dl = daylight_status(ap.lat, ap.lon, when_unix)
-    card.sunrise_unix  = dl["sunrise_unix"]
-    card.sunset_unix   = dl["sunset_unix"]
-    card.min_to_sunset = dl["min_to_sunset"]
-    if not dl["is_day"]:
-        card.is_night        = True
-        card.decision        = "NO GO"
-        card.hard_blocked    = True
-        card.blocker_summary = (f"Vuelo nocturno: el {phase} cae fuera de luz diurna. "
-                                f"VFR diurno solamente.")
-    elif dl["tight"]:
-        card.daylight_tight = True
-        if card.decision == "GO":
-            card.decision = "CAUTION"
+    # ── Luz diurna (solo VFR) ──
+    if flight_rules == "VFR":
+        dl = daylight_status(ap.lat, ap.lon, when_unix)
+        card.sunrise_unix  = dl["sunrise_unix"]
+        card.sunset_unix   = dl["sunset_unix"]
+        card.min_to_sunset = dl["min_to_sunset"]
+        if not dl["is_day"]:
+            card.is_night        = True
+            card.decision        = "NO GO"
+            card.hard_blocked    = True
+            card.blocker_summary = (f"Vuelo nocturno: el {phase} cae fuera de luz diurna. "
+                                    f"VFR diurno solamente.")
+        elif dl["tight"]:
+            card.daylight_tight = True
+            if card.decision == "GO":
+                card.decision = "CAUTION"
 
     # ── NOTAM operacional ──
     designators = runway_designators([r.heading for r in ap.runways])
@@ -361,6 +368,17 @@ def _apply_operational_blockers(
         card.decision        = "NO GO"
         card.hard_blocked    = True
         card.blocker_summary = (card.blocker_summary + " · " if card.blocker_summary else "") + impact.reason
+
+    # ── Nubes: capa BKN/OVC por debajo de la altitud de crucero (solo VFR) ──
+    # Si la base de la capa (MSL = elev del aerodromo + techo AGL) queda por
+    # debajo del crucero, el piloto VFR volaria SOBRE la capa, perdiendo
+    # referencia con la superficie. Dato de nubes estimado -> solo CAUTION.
+    if flight_rules == "VFR" and card.ceiling_ft is not None:
+        cloud_base_msl = (ap.elev_ft or 0) + card.ceiling_ft
+        if cloud_base_msl < cruise_alt_ft:
+            card.cloud_below_cruise = True
+            if card.decision == "GO":
+                card.decision = "CAUTION"
 
 
 # ── Helper: aeródromos de desvío por waypoint ────────────────────────────────
@@ -1334,7 +1352,8 @@ async def evaluate(req: EvaluateRequest):
         raise HTTPException(400, f"Aeronave desconocida: {req.aircraft}")
 
     dep_time = _parse_dep_time(req.departure_time)
-    engine   = DecisionEngine(mock=False, aircraft=aircraft)
+    engine   = DecisionEngine(mock=False, aircraft=aircraft,
+                              personal_minima=get_minima(req.experience))
 
     # Reglas de vuelo: VFR (default) o IFR. Definen el routing y la altitud.
     flight_rules = (req.flight_rules or "VFR").upper()
@@ -1433,8 +1452,8 @@ async def evaluate(req: EvaluateRequest):
     arr_time = dep_time + int(actual_duration * 3600)
     origin_card = _to_card(origin_result, origin_result.runway_heading, orig_ap, notams_orig)
     dest_card   = _to_card(dest_result,   dest_result.runway_heading,   dest_ap, notams_dest)
-    _apply_operational_blockers(origin_card, orig_ap, dep_time, notams_orig, "despegue")
-    _apply_operational_blockers(dest_card,   dest_ap, arr_time, notams_dest, "aterrizaje")
+    _apply_operational_blockers(origin_card, orig_ap, dep_time, notams_orig, "despegue", flight_rules, aircraft.cruise_alt_ft)
+    _apply_operational_blockers(dest_card,   dest_ap, arr_time, notams_dest, "aterrizaje", flight_rules, aircraft.cruise_alt_ft)
 
     decisions = [origin_card.decision, dest_card.decision]
     global_dec = "NO GO" if "NO GO" in decisions else "CAUTION" if "CAUTION" in decisions else "GO"

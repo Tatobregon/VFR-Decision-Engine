@@ -126,9 +126,11 @@ class DecisionEngine:
         self,
         mock    : bool = False,
         aircraft: Optional[AircraftProfile] = None,
+        personal_minima = None,
     ):
         self.mock     = mock
         self.aircraft = aircraft or ALPHA_TRAINER
+        self.personal_minima = personal_minima  # PersonalMinima o None (sin ajuste)
 
         self._aw          = AviationWeatherFetcher(mock=mock)
         self._nwp_fetch   = OpenMeteoFetcher(mock=mock)
@@ -249,7 +251,8 @@ class DecisionEngine:
                 )
 
         # ── Soft scoring: peor caso dentro de la ventana ─────────────────────
-        scores  = [compute_soft_score(w, rwy, self.aircraft) for w in window_wx]
+        scores  = [compute_soft_score(w, rwy, self.aircraft,
+                                      personal_minima=self.personal_minima) for w in window_wx]
         worst   = max(scores, key=lambda s: s.r_total)
 
         logger.info(f"NWP {sid}: R_total={worst.r_total:.3f} [{worst.decision}] pista={rwy}")
@@ -341,7 +344,8 @@ class DecisionEngine:
 
         # ── Soft scoring ─────────────────────────────────────────────────────
         r_taf = taf_result.r_taf if taf_result else 0.0
-        score = compute_soft_score(weather, rwy, self.aircraft, taf_r_taf=r_taf)
+        score = compute_soft_score(weather, rwy, self.aircraft, taf_r_taf=r_taf,
+                                   personal_minima=self.personal_minima)
 
         next_go = taf_result.next_go_from if taf_result else None
         logger.info(f"METAR {sid}: R_total={score.r_total:.3f} [{score.decision}] pista={rwy}")

@@ -42,6 +42,7 @@ try:
     from features.crosswind     import compute_crosswind_from_weather
     from features.fog_risk      import compute_fog_risk_from_weather
     from features.orographic    import orographic_penalty_from_weather
+    from risk.personal_minima   import NEUTRAL
 except ImportError:
     import sys as _sys
     import os as _os
@@ -55,6 +56,7 @@ except ImportError:
     from features.crosswind     import compute_crosswind_from_weather
     from features.fog_risk      import compute_fog_risk_from_weather
     from features.orographic    import orographic_penalty_from_weather
+    from risk.personal_minima   import NEUTRAL
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +108,7 @@ def compute_soft_score(
     runway_heading : int,
     aircraft       : AircraftProfile = None,
     taf_r_taf      : float = 0.0,               # r_taf de TafWindowResult (opcional)
+    personal_minima = None,                     # PersonalMinima; None = sin ajuste
 ) -> SoftScoreResult:
     """
     Calcula R_total a partir de un ParsedWeather y el contexto de vuelo.
@@ -125,11 +128,17 @@ def compute_soft_score(
     if aircraft is None:
         aircraft = ALPHA_TRAINER
 
+    # Minimos personales: endurecen los umbrales segun la experiencia del piloto.
+    pm = personal_minima if personal_minima is not None else NEUTRAL
+
     # ── r_i individuales ─────────────────────────────────────────────────────
 
-    # Visibilidad y ceiling: directo del weather
-    _r_vis  = r_visibility(weather.visibility_km)
-    _r_ceil = r_ceiling(weather.ceiling_ft)
+    # Visibilidad y ceiling: el piloto "percibe" peor segun sus minimos personales
+    # (dividir por el multiplicador => exigir mas margen).
+    _vis_in  = weather.visibility_km / pm.vis_mult if weather.visibility_km is not None else None
+    _ceil_in = weather.ceiling_ft   / pm.ceil_mult if weather.ceiling_ft   is not None else None
+    _r_vis  = r_visibility(_vis_in)
+    _r_ceil = r_ceiling(_ceil_in)
 
     # Crosswind y gust: usar CrosswindResult para manejar VRB y rafagas
     xw_result = compute_crosswind_from_weather(weather, runway_heading)
@@ -137,7 +146,8 @@ def compute_soft_score(
     _xw_eff   = (xw_result.crosswind_gust_kt
                  if xw_result.crosswind_gust_kt is not None
                  else xw_result.crosswind_kt)
-    _r_xwind  = r_crosswind(_xw_eff, aircraft.crosswind_max_kt)
+    # La tolerancia al cruzado escala con los minimos personales (xwind_mult<1 = mas estricto)
+    _r_xwind  = r_crosswind(_xw_eff, aircraft.crosswind_max_kt * pm.xwind_mult)
 
     # Gust: delta entre rafaga y sostenida
     _r_gust   = r_gust(

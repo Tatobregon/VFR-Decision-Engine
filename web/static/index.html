@@ -445,6 +445,18 @@
           </div>
           <span class="text-xs text-muted">Evitar espacios aéreos R/P/D</span>
         </label>
+
+        <!-- Mínimos personales (experiencia del piloto) -->
+        <label class="flex items-center gap-2">
+          <span class="text-xs text-muted">Mínimos:</span>
+          <select x-model="form.experience"
+                  class="bg-bg border border-border rounded-md text-xs px-2 py-1 text-[#e6edf3]"
+                  title="Mínimos personales: endurecen los umbrales según la experiencia del piloto">
+            <option value="Alumno">Alumno</option>
+            <option value="PPL">PPL</option>
+            <option value="Avanzado">Avanzado</option>
+          </select>
+        </label>
       </div>
 
       <button
@@ -763,6 +775,13 @@
             </div>
           </div>
 
+          <!-- Nubes por debajo del crucero (VFR): on-top / sin referencia visual -->
+          <div x-show="card.cloud_below_cruise"
+               class="mb-4 px-3 py-2 rounded-lg text-xs bg-caution/10 border border-caution/25 text-caution leading-snug">
+            ☁ Capa BKN/OVC por debajo de tu altitud de crucero: volarías <strong>sobre la capa</strong>,
+            sin referencia visual con la superficie. Considerá un nivel inferior (por debajo de las nubes) o reevaluá.
+          </div>
+
           <!-- Score total + breakdown -->
           <div x-show="card.fetch_ok && !card.hard_blocked">
             <div class="flex items-center justify-between mb-1.5">
@@ -1072,6 +1091,15 @@
       </pre>
     </div>
 
+    <!-- Disclaimer de capas de nubes (solo VFR): el dato de nubes es estimado -->
+    <div x-show="result?.route?.flight_rules === 'VFR'"
+         class="av-card mb-5 text-xs text-muted leading-relaxed" style="border-color:#8b949e30">
+      ☁ <strong class="text-[#e6edf3]">Capas de nubes:</strong> la nubosidad y las bases que muestra el sistema son
+      <strong>estimadas</strong> (NWP / METAR sin topes de nube). Verificá nubosidad, bases y topes en una fuente
+      dedicada (ej. <a href="https://www.windy.com" target="_blank" rel="noopener" style="color:#58a6ff" class="hover:underline">Windy</a>)
+      antes del vuelo.
+    </div>
+
   </div><!-- /results -->
   </div><!-- /modo ruta -->
 
@@ -1274,6 +1302,7 @@ function app() {
       departure_time: '',
       avoid_airspace: true,
       flight_rules:   'VFR',
+      experience:     'PPL',
     },
 
     // ── Autocomplete
@@ -1463,6 +1492,7 @@ function app() {
           duration_hours: this.form.duration_hours,
           avoid_airspace: this.form.avoid_airspace,
           flight_rules:   this.form.flight_rules,
+          experience:     this.form.experience,
         };
 
         const res = await fetch('/api/evaluate', {
