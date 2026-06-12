@@ -1788,21 +1788,18 @@ function app() {
         color: '#58a6ff', weight: 2.5, opacity: 0.75, dashArray: '8 5',
       }).addTo(this._routeLayer);
 
-      // Resaltar en violeta los tramos que transitan por corredor VFR (incluye
-      // los aeródromos de entrada/salida para que el corredor quede conectado).
+      // Resaltar en violeta SOLO el tramo del corredor (de waypoint a waypoint
+      // del corredor). El resto de la ruta queda en azul great-circle por debajo:
+      // origen → 1er corredor = great circle hasta entrar a la TMA, luego el
+      // corredor en violeta, y último corredor → destino = great circle de nuevo.
       let _run = [];
       const _flushRun = () => {
-        if (_run.length >= 2) L.polyline(_run, {color:'#a371f7', weight:3.5, opacity:0.9}).addTo(this._routeLayer);
+        if (_run.length >= 2) L.polyline(_run, {color:'#a371f7', weight:4, opacity:0.95}).addTo(this._routeLayer);
         _run = [];
       };
-      for (let k = 0; k < spine.length; k++) {
-        const w = spine[k];
-        if (w.is_corridor_waypoint) {
-          if (_run.length === 0 && k > 0) _run.push([spine[k-1].lat, spine[k-1].lon]);
-          _run.push([w.lat, w.lon]);
-        } else if (_run.length) {
-          _run.push([w.lat, w.lon]); _flushRun();
-        }
+      for (const w of spine) {
+        if (w.is_corridor_waypoint) _run.push([w.lat, w.lon]);
+        else _flushRun();
       }
       _flushRun();
 
