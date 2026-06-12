@@ -966,6 +966,34 @@
     </div>
 
     <!-- ── PERFIL VERTICAL DE RUTA ─────────────────────────────────── -->
+    <!-- ── CORREDORES VFR · CARTA VISUAL AIP ─────────────────────────── -->
+    <template x-if="corridorCharts().length">
+      <div class="av-card mb-5" style="border-color:#a371f740">
+        <div class="flex items-start gap-3">
+          <div style="font-size:20px;line-height:1.2">🗺️</div>
+          <div class="flex-1 min-w-0">
+            <h3 class="text-[11px] font-bold tracking-widest uppercase" style="color:#a371f7">Corredores visuales · carta AIP</h3>
+            <p class="text-xs text-muted mt-1 leading-relaxed">
+              Esta ruta transita por corredores visuales.
+              <strong class="text-[#e6edf3]">Se sugiere revisar la carta visual publicada por el AIP</strong>
+              antes del vuelo (frecuencias, puntos de notificación, alturas y sentido de circulación):
+            </p>
+            <div class="flex flex-col gap-2 mt-3">
+              <template x-for="ch in corridorCharts()" :key="ch.region">
+                <a :href="ch.url" target="_blank" rel="noopener"
+                   class="inline-flex items-center gap-2 text-sm font-semibold hover:underline"
+                   style="color:#58a6ff">
+                  <span style="color:#a371f7">⇢</span>
+                  <span x-text="'Carta visual · ' + ch.region"></span>
+                  <span class="text-muted text-[11px] font-normal">↗ ais.anac.gob.ar</span>
+                </a>
+              </template>
+            </div>
+          </div>
+        </div>
+      </div>
+    </template>
+
     <div class="av-card mb-5" x-show="result?.route?.found && (profile || profileLoading)">
       <div class="flex items-center justify-between mb-3 gap-3 flex-wrap">
         <h3 class="text-[11px] font-bold tracking-widest uppercase text-muted">Perfil vertical de ruta</h3>
@@ -2274,6 +2302,18 @@ function app() {
     switchToIFR() {
       this.form.flight_rules = 'IFR';
       this.evaluate();
+    },
+
+    // ── Cartas visuales del AIP de las TMA que la ruta transita por corredor ──
+    corridorCharts() {
+      const wps = this.result?.route?.waypoints || [];
+      const regions = new Set(wps.filter(w => w.is_corridor_waypoint).map(w => w.corridor_region || ''));
+      const out = [];
+      if ([...regions].some(r => /rdoba/i.test(r)))
+        out.push({ region: 'TMA Córdoba', url: 'https://ais.anac.gob.ar/descarga/aip-69e0c63aa2607' });
+      if ([...regions].some(r => /buenos/i.test(r)))
+        out.push({ region: 'TMA Buenos Aires', url: 'https://ais.anac.gob.ar/descarga/aip-69e0c66807e4e' });
+      return out;
     },
 
     _buildDiversionLayer() {
