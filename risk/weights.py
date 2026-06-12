@@ -12,30 +12,38 @@ Cada r_i es una funcion de riesgo en [0, 1]:
 
 Los pesos suman 1.0. El delta orografico se aplica DESPUES del weighted sum.
 
-Referencia CLAUDE.md:
-  Visibilidad  | vis_km      | 0.25 | Rampa: 1 si vis<3km, 0 si vis>8km
-  Ceiling      | ceil_ft     | 0.25 | Rampa: 1 si ceil<500ft, 0 si ceil>2000ft
-  Crosswind    | xw_kt       | 0.20 | Lineal: xw / xw_max
-  Rafagas      | gust-spd kt | 0.10 | Lineal: delta / gust_max
-  Fenomenos    | wx_codes    | 0.10 | Escalonado por severidad
-  Niebla proxy | spread_c    | 0.05 | Rampa: 1 si spread<2C, 0 si spread>5C
-  Riesgo TAF   | PROB/TEMPO  | 0.05 | Escalonado (calculado en taf_window.py)
+Los pesos fueron derivados por AHP (Analytic Hierarchy Process) a partir de
+comparaciones de a pares fundamentadas en accidentologia de aviacion general,
+no fijados a ojo. La derivacion completa (jerarquia, matrices, autovector y
+razon de consistencia CR) es reproducible en risk/ahp_weights.py.
+
+Pesos AHP (CR global = 0.063, aceptable por ser <= 0.10):
+  Visibilidad  | vis_km      | 0.279 | Rampa: 1 si vis<3km, 0 si vis>8km
+  Ceiling      | ceil_ft     | 0.279 | Rampa: 1 si ceil<500ft, 0 si ceil>2000ft
+  Crosswind    | xw_kt       | 0.179 | Lineal: xw / xw_max
+  Rafagas      | gust-spd kt | 0.090 | Lineal: delta / gust_max
+  Fenomenos    | wx_codes    | 0.078 | Escalonado por severidad
+  Niebla proxy | spread_c    | 0.056 | Rampa: 1 si spread<2C, 0 si spread>5C
+  Riesgo TAF   | PROB/TEMPO  | 0.039 | Escalonado (calculado en taf_window.py)
 """
 
 from typing import Optional
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Pesos del scoring
+# Pesos del scoring — derivados por AHP (ver risk/ahp_weights.py)
 # ──────────────────────────────────────────────────────────────────────────────
+# Redondeados a 3 decimales por el metodo del resto mayor (largest remainder)
+# para que sumen exactamente 1.000. Valores exactos del autovector AHP:
+#   vis .2793  ceil .2793  xwind .1789  gust .0895  wx .0781  fog .0559  taf .0391
 
-W_VIS   = 0.25
-W_CEIL  = 0.25
-W_XWIND = 0.20
-W_GUST  = 0.10
-W_WX    = 0.10
-W_FOG   = 0.05
-W_TAF   = 0.05
+W_VIS   = 0.279
+W_CEIL  = 0.279
+W_XWIND = 0.179
+W_GUST  = 0.090
+W_WX    = 0.078
+W_FOG   = 0.056
+W_TAF   = 0.039
 
 assert abs(W_VIS + W_CEIL + W_XWIND + W_GUST + W_WX + W_FOG + W_TAF - 1.0) < 1e-9, \
     "Los pesos deben sumar 1.0"

@@ -1,0 +1,214 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "corridor_id": "VFR-COR-01",
+        "name": "CORDOBA VOR/DME (CBA) - MONTE CRISTO",
+        "upper_limit_ft": 1500,
+        "limit_reference": "AGL"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-64.20361, -31.31333],
+          [-63.95833, -31.34167]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "corridor_id": "VFR-COR-02",
+        "name": "CORDOBA VOR/DME (CBA) - AD COSQUIN/Santa Maria",
+        "upper_limit_ft": 1500,
+        "limit_reference": "AGL"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-64.20361, -31.31333],
+          [-64.45000, -31.28333]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "corridor_id": "VFR-COR-03",
+        "name": "AD. LA CUMBRE - AD COSQUIN/Santa Maria",
+        "upper_limit_ft": 1500,
+        "limit_reference": "AGL"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-64.53333, -31.00000],
+          [-64.45000, -31.28333]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "corridor_id": "VFR-COR-04",
+        "name": "ASCOCHINGA - AD. LA CUMBRE",
+        "upper_limit_ft": 1500,
+        "limit_reference": "AGL"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-64.28889, -30.95000],
+          [-64.53333, -31.00000]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "corridor_id": "VFR-COR-05",
+        "name": "AD JESUS MARIA - ASCOCHINGA",
+        "upper_limit_ft": 1500,
+        "limit_reference": "AGL"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-64.08333, -30.98333],
+          [-64.28889, -30.95000]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "corridor_id": "VFR-COR-06",
+        "name": "RIO PRIMERO - AD JESUS MARIA",
+        "upper_limit_ft": 1500,
+        "limit_reference": "AGL"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-63.62639, -31.32917],
+          [-64.08333, -30.98333]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "corridor_id": "VFR-COR-07",
+        "name": "MONTE CRISTO - AD JESUS MARIA",
+        "upper_limit_ft": 1500,
+        "limit_reference": "AGL"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-63.95833, -31.34167],
+          [-64.08333, -30.98333]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "corridor_id": "VFR-COR-08",
+        "name": "RIO PRIMERO - AD MONTE CRISTO",
+        "upper_limit_ft": 1500,
+        "limit_reference": "AGL"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-63.62639, -31.32917],
+          [-63.95833, -31.34167]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "corridor_id": "VFR-COR-09",
+        "name": "AD CORONEL OLMEDO - MONTE CRISTO",
+        "upper_limit_ft": 1500,
+        "limit_reference": "AGL"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-64.15000, -31.48333],
+          [-63.95833, -31.34167]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "corridor_id": "VFR-COR-10",
+        "name": "RIO SEGUNDO - TOLEDO - AD CORONEL OLMEDO",
+        "upper_limit_ft": 1500,
+        "limit_reference": "AGL"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-63.91250, -31.65556],
+          [-64.00833, -31.55833],
+          [-64.15000, -31.48333]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "corridor_id": "VFR-COR-11",
+        "name": "AD ALTA GRACIA - AD CORONEL OLMEDO",
+        "upper_limit_ft": 1500,
+        "limit_reference": "AGL"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-64.40000, -31.65000],
+          [-64.15000, -31.48333]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "corridor_id": "VFR-COR-12",
+        "name": "AD CARLOS PAZ - AD ALTA GRACIA",
+        "upper_limit_ft": 1500,
+        "limit_reference": "AGL"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-64.51667, -31.45000],
+          [-64.40000, -31.65000]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "corridor_id": "VFR-COR-13",
+        "name": "AD COSQUIN/Santa Maria - AD CARLOS PAZ",
+        "upper_limit_ft": 1500,
+        "limit_reference": "AGL"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-64.45000, -31.28333],
+          [-64.51667, -31.45000]
+        ]
+      }
+    }
+  ]
+}

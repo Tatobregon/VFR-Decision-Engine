@@ -42,6 +42,7 @@ from risk.soft_scoring import compute_soft_score
 from risk.hard_blockers import check_hard_blockers_from_weather
 from features.crosswind import compute_crosswind
 from features.density_altitude import advisory as da_advisory
+from features.vfr_altitude import hemispheric_vfr_altitude
 from route.performance import haversine_km, bearing_deg, effective_groundspeed_kt, leg_time_hours, safe_altitude_ft
 from data.terrain import get_elevations_m, M_TO_FT
 from config import NWP_HOURS_AHEAD
@@ -67,6 +68,7 @@ class EvaluateRequest(BaseModel):
     departure_time: str = ""       # "HH:MM" UTC; vacío = ahora + 1h
     duration_hours: float = Field(default=2.0, ge=0.3, le=12.0)
     avoid_airspace: bool = True    # si True, la ruta evita zonas R/P/D
+    flight_rules: str = "VFR"      # "VFR" (default) | "IFR" — define routing/altitud
     duration_hours: float = 0.0   # ignorado; calculado internamente desde la ruta
 
 
@@ -184,6 +186,7 @@ class RouteWaypoint(BaseModel):
 
 class RouteCard(BaseModel):
     found: bool
+    flight_rules: str = "VFR"          # "VFR" | "IFR" — modo de la ruta calculada
     path: List[str] = []
     waypoints: List[RouteWaypoint] = []
     total_dist_km: float = 0.0
@@ -480,6 +483,7 @@ def _generate_route_waypoints(
     mock: bool,
     step_km: float = 230.0,
     airway_map: Optional[dict] = None,
+    flight_rules: str = "VFR",
 ) -> List[RouteWaypoint]:
     """
     Construye la lista completa de waypoints de la ruta.
@@ -555,9 +559,20 @@ def _generate_route_waypoints(
 
         leg_km = leg_dists[i] if i < len(leg_dists) else 0.0
         track = int(bearing_deg(ap.lat, ap.lon, next_ap.lat, next_ap.lon))
-        # Altitud segura del tramo (para tramos SIN aerovía): terreno + buffer.
-        # Aproximada con la elevación de los aeródromos del tramo.
-        cruise_alt = max(7500, max(ap.elev_ft, next_ap.elev_ft) + 3000)
+        if flight_rules == "VFR":
+            # Altitud VFR por la regla de los semicírculos: depende del rumbo del
+            # tramo y del crucero planificado del avión (NO de la MEA de aerovía).
+            # Punto medio del tramo para la declinación magnética. Si el terreno
+            # supera esta altitud, el perfil vertical lo marca como conflicto y
+            # sugiere recalcular en IFR (no se sube por encima del crucero del
+            # avión: un VFR no puede trepar arbitrariamente a librar la cordillera).
+            mid_lat = (ap.lat + next_ap.lat) / 2.0
+            mid_lon = (ap.lon + next_ap.lon) / 2.0
+            cruise_alt = hemispheric_vfr_altitude(track, mid_lat, mid_lon, aircraft.cruise_alt_ft)
+        else:
+            # IFR sin aerovía disponible: altitud segura del tramo (terreno + buffer),
+            # aproximada con la elevación de los aeródromos del tramo.
+            cruise_alt = max(7500, max(ap.elev_ft, next_ap.elev_ft) + 3000)
 
         # Waypoints de aerovía para este tramo
         aw_wps: list = airway_map.get((code, path[i + 1]), [])
@@ -953,6 +968,40 @@ async def get_airspace():
     return result
 
 
+# Corredores VFR de las TMA Buenos Aires y Córdoba (los únicos publicados en el
+# país). Datos oficiales (cartas VAC / corredores VFR de ANAC) cargados desde
+# GeoJSON. Se cachean en memoria tras la primera lectura.
+_VFR_CORRIDORS_CACHE: Optional[dict] = None
+
+
+def _load_vfr_corridors() -> dict:
+    """Carga y fusiona los GeoJSON de corredores VFR, etiquetando la región."""
+    global _VFR_CORRIDORS_CACHE
+    if _VFR_CORRIDORS_CACHE is not None:
+        return _VFR_CORRIDORS_CACHE
+    import json
+    base = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+    feats: list = []
+    for region, fname in (("BA", "corredores_vfr_TMA_BA.geojson"),
+                          ("CBA", "corredores_vfr_TMA_CBA.geojson")):
+        try:
+            with open(os.path.join(base, fname), encoding="utf-8") as f:
+                fc = json.load(f)
+            for ft in fc.get("features", []):
+                ft.setdefault("properties", {})["region"] = region
+                feats.append(ft)
+        except Exception as e:
+            logger.warning(f"No se pudieron cargar los corredores VFR {region}: {e}")
+    _VFR_CORRIDORS_CACHE = {"type": "FeatureCollection", "features": feats}
+    return _VFR_CORRIDORS_CACHE
+
+
+@app.get("/api/vfr_corridors")
+async def vfr_corridors():
+    """Corredores VFR publicados de las TMA Buenos Aires y Córdoba (GeoJSON)."""
+    return _load_vfr_corridors()
+
+
 class TimelineRequest(BaseModel):
     origin: str
     dest: str
@@ -1030,6 +1079,7 @@ class ProfileRequest(BaseModel):
     aircraft: Optional[str] = None      # nombre del avión → altitud de crucero real
     cruise_alt_ft: int = 7500           # fallback si no se pasa aircraft
     sample_km: float = Field(default=15.0, ge=5.0, le=50.0)
+    flight_rules: str = "VFR"           # "VFR" | "IFR" — define la altitud del perfil
 
 
 @app.post("/api/profile")
@@ -1060,10 +1110,12 @@ async def profile(req: ProfileRequest):
     if total <= 0:
         return {"profile": [], "airports": [], "total_km": 0.0}
 
+    is_vfr = (req.flight_rules or "VFR").upper() != "IFR"
+
     # Muestrear densamente a lo largo de la polilínea (cap de puntos para no
     # saturar la API de terreno: el paso se agranda en rutas muy largas).
     sample_km = max(req.sample_km, total / 200.0)
-    sampled: list = []   # (lat, lon, dist_km, mea_ft)
+    sampled: list = []   # (lat, lon, dist_km, mea_ft, vfr_alt_ft)
     d = 0.0
     seg = 0
     while d <= total + 1e-6:
@@ -1076,7 +1128,13 @@ async def profile(req: ProfileRequest):
         # MEA del segmento: el del waypoint destino (donde Dijkstra guarda el MEA),
         # con respaldo en el de origen.
         mea = pts[seg + 1].mea_ft or pts[seg].mea_ft
-        sampled.append((lat, lon, d, mea))
+        # En VFR, la altitud de crucero del segmento surge de la regla de los
+        # semicírculos (rumbo del segmento + crucero del avión).
+        vfr_alt = None
+        if is_vfr:
+            seg_track = bearing_deg(pts[seg].lat, pts[seg].lon, pts[seg + 1].lat, pts[seg + 1].lon)
+            vfr_alt = hemispheric_vfr_altitude(seg_track, lat, lon, cruise_alt)
+        sampled.append((lat, lon, d, mea, vfr_alt))
         d += sample_km
 
     # Terreno de los puntos muestreados (real SRTM o mock)
@@ -1087,15 +1145,32 @@ async def profile(req: ProfileRequest):
         logger.warning(f"Error obteniendo terreno: {e}")
         elevs_m = [None] * len(coords)
 
+    # Margen de terreno: 500 ft sobre el obstáculo más alto (RAAC VFR).
+    VFR_TERRAIN_CLEARANCE_FT = 500
+
     profile_pts: List[dict] = []
-    for (lat, lon, dist, mea), em in zip(sampled, elevs_m):
+    vfr_conflict       = False
+    vfr_conflict_dist  = None
+    vfr_max_terrain    = 0
+    vfr_cruise_ref     = None
+    for (lat, lon, dist, mea, vfr_alt), em in zip(sampled, elevs_m):
         terrain_ft = round(em * M_TO_FT) if em is not None else 0
-        profile_pts.append({
+        entry = {
             "dist_km":    round(dist, 1),
             "terrain_ft": terrain_ft,
             "mea_ft":     mea,
             "safe_alt_ft": safe_altitude_ft(terrain_ft),
-        })
+        }
+        if vfr_alt is not None:
+            entry["vfr_alt_ft"] = vfr_alt
+            vfr_cruise_ref = vfr_alt if vfr_cruise_ref is None else min(vfr_cruise_ref, vfr_alt)
+            # Conflicto: el terreno + margen supera la altitud VFR alcanzable.
+            if terrain_ft + VFR_TERRAIN_CLEARANCE_FT > vfr_alt:
+                if not vfr_conflict:
+                    vfr_conflict_dist = round(dist, 1)
+                vfr_conflict    = True
+                vfr_max_terrain = max(vfr_max_terrain, terrain_ft)
+        profile_pts.append(entry)
 
     # Aeropuertos de la espina (origen, destino, escalas en línea)
     airports: List[dict] = []
@@ -1137,6 +1212,13 @@ async def profile(req: ProfileRequest):
         "waypoints": waypoints,
         "total_km": round(total, 1),
         "cruise_alt_ft": cruise_alt,
+        "flight_rules": "VFR" if is_vfr else "IFR",
+        # Fase 2 — conflicto de terreno en VFR: si el terreno supera la altitud
+        # VFR alcanzable, el frontend avisa y ofrece recalcular en IFR.
+        "vfr_terrain_conflict": vfr_conflict,
+        "vfr_conflict_dist_km": vfr_conflict_dist,
+        "vfr_max_terrain_ft":   vfr_max_terrain if vfr_conflict else None,
+        "vfr_cruise_ft":        vfr_cruise_ref,
     }
 
 
@@ -1158,6 +1240,11 @@ async def evaluate(req: EvaluateRequest):
 
     dep_time = _parse_dep_time(req.departure_time)
     engine   = DecisionEngine(mock=False, aircraft=aircraft)
+
+    # Reglas de vuelo: VFR (default) o IFR. Definen el routing y la altitud.
+    flight_rules = (req.flight_rules or "VFR").upper()
+    if flight_rules not in ("VFR", "IFR"):
+        flight_rules = "VFR"
 
     # Estimación rápida de duración para ventana meteorológica inicial
     orig_ap = AIRPORTS[origin]
@@ -1188,14 +1275,16 @@ async def evaluate(req: EvaluateRequest):
     # Duración real desde la ruta calculada
     actual_duration = route_result.total_time_h if (route_result.found and route_result.total_time_h > 0) else rough_duration
 
-    # Buscar aerovías para la ruta.
-    # Estrategia: primero un camino de aerovía CONTINUO de origen a destino
-    # (end-to-end), repartido entre los tramos. Esto evita la fragmentación del
-    # enfoque por-tramo, donde una red de aerovías continua se rechazaba porque
-    # cada tramo aislado superaba el límite de desvío. Si no hay camino end-to-end,
-    # se cae al método por-tramo (útil cuando solo algunos tramos tienen aerovía).
+    # Buscar aerovías para la ruta — SOLO en modo IFR.
+    # En VFR el piloto no navega por aerovías: puede pasar por los mismos puntos
+    # geográficos, pero no notifica en los fixes ni sigue el FL asignado a la
+    # aerovía. Por eso en VFR la ruta es línea directa (great circle) y la
+    # altitud surge de la regla de los semicírculos (ver _generate_route_waypoints).
+    # Estrategia IFR: primero un camino de aerovía CONTINUO de origen a destino
+    # (end-to-end), repartido entre los tramos. Si no hay camino end-to-end, se
+    # cae al método por-tramo (útil cuando solo algunos tramos tienen aerovía).
     airway_map: dict = {}
-    if route_result.found and len(route_result.path) >= 2:
+    if flight_rules == "IFR" and route_result.found and len(route_result.path) >= 2:
         leg_airports = [
             (c, AIRPORTS[c].lat, AIRPORTS[c].lon)
             for c in route_result.path if c in AIRPORTS
@@ -1255,6 +1344,7 @@ async def evaluate(req: EvaluateRequest):
         r_map=r_map,
         mock=False,
         airway_map=airway_map,
+        flight_rules=flight_rules,
     )
 
     # Aeródromos de desvío por waypoint (sin requests HTTP)
@@ -1266,6 +1356,7 @@ async def evaluate(req: EvaluateRequest):
 
     route_card = RouteCard(
         found          = route_result.found,
+        flight_rules   = flight_rules,
         path           = route_result.path,
         waypoints      = waypoints,
         total_dist_km  = round(route_result.total_dist_km, 1),

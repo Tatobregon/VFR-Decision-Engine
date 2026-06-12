@@ -414,6 +414,19 @@
         <input class="av-input" type="time" x-model="form.departure_time"/>
         <div class="mt-1 text-xs text-muted">Hora local UTC · dejar vacío = ahora + 1h</div>
       </div>
+      <div>
+        <label class="av-label">Reglas de vuelo</label>
+        <div class="flex rounded-lg overflow-hidden border border-border" style="height:38px">
+          <button type="button" @click="form.flight_rules='VFR'"
+            class="flex-1 text-sm font-semibold tracking-wide transition-colors"
+            :class="form.flight_rules==='VFR' ? 'bg-accent text-[#0d1117]' : 'text-muted hover:text-[#e6edf3]'">VFR</button>
+          <button type="button" @click="form.flight_rules='IFR'"
+            class="flex-1 text-sm font-semibold tracking-wide transition-colors"
+            :class="form.flight_rules==='IFR' ? 'bg-accent text-[#0d1117]' : 'text-muted hover:text-[#e6edf3]'">IFR</button>
+        </div>
+        <div class="mt-1 text-xs text-muted"
+             x-text="form.flight_rules==='VFR' ? 'Línea directa · regla de semicírculos' : 'Aerovías · MEA del tramo'"></div>
+      </div>
     </div>
 
     <!-- Toggles + Evaluar -->
@@ -805,8 +818,9 @@
         <div class="flex flex-col gap-2 flex-1 min-w-0">
           <!-- Fila 1: capas de ruta -->
           <div class="flex flex-wrap gap-1.5">
-            <!-- Aerovías -->
+            <!-- Aerovías (solo en modo IFR) -->
             <button @click="toggleAirways()" class="layer-btn" :class="showAirways ? 'active' : ''"
+                    x-show="result?.route?.flight_rules === 'IFR'"
                     :style="showAirways ? 'border-color:#58a6ff40' : ''">
               <svg width="9" height="9" viewBox="0 0 10 10">
                 <path d="M1 5 L9 5 M6 2 L9 5 L6 8" :stroke="showAirways ? '#58a6ff' : '#8b949e'" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
@@ -839,6 +853,12 @@
               <svg width="11" height="9" viewBox="0 0 16 12"><path d="M4 9 h7 a2.5 2.5 0 0 0 0-5 a3.5 3.5 0 0 0-6.7-1 A2.6 2.6 0 0 0 4 9 z" :fill="showWeather ? '#c9d1d9' : '#484f58'"/></svg>
               Nubes/Lluvia
             </button>
+            <!-- Corredores VFR (TMA Buenos Aires y Córdoba) -->
+            <button @click="toggleCorridors()" class="layer-btn" :class="showCorridors ? 'active' : ''"
+                    :style="showCorridors ? 'border-color:#a371f740' : ''">
+              <svg width="11" height="9" viewBox="0 0 12 10"><path d="M1 5 H11" :stroke="showCorridors ? '#a371f7' : '#8b949e'" stroke-width="2" stroke-linecap="round"/></svg>
+              Corredores VFR
+            </button>
           </div>
           <!-- Fila 2: alertas -->
           <div class="flex items-center gap-3 text-xs">
@@ -867,8 +887,11 @@
         <span class="flex items-center gap-1"><span style="width:9px;height:9px;border-radius:50%;background:#3fb950;display:inline-block"></span>GO</span>
         <span class="flex items-center gap-1"><span style="width:9px;height:9px;border-radius:50%;background:#d29922;display:inline-block"></span>CAUTION</span>
         <span class="flex items-center gap-1"><svg width="9" height="9" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="12" fill="#8b949e" transform="rotate(45 8 8)"/></svg>Checkpoint</span>
-        <span x-show="showAirways" class="flex items-center gap-1">
+        <span x-show="showAirways && result?.route?.flight_rules === 'IFR'" class="flex items-center gap-1">
           <svg width="12" height="9" viewBox="0 0 14 10"><circle cx="7" cy="5" r="3.5" fill="none" stroke="#58a6ff" stroke-width="1.5"/><line x1="1" y1="5" x2="3.5" y2="5" stroke="#58a6ff" stroke-width="1.5"/><line x1="10.5" y1="5" x2="13" y2="5" stroke="#58a6ff" stroke-width="1.5"/></svg>Aerovía
+        </span>
+        <span x-show="showCorridors" class="flex items-center gap-1">
+          <svg width="14" height="9" viewBox="0 0 14 10"><line x1="1" y1="5" x2="13" y2="5" stroke="#a371f7" stroke-width="2.5" stroke-linecap="round"/></svg>Corredor VFR
         </span>
         <span x-show="showDiversions" class="flex items-center gap-1"><svg width="9" height="9" viewBox="0 0 18 18"><polygon points="9,1 17,16 1,16" fill="#d29922"/></svg>Desvío</span>
         <span class="flex items-center gap-1"><span style="width:11px;height:11px;border-radius:3px;background:#3fb950;display:inline-flex;align-items:center;justify-content:center;font-size:7px">⛽</span>Escala combustible</span>
@@ -944,13 +967,39 @@
         <h3 class="text-[11px] font-bold tracking-widest uppercase text-muted">Perfil vertical de ruta</h3>
         <div class="flex items-center gap-3 text-[10px] font-mono flex-wrap">
           <span class="flex items-center gap-1"><span style="width:14px;height:7px;background:#5a4632;display:inline-block;border-radius:1px"></span>Terreno</span>
-          <span class="flex items-center gap-1"><span style="width:14px;height:0;border-top:2px solid #f85149;display:inline-block"></span>MEA aerovía</span>
-          <span class="flex items-center gap-1"><span style="width:14px;height:0;border-top:2px dashed #58a6ff;display:inline-block"></span>Crucero</span>
-          <template x-if="profCruiseBelowMea()">
+          <span class="flex items-center gap-1" x-show="result?.route?.flight_rules === 'IFR'"><span style="width:14px;height:0;border-top:2px solid #f85149;display:inline-block"></span>MEA aerovía</span>
+          <span class="flex items-center gap-1" x-show="result?.route?.flight_rules !== 'IFR'"><span style="width:14px;height:0;border-top:2px dashed #f0883e;display:inline-block"></span>Mín. segura</span>
+          <span class="flex items-center gap-1"><span style="width:14px;height:0;border-top:2px dashed #58a6ff;display:inline-block"></span><span x-text="result?.route?.flight_rules === 'IFR' ? 'Crucero' : 'Altitud VFR'"></span></span>
+          <template x-if="result?.route?.flight_rules === 'IFR' && profCruiseBelowMea()">
             <span class="text-nogo font-bold">⚠ Crucero por debajo del MEA</span>
           </template>
         </div>
       </div>
+
+      <!-- Aviso de conflicto de terreno en VFR (Fase 2): el terreno supera la
+           altitud VFR alcanzable → sugerir recalcular en IFR -->
+      <template x-if="profile && profile.vfr_terrain_conflict">
+        <div class="mb-3 rounded-lg border border-[#f85149]/40 bg-[#f85149]/10 px-4 py-3">
+          <div class="flex items-start gap-3 flex-wrap">
+            <div class="flex-1 min-w-0">
+              <div class="text-sm font-bold text-nogo">⛰ Terreno por encima de tu altitud VFR</div>
+              <div class="text-xs text-[#e6edf3] mt-1 leading-relaxed">
+                El terreno alcanza
+                <span class="font-mono font-bold" x-text="(profile.vfr_max_terrain_ft||0).toLocaleString()+' ft'"></span><span
+                  x-show="profile.vfr_conflict_dist_km != null" x-text="' (a ~'+profile.vfr_conflict_dist_km+' km del origen)'"></span>,
+                por encima de la altitud VFR alcanzable
+                (<span class="font-mono" x-text="(profile.vfr_cruise_ft||0).toLocaleString()+' ft'"></span>).
+                Esta ruta no se puede librar en VFR. Volala en <strong>IFR</strong>: usa la MEA de la aerovía,
+                pensada para librar el terreno.
+              </div>
+            </div>
+            <button @click="switchToIFR()"
+              class="px-4 py-2 rounded-lg font-semibold text-xs uppercase tracking-wider bg-accent text-[#0d1117] hover:bg-[#79b8ff] active:scale-95 transition-all whitespace-nowrap">
+              ↻ Recalcular en IFR
+            </button>
+          </div>
+        </div>
+      </template>
 
       <div x-show="profileLoading" class="text-xs text-muted font-mono py-6 text-center">Calculando perfil de terreno…</div>
 
@@ -1182,6 +1231,7 @@ function app() {
       aircraft:       'Pipistrel Alpha Trainer',
       departure_time: '',
       avoid_airspace: true,
+      flight_rules:   'VFR',
     },
 
     // ── Autocomplete
@@ -1233,13 +1283,16 @@ function app() {
     _airspaceLayer: null,
     _airwayLayer: null,
     _weatherLayer: null,
+    _corridorLayer: null,
     _allAirports: null,
     _airspaceData: null,
+    _corridorsData: null,
     showAirports: true,
     showDiversions: true,
     showAirspace: true,
     showAirways: true,
     showWeather: true,
+    showCorridors: false,
     mapHeight: 520,   // altura del mapa en px (persistida en localStorage)
 
     // ── Init
@@ -1370,6 +1423,7 @@ function app() {
           departure_time: this.form.departure_time,
           duration_hours: this.form.duration_hours,
           avoid_airspace: this.form.avoid_airspace,
+          flight_rules:   this.form.flight_rules,
         };
 
         const res = await fetch('/api/evaluate', {
@@ -1486,7 +1540,8 @@ function app() {
         const cruise = spine.find(w => w.cruise_alt_ft)?.cruise_alt_ft || 7500;
         const res = await fetch('/api/profile', {
           method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ points, aircraft: this.form.aircraft, cruise_alt_ft: cruise }),
+          body: JSON.stringify({ points, aircraft: this.form.aircraft, cruise_alt_ft: cruise,
+                                 flight_rules: this.form.flight_rules }),
         });
         if (res.ok) this.profile = await res.json();
       } catch(e) {
@@ -1540,6 +1595,7 @@ function app() {
       for (const pt of p.profile) {
         if (pt.terrain_ft > maxAlt) maxAlt = pt.terrain_ft;
         if (pt.mea_ft && pt.mea_ft > maxAlt) maxAlt = pt.mea_ft;
+        if (pt.safe_alt_ft && pt.safe_alt_ft > maxAlt) maxAlt = pt.safe_alt_ft;
       }
       maxAlt = Math.ceil((maxAlt * 1.15) / 1000) * 1000 || 5000;
       const X = d => ml + (d / total) * plotW;
@@ -1577,10 +1633,21 @@ function app() {
       dT += ` L ${g.X(g.total)} ${g.Y(0)} Z`;
       s += `<path d="${dT}" fill="#5a4632" fill-opacity="0.85" stroke="#7a6044" stroke-width="1"/>`;
 
-      // Línea de crucero + etiqueta
-      const cy = g.Y(p.cruise_alt_ft);
+      // Línea de crucero / altitud VFR + etiqueta
+      const isVfr = (p.flight_rules || 'VFR') === 'VFR';
+      const cruiseAlt = (isVfr && p.vfr_cruise_ft) ? p.vfr_cruise_ft : p.cruise_alt_ft;
+      const cruiseLbl = isVfr ? 'Altitud VFR' : 'Crucero';
+      const cy = g.Y(cruiseAlt);
       s += `<line x1="${g.ml}" y1="${cy}" x2="${g.W-g.mr}" y2="${cy}" stroke="#58a6ff" stroke-width="2" stroke-dasharray="7 4"/>`;
-      s += `<text x="${g.W-g.mr-3}" y="${cy-5}" text-anchor="end" font-size="10" font-family="monospace" fill="#58a6ff">Crucero ${(p.cruise_alt_ft||0).toLocaleString()} ft</text>`;
+      s += `<text x="${g.W-g.mr-3}" y="${cy-5}" text-anchor="end" font-size="10" font-family="monospace" fill="#58a6ff">${cruiseLbl} ${(cruiseAlt||0).toLocaleString()} ft</text>`;
+
+      // En VFR: línea de altitud mínima segura (terreno + 500 ft). Donde supera
+      // la altitud VFR, el terreno no se libra → conflicto (ver aviso arriba).
+      if (isVfr) {
+        let dS = '';
+        p.profile.forEach((pt, i) => { dS += (i ? ' L ' : 'M ') + g.X(pt.dist_km) + ' ' + g.Y(pt.safe_alt_ft); });
+        s += `<path d="${dS}" fill="none" stroke="#f0883e" stroke-width="1.5" stroke-dasharray="3 3" stroke-opacity="0.85"/>`;
+      }
 
       // Segmentos de MEA (se cortan donde no hay aerovía)
       let cur = [];
@@ -1651,7 +1718,7 @@ function app() {
         this._map.off();
         this._map.remove();
         this._map = null;
-        this._routeLayer = this._diversionLayer = this._airportLayer = this._airspaceLayer = this._airwayLayer = this._weatherLayer = null;
+        this._routeLayer = this._diversionLayer = this._airportLayer = this._airspaceLayer = this._airwayLayer = this._weatherLayer = this._corridorLayer = null;
       }
 
       const wps = this.result?.route?.waypoints;
@@ -1668,6 +1735,7 @@ function app() {
 
       // Capas independientes (airspace debajo de todo, luego ruta, aerovías encima)
       this._airspaceLayer  = L.layerGroup().addTo(this._map);
+      this._corridorLayer  = L.layerGroup().addTo(this._map);
       this._routeLayer     = L.layerGroup().addTo(this._map);
       this._airwayLayer    = L.layerGroup().addTo(this._map);
       this._diversionLayer = L.layerGroup().addTo(this._map);
@@ -1678,6 +1746,7 @@ function app() {
       if (this.showAirways) this._buildAirwayLayer();
       if (this.showDiversions) this._buildDiversionLayer();
       if (this.showWeather) this._buildWeatherLayer();
+      if (this.showCorridors) this.loadCorridorData().then(() => this.renderCorridorLayer());
 
       // Zoom/pan → actualizar capa de aeródromos
       this._map.on('zoomend moveend', () => {
@@ -2122,6 +2191,53 @@ function app() {
       } else {
         this._airwayLayer.clearLayers();
       }
+    },
+
+    // ── Corredores VFR (TMA Buenos Aires y Córdoba) ──
+    async loadCorridorData() {
+      if (this._corridorsData) return;
+      try {
+        const res = await fetch('/api/vfr_corridors');
+        this._corridorsData = res.ok ? await res.json() : {features: []};
+      } catch(e) {
+        this._corridorsData = {features: []};
+      }
+    },
+
+    renderCorridorLayer() {
+      if (!this._map || !this._corridorLayer || !this._corridorsData) return;
+      this._corridorLayer.clearLayers();
+      if (!this.showCorridors) return;
+      (this._corridorsData.features || []).forEach(ft => {
+        const coords = (ft.geometry?.coordinates || []).map(c => [c[1], c[0]]); // [lon,lat]→[lat,lon]
+        if (coords.length < 2) return;
+        const p = ft.properties || {};
+        const limit = p.upper_limit_ft ? `${p.upper_limit_ft.toLocaleString()} ft ${p.limit_reference || ''}`.trim() : '';
+        const popup = `<div style="font-family:monospace;min-width:170px;padding:4px 0">
+          <div style="font-size:10px;font-weight:700;color:#a371f7;margin-bottom:3px">CORREDOR VFR · ${p.region || ''}</div>
+          <div style="font-size:11px;font-weight:700;color:#58a6ff">${p.corridor_id || ''}</div>
+          <div style="font-size:10px;color:#e6edf3;margin:3px 0">${p.name || ''}</div>
+          ${limit ? `<div style="font-size:10px;color:#8b949e">Límite superior: ${limit}</div>` : ''}
+        </div>`;
+        L.polyline(coords, { color: '#a371f7', weight: 3, opacity: 0.85 })
+          .bindPopup(popup, {maxWidth: 250}).addTo(this._corridorLayer);
+      });
+    },
+
+    toggleCorridors() {
+      this.showCorridors = !this.showCorridors;
+      if (!this._map || !this._corridorLayer) return;
+      if (this.showCorridors) {
+        this.loadCorridorData().then(() => this.renderCorridorLayer());
+      } else {
+        this._corridorLayer.clearLayers();
+      }
+    },
+
+    // ── Recalcular la ruta en IFR (desde el aviso de conflicto de terreno VFR) ──
+    switchToIFR() {
+      this.form.flight_rules = 'IFR';
+      this.evaluate();
     },
 
     _buildDiversionLayer() {

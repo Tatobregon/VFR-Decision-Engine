@@ -1,0 +1,279 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "corridor_id": "VFR-BAI-01",
+        "name": "PARANA DE LAS PALMAS - DIQUE LUJAN - ESTACION BENAVIDEZ",
+        "upper_limit_ft": 1000,
+        "limit_reference": "MSL"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -58.65333,
+            -34.26778
+          ],
+          [
+            -58.68639,
+            -34.35361
+          ],
+          [
+            -58.69361,
+            -34.40694
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "corridor_id": "VFR-BAI-02",
+        "name": "ISLA MARTIN GARCIA - ESTACION BENAVIDEZ",
+        "upper_limit_ft": 1000,
+        "limit_reference": "MSL"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -58.24667,
+            -34.18222
+          ],
+          [
+            -58.69361,
+            -34.40694
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "corridor_id": "VFR-BAI-03",
+        "name": "AGUSTIN DE ELIA - KM 34 - SANTA CATALINA - ARDIGÓ - ZEBALLOS - J. M. GUTIERREZ - CTR LA PLATA",
+        "upper_limit_ft": 1000,
+        "limit_reference": "MSL"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -58.50583,
+            -34.71
+          ],
+          [
+            -58.465,
+            -34.74361
+          ],
+          [
+            -58.4375,
+            -34.78028
+          ],
+          [
+            -58.3025,
+            -34.80889
+          ],
+          [
+            -58.25667,
+            -34.81111
+          ],
+          [
+            -58.18556,
+            -34.83389
+          ],
+          [
+            -58,
+            -34.95
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "corridor_id": "VFR-BAI-06",
+        "name": "BRANDSEN - J.M. GUTIERREZ",
+        "upper_limit_ft": 1000,
+        "limit_reference": "MSL"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -58.24611,
+            -35.16333
+          ],
+          [
+            -58.18556,
+            -34.83389
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "corridor_id": "VFR-BAI-09",
+        "name": "URIBELARREA - CAÑUELAS",
+        "upper_limit_ft": 1000,
+        "limit_reference": "MSL"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -58.89861,
+            -35.1225
+          ],
+          [
+            -58.75889,
+            -35.05111
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "corridor_id": "VFR-BAI-10",
+        "name": "GRAL LAS HERAS - M. PAZ",
+        "upper_limit_ft": 1000,
+        "limit_reference": "MSL"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -58.94917,
+            -34.92472
+          ],
+          [
+            -58.83222,
+            -34.77556
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "corridor_id": "VFR-BAI-11",
+        "name": "VILLARS - M. PAZ",
+        "upper_limit_ft": 1000,
+        "limit_reference": "MSL"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -58.93861,
+            -34.82889
+          ],
+          [
+            -58.83222,
+            -34.77556
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "corridor_id": "VFR-BAI-13",
+        "name": "CAPILLA DEL SEÑOR - DIQUE LUJAN",
+        "upper_limit_ft": 1000,
+        "limit_reference": "MSL"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -59.09861,
+            -34.28722
+          ],
+          [
+            -58.68639,
+            -34.35361
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "corridor_id": "VFR-BAI-15",
+        "name": "BRANDSEN - CAÑUELAS - M. PAZ - FFCC GRAL BELGRANO",
+        "upper_limit_ft": 1000,
+        "limit_reference": "MSL"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -58.24611,
+            -35.16333
+          ],
+          [
+            -58.75889,
+            -35.05111
+          ],
+          [
+            -58.83222,
+            -34.77556
+          ],
+          [
+            -58.83833,
+            -34.75333
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "corridor_id": "VFR-BAI-16",
+        "name": "CAÑUELAS - ETCHEVERRY",
+        "upper_limit_ft": 1000,
+        "limit_reference": "MSL"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -58.75889,
+            -35.05111
+          ],
+          [
+            -58.07528,
+            -35.02889
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "corridor_id": "VFR-BAI-17",
+        "name": "ESTACION BENAVIDEZ - ATZ ENO",
+        "upper_limit_ft": 1000,
+        "limit_reference": "MSL"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -58.69361,
+            -34.40694
+          ],
+          [
+            -58.78222,
+            -34.44111
+          ]
+        ]
+      }
+    }
+  ]
+}
