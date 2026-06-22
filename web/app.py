@@ -1135,7 +1135,7 @@ class FlightPlanRequest(BaseModel):
     pic: str = ""                      # casilla 19 C/
     color_markings: str = ""           # casilla 19 A/
     endurance: str = ""                # casilla 19 E/ (HHMM; vacío = autonomía total)
-    radio_emerg: str = "E"             # casilla 19 R/
+    radio_emerg: str = ""              # casilla 19 R/ (lo provee el piloto)
     survival: str = ""                 # casilla 19 S/
     jackets: str = ""                  # casilla 19 J/
     dinghies: str = ""                 # casilla 19 D/
@@ -1162,6 +1162,11 @@ async def flightplan(req: FlightPlanRequest):
     d = AIRPORTS[dest]
     rules = "I" if (req.flight_rules or "VFR").upper() == "IFR" else "V"
 
+    # Casilla 13/16: indicador de lugar OACI de 4 letras. Si el aeródromo no
+    # tiene ICAO asignado, va ZZZZ y el nombre/lugar en la casilla 18 (DEP//DEST/).
+    dep_icao  = o.icao_code if (getattr(o, "icao_code", "") and len(o.icao_code) == 4) else "ZZZZ"
+    dest_icao = d.icao_code if (getattr(d, "icao_code", "") and len(d.icao_code) == 4) else "ZZZZ"
+
     # EOBT + DOF desde la hora de salida
     dep_unix = _parse_dep_time(req.departure_time)
     dt = datetime.fromtimestamp(dep_unix, tz=timezone.utc)
@@ -1179,9 +1184,9 @@ async def flightplan(req: FlightPlanRequest):
     else:
         level_ft = ac.cruise_alt_ft
 
-    # Ruta (casilla 15): puntos intermedios o DCT
+    # Ruta (casilla 15): vuelo fuera de rutas ATS → DCT entre puntos sucesivos.
     inter = [c for c in req.path if c not in (origin, dest)]
-    route = " ".join(inter) if inter else "DCT"
+    route = ("DCT " + " DCT ".join(inter) + " DCT") if inter else "DCT"
 
     # Autonomía: pre-calcular (tanque lleno) si el piloto no la ingresó
     endurance = req.endurance.strip()
@@ -1193,8 +1198,10 @@ async def flightplan(req: FlightPlanRequest):
         registration=req.registration, flight_rules=rules, flight_type=req.flight_type,
         icao_type=ac.icao_type, wake=ac.wake_cat,
         equip_radio=req.equip_radio, equip_ssr=req.equip_ssr,
-        dep_icao=origin, eobt=eobt, speed_kt=ac.cruise_kt, level_ft=level_ft, route=route,
-        dest_icao=dest, eet=eet, alternate=req.alternate, alternate2=req.alternate2,
+        dep_icao=dep_icao, dep_name=o.name, eobt=eobt,
+        speed_kt=ac.cruise_kt, level_ft=level_ft, route=route,
+        dest_icao=dest_icao, dest_name=d.name, eet=eet,
+        alternate=req.alternate, alternate2=req.alternate2,
         dof=dof, endurance=endurance, pob=req.pob, pic=req.pic,
         color_markings=req.color_markings, radio_emerg=req.radio_emerg,
         survival=req.survival, jackets=req.jackets, dinghies=req.dinghies,

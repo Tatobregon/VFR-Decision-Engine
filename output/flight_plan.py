@@ -35,19 +35,26 @@ def _fmt_speed(kt: Optional[float]) -> str:
     return f"N{round(kt):04d}"
 
 
-def _fmt_level(level_ft: Optional[int]) -> str:
+def _fmt_level(level_ft: Optional[int], flight_level: bool = False) -> str:
     """
-    Nivel de crucero. VFR sin nivel asignado -> 'VFR'. Con altitud planificada
-    se expresa como A seguido de la altitud en centenas de pies (A055 = 5500 ft).
+    Nivel de crucero (casilla 15b):
+      - VFR sin nivel asignado            -> 'VFR'
+      - VFR con altitud planificada       -> A + altitud en centenas de pies (A055 = 5500 ft)
+      - IFR (flight_level=True)           -> F + nivel de vuelo en centenas de pies (F085, F165)
     """
     if level_ft is None:
         return "VFR"
+    if flight_level:
+        return f"F{round(level_ft / 100):03d}"
     return f"A{round(level_ft / 100):03d}"
 
 
 def _clean_reg(reg: str) -> str:
-    """Matricula sin guion ni espacios para el mensaje (LV-ABC -> LVABC)."""
-    return (reg or "").replace("-", "").replace(" ", "").upper()
+    """
+    Matricula sin guion ni espacios para el mensaje (LV-ABC -> LVABC).
+    Casilla 7: maximo 7 caracteres alfanumericos, sin guiones ni simbolos.
+    """
+    return (reg or "").replace("-", "").replace(" ", "").upper()[:7]
 
 
 def build_flight_plan(
@@ -61,11 +68,13 @@ def build_flight_plan(
     equip_radio    : str = "S",      # casilla 10a
     equip_ssr      : str = "C",      # casilla 10b (transponder)
     dep_icao       : str = "",
+    dep_name       : str = "",       # nombre/lugar si dep_icao = ZZZZ (casilla 18 DEP/)
     eobt           : str = "",       # HHMM UTC
     speed_kt       : Optional[float] = None,
     level_ft       : Optional[int] = None,
     route          : str = "DCT",
     dest_icao      : str = "",
+    dest_name      : str = "",       # nombre/lugar si dest_icao = ZZZZ (casilla 18 DEST/)
     eet            : str = "",       # HHMM
     alternate      : str = "",
     alternate2     : str = "",
@@ -74,7 +83,7 @@ def build_flight_plan(
     pob            : str = "",       # casilla 19 P/
     pic            : str = "",       # casilla 19 C/
     color_markings : str = "",       # casilla 19 A/
-    radio_emerg    : str = "E",      # casilla 19 R/  (E=ELT, U=UHF, V=VHF)
+    radio_emerg    : str = "",       # casilla 19 R/  (lo provee el piloto: U=UHF, V=VHF, E=ELT)
     survival       : str = "",       # casilla 19 S/
     jackets        : str = "",       # casilla 19 J/
     dinghies       : str = "",       # casilla 19 D/
@@ -85,27 +94,32 @@ def build_flight_plan(
     reg = _clean_reg(registration)
     rules = (flight_rules or "V").upper()[:1]
     speed = _fmt_speed(speed_kt)
-    level = _fmt_level(level_ft)
+    # IFR: nivel de vuelo (Fxxx); VFR: altitud (Axxx).
+    level = _fmt_level(level_ft, flight_level=(rules == "I"))
     route = (route or "DCT").strip() or "DCT"
-    altns = " ".join(a for a in (alternate, alternate2) if a).strip()
+    altns = " ".join(a for a in (alternate, alternate2) if a).strip().upper()
+    # Casilla 9: el numero de aeronaves se inserta SOLO si es mas de una.
+    num_str = "" if int(num) <= 1 else str(int(num))
 
-    # Casilla 18 (otros datos)
+    # Casilla 18 — indicadores en el ORDEN oficial: DEP/ DEST/ DOF/ TYP/ RMK/
     item18_parts = []
+    if dep_icao == "ZZZZ" and dep_name:
+        item18_parts.append(f"DEP/{dep_name.upper()}")
+    if dest_icao == "ZZZZ" and dest_name:
+        item18_parts.append(f"DEST/{dest_name.upper()}")
     if dof:
         item18_parts.append(f"DOF/{dof}")
-    # Si el tipo no esta en el Doc 8643 (ZZZZ), se indica el tipo real en RMK.
-    rmk = remarks.strip()
+    # Tipo no listado en Doc 8643 (ZZZZ): el tipo real se indica precedido de TYP/.
     if icao_type == "ZZZZ" and aircraft_name:
-        type_rmk = f"TIPO {aircraft_name.upper()}"
-        rmk = (type_rmk + (" " + rmk if rmk else ""))
-    if rmk:
-        item18_parts.append(f"RMK/{rmk}")
+        item18_parts.append(f"TYP/{aircraft_name.upper()}")
+    if remarks.strip():
+        item18_parts.append(f"RMK/{remarks.strip().upper()}")
     item18 = " ".join(item18_parts) if item18_parts else "0"
 
     # ── Mensaje FPL OACI (casillas 7-18) ──
     message = (
         f"(FPL-{reg}-{rules}{flight_type}\n"
-        f"-{num}{icao_type}/{wake}-{equip_radio}/{equip_ssr}\n"
+        f"-{num_str}{icao_type}/{wake}-{equip_radio}/{equip_ssr}\n"
         f"-{dep_icao}{eobt}\n"
         f"-{speed}{level} {route}\n"
         f"-{dest_icao}{eet}{(' ' + altns) if altns else ''}\n"
@@ -175,17 +189,27 @@ if __name__ == "__main__":
     check("mensaje arranca con (FPL-LVABC-VG", fp.message.startswith("(FPL-LVABC-VG"))
     check("mensaje termina con )", fp.message.endswith(")"))
     check("DOF en casilla 18", "DOF/260622" in fp.message)
+    # Casilla 9: 1 aeronave -> SIN numero (C172/L, no 1C172/L)
+    check("1 aeronave: sin numero en casilla 9", "-C172/L-" in fp.message and "-1C172/L-" not in fp.message)
 
     # VFR sin nivel -> 'VFR'
     fp2 = build_flight_plan(registration="LV-X", flight_rules="V", level_ft=None,
                             dep_icao="SACO", dest_icao="SAAR", speed_kt=90)
     check("nivel None -> VFR", fp2.fields["15_nivel"] == "VFR")
 
-    # Tipo no listado (Alpha) -> ZZZZ + RMK con el tipo real
+    # Tipo no listado (Alpha) -> ZZZZ + TYP/ con el tipo real (NO RMK/TIPO)
     fp3 = build_flight_plan(registration="LV-Y", flight_rules="V", icao_type="ZZZZ",
                             aircraft_name="Pipistrel Alpha Trainer",
                             dep_icao="SACO", dest_icao="SAAR", speed_kt=97, dof="260622")
-    check("ZZZZ -> tipo en RMK", "TIPO PIPISTREL ALPHA TRAINER" in fp3.message)
+    check("ZZZZ -> tipo en TYP/", "TYP/PIPISTREL ALPHA TRAINER" in fp3.message)
+    check("ZZZZ -> NO usa RMK/TIPO", "RMK/TIPO" not in fp3.message)
+
+    # Aerodromo sin ICAO -> ZZZZ + DEP/ con el nombre, en orden antes de DOF/
+    fp4 = build_flight_plan(registration="LV-Z", flight_rules="V",
+                            dep_icao="ZZZZ", dep_name="Campo La Esperanza",
+                            dest_icao="SAAR", speed_kt=97, dof="260622")
+    check("dep ZZZZ -> DEP/ en casilla 18", "DEP/CAMPO LA ESPERANZA" in fp4.message)
+    check("orden DEP/ antes de DOF/", fp4.message.index("DEP/") < fp4.message.index("DOF/"))
 
     print("\n" + "=" * 64)
     print("  " + ("TODOS LOS TESTS PASARON" if ok else "ALGUNOS TESTS FALLARON"))

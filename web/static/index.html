@@ -334,6 +334,8 @@
               <input x-model="fpForm.equip_radio" placeholder="S" class="bg-bg border border-border rounded px-2 py-1.5 text-[#e6edf3] font-mono uppercase"/></label>
             <label class="flex flex-col gap-1"><span class="text-muted">Transponder (10b)</span>
               <input x-model="fpForm.equip_ssr" placeholder="C" class="bg-bg border border-border rounded px-2 py-1.5 text-[#e6edf3] font-mono uppercase"/></label>
+            <label class="flex flex-col gap-1"><span class="text-muted">Radio emergencia (19 R/): V=VHF E=ELT U=UHF</span>
+              <input x-model="fpForm.radio_emerg" placeholder="VE" class="bg-bg border border-border rounded px-2 py-1.5 text-[#e6edf3] font-mono uppercase"/></label>
             <label class="flex flex-col gap-1"><span class="text-muted">Alternativa (ICAO)</span>
               <input x-model="fpForm.alternate" placeholder="SADF" class="bg-bg border border-border rounded px-2 py-1.5 text-[#e6edf3] font-mono uppercase"/></label>
             <label class="flex flex-col gap-1"><span class="text-muted">Autonomía HHMM (vacío = tanque lleno)</span>
@@ -1512,7 +1514,7 @@ function app() {
     fpForm: {
       registration: '', equip_radio: 'S', equip_ssr: 'C', pob: '', pic: '',
       color_markings: '', endurance: '', alternate: '', alternate2: '',
-      survival: '', jackets: '', dinghies: '', remarks: '',
+      radio_emerg: 'VE', survival: '', jackets: '', dinghies: '', remarks: '',
     },
 
     // ── Timeline meteorológica

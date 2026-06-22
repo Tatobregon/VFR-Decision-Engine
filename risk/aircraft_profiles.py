@@ -98,6 +98,7 @@ ALPHA_TRAINER = AircraftProfile(
     fuel_capacity_l  = 50.0,   # 2 tanques x 25L
     fuel_reserve_min = 30,
     category         = "LSA",
+    icao_type        = "PIAT",  # designador OACI Doc 8643 (Pipistrel Alpha Trainer)
 )
 
 CESSNA_172 = AircraftProfile(
