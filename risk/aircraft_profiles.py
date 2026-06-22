@@ -59,6 +59,10 @@ class AircraftProfile:
     # Clasificacion
     category           : str    # "LSA", "SEP", "MEP", etc.
 
+    # Identificacion OACI (casilla 9 del plan de vuelo)
+    icao_type          : str = "ZZZZ"   # designador OACI Doc 8643 ("ZZZZ" = no listado → va en RMK)
+    wake_cat           : str = "L"       # estela turbulenta: L (ligera) / M / H / J
+
     @property
     def fuel_reserve_l(self) -> float:
         """Combustible de reserva en litros (calculado desde fuel_reserve_min)."""
@@ -109,6 +113,7 @@ CESSNA_172 = AircraftProfile(
     fuel_capacity_l  = 212.0,  # 56 gal (tanques estandar)
     fuel_reserve_min = 45,     # VFR diurno ANAC: 45 min de reserva
     category         = "SEP",
+    icao_type        = "C172",
 )
 
 PIPER_PA28 = AircraftProfile(
@@ -124,6 +129,7 @@ PIPER_PA28 = AircraftProfile(
     fuel_capacity_l  = 189.0,  # 50 gal (PA-28-181 Archer)
     fuel_reserve_min = 45,
     category         = "SEP",
+    icao_type        = "P28A",
 )
 
 CESSNA_152 = AircraftProfile(
@@ -139,6 +145,7 @@ CESSNA_152 = AircraftProfile(
     fuel_capacity_l  = 98.0,   # 26 gal (tanques estandar)
     fuel_reserve_min = 45,
     category         = "SEP",
+    icao_type        = "C152",
 )
 
 DIAMOND_DA40 = AircraftProfile(
@@ -154,6 +161,7 @@ DIAMOND_DA40 = AircraftProfile(
     fuel_capacity_l  = 148.0,  # 39.1 gal (DA40-180)
     fuel_reserve_min = 45,
     category         = "SEP",
+    icao_type        = "DA40",
 )
 
 

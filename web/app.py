@@ -38,6 +38,7 @@ from route.optimizer import optimize
 from route.airway_router import find_airways_for_leg, find_airways_for_route_legs
 from route.vfr_corridors import corridor_path_for_leg
 from output.briefing import generate_briefing
+from output.flight_plan import build_flight_plan
 from risk.aircraft_profiles import PROFILE_NAMES, get_profile, AircraftProfile
 from risk.personal_minima import get_minima, LEVEL_NAMES
 from risk.soft_scoring import compute_soft_score
@@ -1113,6 +1114,101 @@ def _load_vfr_corridors() -> dict:
 async def vfr_corridors():
     """Corredores VFR publicados de las TMA Buenos Aires y Córdoba (GeoJSON)."""
     return _load_vfr_corridors()
+
+
+class FlightPlanRequest(BaseModel):
+    # Datos auto (de la evaluación)
+    origin: str
+    dest: str
+    aircraft: str = "Pipistrel Alpha Trainer"
+    flight_rules: str = "VFR"
+    departure_time: str = ""            # "HH:MM" UTC
+    eet_min: int = 0                    # tiempo estimado en ruta (min)
+    path: List[str] = []               # ICAOs de la ruta (casilla 15)
+    alternate: str = ""
+    # Datos que completa el piloto
+    registration: str = ""             # casilla 7 (matrícula)
+    flight_type: str = "G"             # casilla 8
+    equip_radio: str = "S"             # casilla 10a
+    equip_ssr: str = "C"               # casilla 10b (transponder)
+    pob: str = ""                      # casilla 19 P/
+    pic: str = ""                      # casilla 19 C/
+    color_markings: str = ""           # casilla 19 A/
+    endurance: str = ""                # casilla 19 E/ (HHMM; vacío = autonomía total)
+    radio_emerg: str = "E"             # casilla 19 R/
+    survival: str = ""                 # casilla 19 S/
+    jackets: str = ""                  # casilla 19 J/
+    dinghies: str = ""                 # casilla 19 D/
+    alternate2: str = ""               # casilla 16 (2da alternativa)
+    remarks: str = ""                  # casilla 18 RMK/
+
+
+@app.post("/api/flightplan")
+async def flightplan(req: FlightPlanRequest):
+    """
+    Arma el plan de vuelo OACI (borrador) a partir de los datos de la evaluación
+    + los campos que completa el piloto. NO lo radica: el piloto lo presenta.
+    """
+    origin = req.origin.upper().strip()
+    dest   = req.dest.upper().strip()
+    if origin not in AIRPORTS or dest not in AIRPORTS:
+        raise HTTPException(400, "Aeródromo desconocido")
+    try:
+        ac = get_profile(req.aircraft)
+    except KeyError:
+        raise HTTPException(400, f"Aeronave desconocida: {req.aircraft}")
+
+    o = AIRPORTS[origin]
+    d = AIRPORTS[dest]
+    rules = "I" if (req.flight_rules or "VFR").upper() == "IFR" else "V"
+
+    # EOBT + DOF desde la hora de salida
+    dep_unix = _parse_dep_time(req.departure_time)
+    dt = datetime.fromtimestamp(dep_unix, tz=timezone.utc)
+    eobt = dt.strftime("%H%M")
+    dof  = dt.strftime("%y%m%d")
+
+    # EET total
+    em  = max(0, int(req.eet_min))
+    eet = f"{em // 60:02d}{em % 60:02d}"
+
+    # Nivel de crucero: VFR por regla de semicírculos, IFR el crucero del avión
+    if rules == "V":
+        trk = bearing_deg(o.lat, o.lon, d.lat, d.lon)
+        level_ft = hemispheric_vfr_altitude(trk, (o.lat + d.lat) / 2, (o.lon + d.lon) / 2, ac.cruise_alt_ft)
+    else:
+        level_ft = ac.cruise_alt_ft
+
+    # Ruta (casilla 15): puntos intermedios o DCT
+    inter = [c for c in req.path if c not in (origin, dest)]
+    route = " ".join(inter) if inter else "DCT"
+
+    # Autonomía: pre-calcular (tanque lleno) si el piloto no la ingresó
+    endurance = req.endurance.strip()
+    if not endurance and ac.fuel_flow_lph > 0:
+        end_h = ac.fuel_capacity_l / ac.fuel_flow_lph
+        endurance = f"{int(end_h):02d}{int(round((end_h % 1) * 60)):02d}"
+
+    fp = build_flight_plan(
+        registration=req.registration, flight_rules=rules, flight_type=req.flight_type,
+        icao_type=ac.icao_type, wake=ac.wake_cat,
+        equip_radio=req.equip_radio, equip_ssr=req.equip_ssr,
+        dep_icao=origin, eobt=eobt, speed_kt=ac.cruise_kt, level_ft=level_ft, route=route,
+        dest_icao=dest, eet=eet, alternate=req.alternate, alternate2=req.alternate2,
+        dof=dof, endurance=endurance, pob=req.pob, pic=req.pic,
+        color_markings=req.color_markings, radio_emerg=req.radio_emerg,
+        survival=req.survival, jackets=req.jackets, dinghies=req.dinghies,
+        remarks=req.remarks, aircraft_name=ac.name,
+    )
+    return {
+        "fields":  fp.fields,
+        "message": fp.message,
+        "meta": {
+            "origin": origin, "dest": dest, "aircraft": ac.name,
+            "level_ft": level_ft, "speed_kt": ac.cruise_kt,
+            "flight_rules": req.flight_rules,
+        },
+    }
 
 
 class TimelineRequest(BaseModel):

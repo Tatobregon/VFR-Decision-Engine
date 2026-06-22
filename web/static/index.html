@@ -80,6 +80,27 @@
 
     [x-cloak] { display: none !important; }
 
+    /* Plan de vuelo: card del modal */
+    .fp-card {
+      background:#0d1117; border:1px solid #30363d; border-radius:14px;
+      width:min(900px, 96vw); max-height:92vh; overflow:auto; padding:22px;
+    }
+    /* Documento OACI imprimible: tema claro, casillas con borde */
+    .fp-doc { background:#fff; color:#111; border:1px solid #999; border-radius:6px; padding:18px; font-family:'Segoe UI',Arial,sans-serif; }
+    .fp-grid { display:grid; gap:0; border:1px solid #444; }
+    .fp-box { border:0.5px solid #999; padding:6px 8px; min-height:38px; }
+    .fp-box .lbl { font-size:9px; color:#555; text-transform:uppercase; letter-spacing:0.04em; }
+    .fp-box .val { font-size:13px; color:#000; font-weight:600; font-family:'Courier New',monospace; }
+    .fp-msg { background:#f4f4f4; border:1px solid #bbb; border-radius:4px; padding:10px; font-family:'Courier New',monospace; font-size:12px; color:#111; white-space:pre-wrap; }
+
+    /* Solo el documento se imprime */
+    @media print {
+      body * { visibility: hidden !important; }
+      #fpPrintable, #fpPrintable * { visibility: visible !important; }
+      #fpPrintable { position:absolute; left:0; top:0; width:100%; max-height:none; overflow:visible; padding:0; background:#fff; }
+      .fp-noprint { display:none !important; }
+    }
+
     /* Disclaimer modal */
     .disclaimer-backdrop {
       position: fixed; inset: 0; z-index: 100;
@@ -275,6 +296,137 @@
               style="background:#58a6ff; color:#0d1117">
         Entendido, acepto
       </button>
+    </div>
+  </div>
+
+  <!-- ══════════════ MODAL: EXPORTAR PLAN DE VUELO (OACI) ══════════════ -->
+  <div x-show="showFlightPlan" x-cloak class="disclaimer-backdrop" style="z-index:120">
+    <div class="fp-card">
+      <div class="flex items-center justify-between mb-4 fp-noprint">
+        <div class="flex items-center gap-2">
+          <span class="text-xl">✈</span>
+          <div class="font-bold text-base text-[#e6edf3]">Plan de vuelo OACI — borrador</div>
+        </div>
+        <button @click="showFlightPlan=false" class="text-muted hover:text-[#e6edf3] text-2xl leading-none">×</button>
+      </div>
+
+      <!-- ESTADO A: disclaimer reforzado + datos del piloto -->
+      <template x-if="!fpGenerated">
+        <div>
+          <div class="mb-4 px-4 py-3 rounded-lg border border-[#f85149]/45 bg-[#f85149]/10 text-[12px] text-[#e6edf3] leading-relaxed">
+            <div class="font-bold text-nogo mb-1">⚠ Responsabilidad exclusiva del piloto al mando</div>
+            Este es un <b>borrador pre-cargado</b> con estimaciones del sistema — <b>NO es un plan de vuelo radicado</b>.
+            El <b>piloto al mando es el único responsable</b> de verificar la veracidad de TODOS los datos, completar lo que falte,
+            y presentar el plan por los canales oficiales (ARO/AIS de EANA). El sistema <b>no radica ni transmite</b> nada a la autoridad.
+          </div>
+
+          <p class="text-[11px] text-muted mb-2">Completá los datos que el sistema no puede conocer (los marcados con * son obligatorios):</p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-[11px]">
+            <label class="flex flex-col gap-1"><span class="text-muted">Matrícula * (casilla 7)</span>
+              <input x-model="fpForm.registration" placeholder="LV-ABC" class="bg-bg border border-border rounded px-2 py-1.5 text-[#e6edf3] font-mono uppercase"/></label>
+            <label class="flex flex-col gap-1"><span class="text-muted">Piloto al mando *</span>
+              <input x-model="fpForm.pic" placeholder="Apellido, Nombre" class="bg-bg border border-border rounded px-2 py-1.5 text-[#e6edf3]"/></label>
+            <label class="flex flex-col gap-1"><span class="text-muted">Personas a bordo (POB) *</span>
+              <input x-model="fpForm.pob" type="number" min="1" placeholder="2" class="bg-bg border border-border rounded px-2 py-1.5 text-[#e6edf3] font-mono"/></label>
+            <label class="flex flex-col gap-1"><span class="text-muted">Color y marcas</span>
+              <input x-model="fpForm.color_markings" placeholder="BLANCO/AZUL" class="bg-bg border border-border rounded px-2 py-1.5 text-[#e6edf3] uppercase"/></label>
+            <label class="flex flex-col gap-1"><span class="text-muted">Equipo radio/nav (10a)</span>
+              <input x-model="fpForm.equip_radio" placeholder="S" class="bg-bg border border-border rounded px-2 py-1.5 text-[#e6edf3] font-mono uppercase"/></label>
+            <label class="flex flex-col gap-1"><span class="text-muted">Transponder (10b)</span>
+              <input x-model="fpForm.equip_ssr" placeholder="C" class="bg-bg border border-border rounded px-2 py-1.5 text-[#e6edf3] font-mono uppercase"/></label>
+            <label class="flex flex-col gap-1"><span class="text-muted">Alternativa (ICAO)</span>
+              <input x-model="fpForm.alternate" placeholder="SADF" class="bg-bg border border-border rounded px-2 py-1.5 text-[#e6edf3] font-mono uppercase"/></label>
+            <label class="flex flex-col gap-1"><span class="text-muted">Autonomía HHMM (vacío = tanque lleno)</span>
+              <input x-model="fpForm.endurance" placeholder="auto" class="bg-bg border border-border rounded px-2 py-1.5 text-[#e6edf3] font-mono"/></label>
+            <label class="flex flex-col gap-1 sm:col-span-2"><span class="text-muted">Observaciones (casilla 18 RMK)</span>
+              <input x-model="fpForm.remarks" class="bg-bg border border-border rounded px-2 py-1.5 text-[#e6edf3]"/></label>
+          </div>
+
+          <label class="flex items-start gap-2 mt-4 text-[12px] text-[#e6edf3] cursor-pointer select-none">
+            <input type="checkbox" x-model="fpDisclaimerOk" class="accent-[#58a6ff] mt-0.5"/>
+            <span>Confirmo que soy responsable de la veracidad de los datos y de la presentación oficial del plan de vuelo.</span>
+          </label>
+
+          <div class="flex gap-2 mt-4">
+            <button @click="showFlightPlan=false" class="flex-1 py-2.5 rounded-lg text-sm border border-border text-muted hover:text-[#e6edf3]">Cancelar</button>
+            <button @click="generateFlightPlan()"
+                    :disabled="!fpDisclaimerOk || !fpForm.registration || !fpForm.pic || fpLoading"
+                    class="flex-1 py-2.5 rounded-lg font-semibold text-sm transition-all"
+                    :class="(!fpDisclaimerOk || !fpForm.registration || !fpForm.pic || fpLoading) ? 'bg-border text-muted cursor-not-allowed' : 'bg-accent text-[#0d1117] hover:bg-[#79b8ff]'">
+              <span x-show="!fpLoading">Generar plan</span><span x-show="fpLoading">Generando…</span>
+            </button>
+          </div>
+        </div>
+      </template>
+
+      <!-- ESTADO B: documento OACI generado -->
+      <template x-if="fpGenerated && !fpGenerated._error">
+        <div>
+          <div id="fpPrintable" class="fp-doc">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:12px">
+              <div>
+                <div style="font-size:16px;font-weight:800;color:#000">PLAN DE VUELO — Formulario OACI</div>
+                <div style="font-size:10px;color:#555">Borrador generado por VFR Decision Engine · presentar ante ARO/AIS de EANA</div>
+              </div>
+              <div style="text-align:right;font-size:11px;color:#333;font-family:'Courier New',monospace">
+                <span x-text="fpGenerated.meta.origin + ' → ' + fpGenerated.meta.dest"></span><br>
+                <span x-text="fpGenerated.meta.aircraft"></span>
+              </div>
+            </div>
+
+            <div class="fp-grid" style="grid-template-columns:1.3fr 1fr">
+              <div class="fp-box"><div class="lbl">7 · Identificación (matrícula)</div><div class="val" x-text="fpGenerated.fields['7_identificacion']"></div></div>
+              <div class="fp-box"><div class="lbl">8 · Reglas / Tipo de vuelo</div><div class="val" x-text="fpGenerated.fields['8_reglas'] + ' / ' + fpGenerated.fields['8_tipo_vuelo']"></div></div>
+            </div>
+            <div class="fp-grid" style="grid-template-columns:1.3fr 1fr;border-top:0">
+              <div class="fp-box"><div class="lbl">9 · N° / Tipo / Estela</div><div class="val" x-text="fpGenerated.fields['9_numero'] + ' · ' + fpGenerated.fields['9_tipo_aeronave'] + ' / ' + fpGenerated.fields['9_estela']"></div></div>
+              <div class="fp-box"><div class="lbl">10 · Equipo (10a / 10b)</div><div class="val" x-text="fpGenerated.fields['10a_equipo'] + ' / ' + fpGenerated.fields['10b_vigilancia']"></div></div>
+            </div>
+            <div class="fp-grid" style="grid-template-columns:1fr;border-top:0">
+              <div class="fp-box"><div class="lbl">13 · Aeródromo de salida · EOBT (UTC)</div><div class="val" x-text="fpGenerated.fields['13_salida'] + ' · ' + fpGenerated.fields['13_eobt'] + ' UTC'"></div></div>
+            </div>
+            <div class="fp-grid" style="grid-template-columns:1fr;border-top:0">
+              <div class="fp-box"><div class="lbl">15 · Velocidad · Nivel · Ruta</div><div class="val" x-text="fpGenerated.fields['15_velocidad'] + ' · ' + fpGenerated.fields['15_nivel'] + ' · ' + fpGenerated.fields['15_ruta']"></div></div>
+            </div>
+            <div class="fp-grid" style="grid-template-columns:1fr;border-top:0">
+              <div class="fp-box"><div class="lbl">16 · Destino · EET total · Alternativa(s)</div><div class="val" x-text="fpGenerated.fields['16_destino'] + ' · ' + fpGenerated.fields['16_eet'] + ' · ' + fpGenerated.fields['16_alternativa'] + (fpGenerated.fields['16_alternativa2'] ? ' / ' + fpGenerated.fields['16_alternativa2'] : '')"></div></div>
+            </div>
+            <div class="fp-grid" style="grid-template-columns:1fr;border-top:0">
+              <div class="fp-box"><div class="lbl">18 · Otros datos</div><div class="val" x-text="fpGenerated.fields['18_otros']"></div></div>
+            </div>
+            <div class="fp-grid" style="grid-template-columns:repeat(3,1fr);border-top:0">
+              <div class="fp-box"><div class="lbl">19 · Autonomía</div><div class="val" x-text="fpGenerated.fields['19_autonomia']"></div></div>
+              <div class="fp-box"><div class="lbl">19 · POB</div><div class="val" x-text="fpGenerated.fields['19_pob']"></div></div>
+              <div class="fp-box"><div class="lbl">19 · Radio emerg.</div><div class="val" x-text="fpGenerated.fields['19_radio_emerg']"></div></div>
+            </div>
+            <div class="fp-grid" style="grid-template-columns:1.3fr 1fr;border-top:0">
+              <div class="fp-box"><div class="lbl">19 · Color y marcas</div><div class="val" x-text="fpGenerated.fields['19_color_marcas']"></div></div>
+              <div class="fp-box"><div class="lbl">19 · Piloto al mando</div><div class="val" x-text="fpGenerated.fields['19_pic']"></div></div>
+            </div>
+
+            <div style="margin-top:14px">
+              <div style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px">Mensaje FPL OACI (casillas 7-18)</div>
+              <div class="fp-msg" x-text="fpGenerated.message"></div>
+            </div>
+
+            <div style="margin-top:12px;font-size:9px;color:#777;border-top:1px solid #ccc;padding-top:6px;line-height:1.4">
+              Documento generado automáticamente con datos estimados. El piloto al mando es responsable de verificar
+              cada casilla y de presentar el plan ante la autoridad. No constituye un plan de vuelo radicado.
+            </div>
+          </div>
+
+          <div class="flex gap-2 mt-4 fp-noprint">
+            <button @click="fpGenerated=null" class="flex-1 py-2.5 rounded-lg text-sm border border-border text-muted hover:text-[#e6edf3]">← Editar datos</button>
+            <button @click="printFlightPlan()" class="flex-1 py-2.5 rounded-lg font-semibold text-sm bg-accent text-[#0d1117] hover:bg-[#79b8ff]">🖶 Imprimir / Guardar PDF</button>
+          </div>
+        </div>
+      </template>
+
+      <template x-if="fpGenerated && fpGenerated._error">
+        <div class="text-nogo text-sm py-4 fp-noprint">Error: <span x-text="fpGenerated._error"></span>
+          <button @click="fpGenerated=null" class="block mt-3 text-muted underline">Volver</button>
+        </div>
+      </template>
     </div>
   </div>
 
@@ -1100,6 +1252,28 @@
       antes del vuelo.
     </div>
 
+    <!-- ── EXPORTAR PLAN DE VUELO (solo GO / CAUTION) ──────────────────── -->
+    <div class="av-card mb-5" x-show="result?.route?.found">
+      <template x-if="result && result.global_decision !== 'NO GO'">
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <h3 class="text-[11px] font-bold tracking-widest uppercase text-muted">Plan de vuelo</h3>
+            <p class="text-xs text-muted mt-1">Generá el plan de vuelo OACI (borrador) pre-cargado con esta ruta para presentarlo vos ante EANA/ANAC.</p>
+          </div>
+          <button @click="openFlightPlan()"
+                  class="px-5 py-2.5 rounded-lg font-semibold text-sm tracking-wide transition-all whitespace-nowrap
+                         bg-accent text-[#0d1117] hover:bg-[#79b8ff] active:scale-95">
+            ✈ Exportar plan de vuelo
+          </button>
+        </div>
+      </template>
+      <template x-if="result && result.global_decision === 'NO GO'">
+        <div class="text-xs text-muted">
+          ⃠ El plan de vuelo no se puede exportar: las condiciones dan <strong class="text-nogo">NO GO</strong>. No se recomienda volar.
+        </div>
+      </template>
+    </div>
+
   </div><!-- /results -->
   </div><!-- /modo ruta -->
 
@@ -1329,6 +1503,17 @@ function app() {
     // ── Disclaimer de responsabilidad
     showDisclaimer:    false,
     disclaimerDontShow: false,
+
+    // ── Plan de vuelo (export OACI)
+    showFlightPlan: false,
+    fpDisclaimerOk: false,
+    fpLoading:      false,
+    fpGenerated:    null,
+    fpForm: {
+      registration: '', equip_radio: 'S', equip_ssr: 'C', pob: '', pic: '',
+      color_markings: '', endurance: '', alternate: '', alternate2: '',
+      survival: '', jackets: '', dinghies: '', remarks: '',
+    },
 
     // ── Timeline meteorológica
     timeline:       null,
@@ -1626,6 +1811,41 @@ function app() {
       this.showDisclaimer = false;
       if (this.disclaimerDontShow) localStorage.setItem('vfr_disclaimer_ok', '1');
     },
+
+    // ── Plan de vuelo (export OACI) ──
+    openFlightPlan() {
+      this.fpGenerated = null;
+      this.fpDisclaimerOk = false;
+      this.fpForm.alternate = this.result?.route?.alternate?.code || '';
+      this.showFlightPlan = true;
+    },
+    async generateFlightPlan() {
+      this.fpLoading = true;
+      try {
+        const eetMin = Math.round((this.result?.route?.total_time_h || 0) * 60);
+        const payload = {
+          origin:         this.form.origin,
+          dest:           this.form.dest,
+          aircraft:       this.form.aircraft,
+          flight_rules:   this.form.flight_rules,
+          departure_time: this.form.departure_time,
+          eet_min:        eetMin,
+          path:           this.result?.route?.path || [],
+          ...this.fpForm,
+        };
+        const res = await fetch('/api/flightplan', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) this.fpGenerated = await res.json();
+        else this.fpGenerated = { _error: (await res.json().catch(()=>({}))).detail || 'Error generando el plan' };
+      } catch(e) {
+        this.fpGenerated = { _error: e.message };
+      } finally {
+        this.fpLoading = false;
+      }
+    },
+    printFlightPlan() { window.print(); },
 
     // ── Consulta de aeródromo
     async searchQuery() {
