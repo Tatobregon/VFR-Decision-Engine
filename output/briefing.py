@@ -208,6 +208,12 @@ def _section_aerodromo(
 
     lines.append(f"\nDecision: {_decision_label(result.decision)}  (R={result.r_total:.2f}, riesgo {_r_label(result.r_total)})")
 
+    # Factor limitante no-compensatorio: explica un veredicto mas restrictivo
+    # que el que sugeriria R (un showstopper individual que no se promedia).
+    sb = result.score_breakdown
+    if sb is not None and getattr(sb, "guardrail_reason", ""):
+        lines.append(f"Factor limitante (veto): {sb.guardrail_reason}")
+
     if result.obs_time:
         lines.append(f"Observacion: {_fmt_utc(result.obs_time)} UTC  (fuente: {result.weather_source})")
 

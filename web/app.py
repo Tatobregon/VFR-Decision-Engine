@@ -125,6 +125,7 @@ class WeatherCard(BaseModel):
     r_fog: Optional[float] = None
     r_taf: Optional[float] = None
     dominant_factor: Optional[str] = None
+    guardrail_reason: str = ""          # motivo del piso conjuntivo (showstopper individual)
     next_go_from: Optional[int] = None
     # Luz diurna (bloqueo nocturno)
     is_night: bool = False
@@ -323,6 +324,7 @@ def _to_card(result, runway_heading: int, ap: AirportInfo, notams: list = None) 
         r_fog           = round(sb.r_fog, 3)   if sb else None,
         r_taf           = round(sb.r_taf, 3)   if sb else None,
         dominant_factor = sb.dominant_factor   if sb else None,
+        guardrail_reason= sb.guardrail_reason  if sb else "",
         next_go_from    = result.next_go_from,
         fetch_ok        = result.fetch_ok,
         error_message   = result.error_message,

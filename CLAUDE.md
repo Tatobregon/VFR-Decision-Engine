@@ -52,9 +52,13 @@ automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a
 | Archivo | Estado | Descripcion |
 |---|---|---|
 | `risk/aircraft_profiles.py` | **COMPLETO** | `AircraftProfile` dataclass frozen. `ALPHA_TRAINER` instancia. `get_profile(name)`. |
-| `risk/weights.py` | **COMPLETO** | Pesos W_VIS=0.25 W_CEIL=0.25 W_XWIND=0.20 W_GUST=0.10 W_WX=0.10 W_FOG=0.05 W_TAF=0.05. Funciones r_i. Thresholds GO/CAUTION/NO GO. |
+| `risk/ahp_weights.py` | **COMPLETO** | Derivacion AHP de los pesos (jerarquia 3 grupos, matrices de a pares, autovector, CR=0.063). Reproducible; documenta el origen de los w_i. |
+| `risk/weights.py` | **COMPLETO** | Pesos AHP W_VIS=0.279 W_CEIL=0.279 W_XWIND=0.179 W_GUST=0.090 W_WX=0.078 W_FOG=0.056 W_TAF=0.039. Funciones r_i. Thresholds **calibrados**: t_go=0.22, t_caution=0.50. |
 | `risk/hard_blockers.py` | **COMPLETO** | Tokens TS/TSRA/TSGR/GR/FC/VA/FZRA/FZDZ + vis<1.5km + ceil<500ft → NO GO inmediato. |
-| `risk/soft_scoring.py` | **COMPLETO** | `compute_soft_score(weather, runway_heading, aircraft, taf_r_taf)` → `SoftScoreResult`. Llama a features internamente. |
+| `risk/soft_scoring.py` | **COMPLETO** | `compute_soft_score(...)` → `SoftScoreResult`. Score compensatorio + **barrera no-compensatoria** (`conjunctive_floor`): `decision = worst(umbral(R), piso)`. Expone `guardrail_floor`/`guardrail_reason`. |
+| `risk/scenarios.py` | **COMPLETO** | Bateria de 38 escenarios de referencia con etiqueta normativa ANAC/OACI (`normative_label`). Fuente compartida por calibracion y sensibilidad. |
+| `risk/calibration.py` | **COMPLETO** | Calibracion de umbrales por anclaje normativo (grid search + costo asimetrico). Resultado: t_go 0.25→0.22 (97% concordancia, 0 sub-avisos). Validez de constructo, no empirica. |
+| `risk/sensitivity.py` | **COMPLETO** | Analisis de sensibilidad de pesos (OAT ±20% + Monte Carlo). Estabilidad del veredicto 97%; los showstoppers quedan clavados por la barrera. |
 
 ### INTEGRACION
 
@@ -178,26 +182,43 @@ Si cualquier hard blocker esta activo → NO GO inmediato, sin calcular score.
 
 ### Soft Scoring
 
-`R_total = sum(w_i * r_i)` donde `R_total ∈ [0, 1]`
+`R_total = sum(w_i * r_i)` donde `R_total ∈ [0, 1]`. Pesos derivados por AHP (ver `risk/ahp_weights.py`).
 
-| Componente | Variable | Peso | Funcion r_i |
+| Componente | Variable | Peso (AHP) | Funcion r_i |
 |---|---|---|---|
-| Visibilidad | vis_km | 0.25 | Sigmoide: 1 si vis<3km, 0 si vis>8km |
-| Ceiling | ceil_ft | 0.25 | Sigmoide: 1 si ceil<500ft, 0 si ceil>2000ft |
-| Crosswind | xw_kt | 0.20 | Lineal: xw/12. Si xw>=12kt → 1.0 |
-| Rafagas | gust-spd kt | 0.10 | Lineal: delta/20 |
-| Fenomenos | wx_codes | 0.10 | Escalonado por severidad |
-| Niebla proxy | spread_c | 0.05 | 1 si spread<2°C, 0 si spread>5°C |
-| Riesgo TAF | PROB/TEMPO | 0.05 | Escalonado por tipo de deterioro |
+| Visibilidad | vis_km | 0.279 | Rampa: 1 si vis<3km, 0 si vis>8km |
+| Ceiling | ceil_ft | 0.279 | Rampa: 1 si ceil<500ft, 0 si ceil>2000ft |
+| Crosswind | xw_kt | 0.179 | Lineal: xw/xw_max. Si xw>=xw_max → 1.0 |
+| Rafagas | gust-spd kt | 0.090 | Lineal: delta/gust_max |
+| Fenomenos | wx_codes | 0.078 | Escalonado por severidad |
+| Niebla proxy | spread_c | 0.056 | 1 si spread<2°C, 0 si spread>5°C |
+| Riesgo TAF | PROB/TEMPO | 0.039 | Escalonado por tipo de deterioro |
 
 Penalizacion orografica SACC: +0.05 al R_total final (cuando `nwp_estimated=True`).
 
-**Thresholds de decision** (conservadores, pendientes calibracion):
+**Barrera no-compensatoria (veto conjuntivo)** — `conjunctive_floor` en `soft_scoring.py`.
+El promedio ponderado es compensatorio: un factor bueno tapa a uno malo. Eso deja
+pasar showstoppers de bajo peso (un cruzado SOBRE el limite del avion aportaria
+solo 0.179 y daria GO). La barrera impone un PISO por factor y
+`decision = worst(umbral(R), piso)`:
 ```
-R < 0.25           → GO
-0.25 <= R < 0.50   → CAUTION
+cruzado efectivo >= limite avion   → NO GO      cruzado >= 50% limite → CAUTION
+delta rafaga >= gust_max avion     → NO GO      delta >= 50% gust_max → CAUTION
+niebla probable (r_fog >= 0.9)     → CAUTION     deterioro TAF (r_taf >= 0.6) → CAUTION
+```
+Cubre los factores de bajo peso que el score diluye; vis/techo (peso alto, deterioro
+gradual) siguen compensatorios. Elevo la concordancia con la norma de 66% a 92%.
+
+**Thresholds de decision** — CALIBRADOS por anclaje normativo (`risk/calibration.py`):
+```
+R < 0.22           → GO
+0.22 <= R < 0.50   → CAUTION
 R >= 0.50          → NO GO
 ```
+Los cortes se ajustaron sobre la bateria de referencia (`risk/scenarios.py`) minimizando
+un costo asimetrico (sub-aviso >> sobre-aviso). t_go bajo de 0.25 a 0.22 (cambio minimo
+que elimina los sub-avisos peligrosos); el optimo es un rango (t_go∈[0.14,0.22]) → robusto.
+Es validez de CONSTRUCTO (reproduce la regulacion), no empirica. Concordancia final 97%.
 
 ### Perfiles de aeronave (5)
 
