@@ -9,7 +9,7 @@ Flujo
   2. Parse : RawMetar/RawNWP → ParsedWeather
   3. Hard blockers : condiciones que producen NO GO inmediato
   4. TAF window (solo METAR): analisis de la ventana de vuelo
-  5. Soft scoring: R_total = sum(w_i * r_i) + delta_orografico
+  5. Soft scoring: R_total = sum(w_i * r_i)
   6. Decision: GO / CAUTION / NO GO segun thresholds
 
 Fuentes por estacion
@@ -488,7 +488,7 @@ if __name__ == "__main__":
         s = r_sacc.score_breakdown
         print(f"  vis={s.r_vis:.2f} ceil={s.r_ceil:.2f} xw={s.r_xwind:.2f} "
               f"gust={s.r_gust:.2f} wx={s.r_wx:.2f} fog={s.r_fog:.2f} "
-              f"oro+={s.orographic_delta:.2f} | dominante={s.dominant_factor}")
+              f"| dominante={s.dominant_factor}")
 
     # ── Caso 2: SACO METAR (TAF expirado — sin cobertura de ventana actual) ──
     print("\n" + "-" * 72)

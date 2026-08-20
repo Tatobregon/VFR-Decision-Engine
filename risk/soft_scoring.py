@@ -4,7 +4,7 @@ soft_scoring.py
 Calcula el score de riesgo total R_total para el motor de decision VFR.
 
 Formula:
-    R_total = sum(w_i * r_i)  +  delta_orografico
+    R_total = sum(w_i * r_i)
     R_total = clamp(R_total, 0.0, 1.0)
 
 Decision (compensatoria, umbrales calibrados en risk/calibration.py):
@@ -47,7 +47,6 @@ try:
     from risk.aircraft_profiles import AircraftProfile, ALPHA_TRAINER
     from features.crosswind     import compute_crosswind_from_weather
     from features.fog_risk      import compute_fog_risk_from_weather
-    from features.orographic    import orographic_penalty_from_weather
     from risk.personal_minima   import NEUTRAL
 except ImportError:
     import sys as _sys
@@ -61,7 +60,6 @@ except ImportError:
     from risk.aircraft_profiles import AircraftProfile, ALPHA_TRAINER
     from features.crosswind     import compute_crosswind_from_weather
     from features.fog_risk      import compute_fog_risk_from_weather
-    from features.orographic    import orographic_penalty_from_weather
     from risk.personal_minima   import NEUTRAL
 
 logger = logging.getLogger(__name__)
@@ -159,8 +157,7 @@ class SoftScoreResult:
     """
     Score de riesgo total y descomposicion por componente.
 
-    Todos los r_i estan en [0, 1]. R_total puede superar la suma ponderada
-    por el delta orografico (que se aplica despues).
+    Todos los r_i estan en [0, 1], y R_total es su suma ponderada.
     """
     # ── Score final ───────────────────────────────────────────────────────────
     r_total           : float           # Score total clampeado a [0, 1]
@@ -175,9 +172,7 @@ class SoftScoreResult:
     r_fog             : float           # Componente niebla           (w=0.05)
     r_taf             : float           # Componente riesgo TAF       (w=0.05)
 
-    # ── Penalizacion orografica ───────────────────────────────────────────────
-    orographic_delta  : float           # Penalizacion SACC NWP (+0.05 o 0.0)
-    r_weighted_sum    : float           # Suma ponderada antes del delta
+    r_weighted_sum    : float           # Suma ponderada (== r_total antes del clamp)
 
     # ── Contexto ─────────────────────────────────────────────────────────────
     station_id        : str
@@ -270,11 +265,7 @@ def compute_soft_score(
         W_TAF   * _r_taf
     )
 
-    # ── Penalizacion orografica (aplica despues del weighted sum) ─────────────
-    oro_result       = orographic_penalty_from_weather(weather)
-    orographic_delta = oro_result.delta_r
-
-    r_total = min(weighted_sum + orographic_delta, 1.0)
+    r_total = min(weighted_sum, 1.0)
 
     # ── Decision compensatoria (umbrales sobre R_total) ───────────────────────
     threshold_decision = apply_decision_threshold(r_total)
@@ -313,7 +304,7 @@ def compute_soft_score(
         f"R={r_total:.3f} umbral={threshold_decision} -> [{decision}] | "
         f"vis={_r_vis:.2f} ceil={_r_ceil:.2f} xw={_r_xwind:.2f} "
         f"gust={_r_gust:.2f} wx={_r_wx:.2f} fog={_r_fog:.2f} "
-        f"taf={_r_taf:.2f} oro={orographic_delta:.2f} | "
+        f"taf={_r_taf:.2f} | "
         f"dominante={dominant}{floor_note}"
     )
 
@@ -327,7 +318,6 @@ def compute_soft_score(
         r_wx             = _r_wx,
         r_fog            = _r_fog,
         r_taf            = _r_taf,
-        orographic_delta = orographic_delta,
         r_weighted_sum   = weighted_sum,
         station_id       = weather.station_id,
         runway_heading   = runway_heading,
@@ -393,12 +383,8 @@ if __name__ == "__main__":
               wind_dir=150, wind_spd_kt=3.0, spread_c=1.5,
               wx_codes=["BR"]), 0.0),
 
-        ("SACC NWP: condiciones OK pero penalizacion orografica",
-         dict(station_id="SACC", nwp_estimated=True, visibility_km=9.0,
-              ceiling_ft=None, wind_dir=150, wind_spd_kt=8.0, spread_c=6.0), 0.0),
-
-        ("SACC NWP con TEMPO en ventana (r_taf=0.75)",
-         dict(station_id="SACC", nwp_estimated=True, visibility_km=9.0,
+        ("NWP con TEMPO en ventana (r_taf=0.75)",
+         dict(station_id="SAZN", nwp_estimated=True, visibility_km=9.0,
               ceiling_ft=None, wind_dir=150, wind_spd_kt=8.0, spread_c=6.0), 0.75),
 
         ("VFR perfecto",
@@ -455,17 +441,23 @@ if __name__ == "__main__":
     r_xw = results[3][1]
     check("Xwind fuerte: r_xwind > 0.5",       r_xw.r_xwind > 0.5)
 
-    # SACC orografico
-    r_sacc = results[5][1]
-    r_saco = compute_soft_score(
+    # La fuente (NWP vs METAR) no altera el score: mismas condiciones, mismo R.
+    # Antes habia una penalizacion orografica fija que solo aplicaba a un
+    # aerodromo (SACC); se elimino por no ser generalizable al pais.
+    r_nwp = compute_soft_score(
+        _MockWeather(station_id="SAZN", nwp_estimated=True,
+                     visibility_km=9.0, wind_dir=150, wind_spd_kt=8.0, spread_c=6.0),
+        RUNWAY, ALPHA_TRAINER
+    )
+    r_metar = compute_soft_score(
         _MockWeather(station_id="SACO", nwp_estimated=False,
                      visibility_km=9.0, wind_dir=150, wind_spd_kt=8.0, spread_c=6.0),
         RUNWAY, ALPHA_TRAINER
     )
-    check("SACC NWP: penalizacion orografica aplicada (+0.05)",
-          abs(r_sacc.orographic_delta - 0.05) < 0.001)
-    check("SACC NWP R_total > SACO equivalente",
-          r_sacc.r_total > r_saco.r_total)
+    check("NWP y METAR con identicas condiciones dan el mismo R",
+          abs(r_nwp.r_total - r_metar.r_total) < 1e-9)
+    check("R_total == suma ponderada (sin deltas externos)",
+          abs(r_metar.r_total - r_metar.r_weighted_sum) < 1e-9)
 
     # r_taf se incorpora al total
     r_notaf = compute_soft_score(

@@ -202,9 +202,6 @@ def recombine(comp: SoftScoreResult, weights: Dict[str, float]) -> float:
     """
     Recalcula R con un vector de pesos arbitrario a partir de los r_i ya
     computados (evita re-correr el pipeline por cada perturbacion).
-
-    Incluye el delta orografico, que se suma DESPUES de la suma ponderada
-    (igual que en soft_scoring.py).
     """
     r = (
         weights["vis"]   * comp.r_vis   +
@@ -215,7 +212,7 @@ def recombine(comp: SoftScoreResult, weights: Dict[str, float]) -> float:
         weights["fog"]   * comp.r_fog   +
         weights["taf"]   * comp.r_taf
     )
-    return min(max(r + comp.orographic_delta, 0.0), 1.0)
+    return min(max(r, 0.0), 1.0)
 
 
 def verdict(r_total: float, t_go: float, t_caution: float) -> str:
@@ -377,15 +374,10 @@ REFERENCE_SCENARIOS: List[Scenario] = [
              vis_km=9.0, ceiling_ft=None, wind_dir=360, wind_spd_kt=7.0, spread_c=6.0,
              r_taf=0.30),
 
-    # ── GRUPO I · NWP con penalizacion orografica ────────────────────────────
-    Scenario("I1", "Orografia", "SACC NWP, condiciones VFR + delta orografico",
-             aircraft="Pipistrel Alpha Trainer", runway_heading=360,
-             vis_km=9.0, ceiling_ft=None, wind_dir=360, wind_spd_kt=8.0, spread_c=6.0,
-             nwp_estimated=True, station_id="SACC"),
-    Scenario("I2", "Orografia", "SACC NWP marginal (vis 4) + delta orografico",
-             aircraft="Pipistrel Alpha Trainer", runway_heading=360,
-             vis_km=4.0, ceiling_ft=1100, wind_dir=360, wind_spd_kt=6.0, spread_c=5.0,
-             nwp_estimated=True, station_id="SACC"),
+    # (El GRUPO I probaba la penalizacion orografica fija de un unico aerodromo.
+    #  Esa penalizacion se elimino por no ser generalizable a los 561 aerodromos
+    #  del pais, y con ella sus dos escenarios, que sin el delta eran duplicados
+    #  de casos ya cubiertos por los grupos A y B.)
 
     # ── GRUPO J · Combinaciones realistas multifactor ────────────────────────
     Scenario("J1", "Combinado", "Vis 5 justa + cruzado 7 + techo 1100 (frontera VFR)",

@@ -25,8 +25,10 @@ ANAC/MADHEL, con rutas largas (ej. Salta-Ushuaia) y aerovias inferiores del AIP 
 > - Al probar un cambio, usar aerodromos de **distintas regiones** (NOA, Cuyo,
 >   Patagonia, Litoral, Pampa) y **al menos dos aeronaves** de distinto porte.
 >
-> Sesgos historicos ya detectados y pendientes de corregir: `features/orographic.py`
-> (solo SACC) y varios asserts de test atados a Cordoba / Alpha Trainer.
+> Sesgo historico ya corregido: la penalizacion orografica fija de SACC fue
+> ELIMINADA (agosto 2026) por cubrir 1 de 561 aerodromos. Pendientes: varios
+> asserts de test atados a Cordoba / Alpha Trainer (ej. `SAOE`, que ya no existe
+> en el registro MADHEL).
 
 **Fuentes meteo por aerodromo**: METAR + TAF (aviationweather.gov) cuando el aerodromo
 tiene estacion; NWP (Open-Meteo) cuando no (la mayoria de los rurales). El engine elige
@@ -66,7 +68,6 @@ automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a
 | `features/crosswind.py` | **COMPLETO** | `compute_crosswind()`, `crosswind_risk_score()`. VRB → worst-case conservador. |
 | `features/fog_risk.py` | **COMPLETO** | `r_fog = max(r_spread, r_wx)`. Spread lineal 2-5°C, matching exacto por token wx. |
 | `features/taf_window.py` | **COMPLETO** | `TafAnalyzer.analyze()`: herencia BASE→TEMPO/BECMG, worst-case, `r_taf`, `next_go_from`. |
-| `features/orographic.py` | **LIMITADO** ⚠️ | `delta_r = 0.05` si `nwp_estimated=True` y `station_id="SACC"`. **Cubre 1 de 561 aerodromos**: viola la regla de alcance nacional. Debe derivarse del terreno (SRTM ya disponible), no de un dict manual. |
 | `features/vfr_altitude.py` | **COMPLETO** | `hemispheric_vfr_altitude()`: altitud de crucero VFR por regla de los semicirculos (rumbo magnetico). `magnetic_declination_ar()` aprox AR. |
 | `features/density_altitude.py` | **COMPLETO** | `compute_density_altitude(temp_c, elevation_ft, qnh_hpa)` → `DensityAltitudeResult`. Niveles NORMAL/ELEVATED(>5000ft)/HIGH(>8000ft). |
 | `features/daylight.py` | **COMPLETO** | Orto/ocaso sin dependencias externas. `daylight_status()` habilita el bloqueo por vuelo nocturno (solo VFR) y el aviso de luz ajustada (<45 min al ocaso). |
@@ -186,7 +187,8 @@ la resuelve `features/taf_window.py`, no el parser.
   (los controlados: SAEZ, SACO, SASA, SAME, SAWH, SARE, SAAR, etc.). Sin API key.
   - 204 = aeropuerto sin datos (devuelve None, el engine cae a NWP).
 - **Open-Meteo**: NWP punto a punto para cualquier coordenada (aerodromos sin METAR y
-  checkpoints en ruta). Sin API key. Penalizacion orografica +0.05 al R_total (solo NWP).
+  checkpoints en ruta). Sin API key. Soporta viento en nivel de presion segun la
+  altitud de crucero (meteo en ruta, no solo en superficie).
 - **AIS / ANAC** (`ais.anac.gob.ar/notam/pib`): NOTAMs oficiales argentinos. POST con
   `indicador=<local_id>` y header `X-Requested-With: XMLHttpRequest`. Cubre todos los
   aerodromos (incluso rurales). Parser HTML → RawNotam.
@@ -233,8 +235,18 @@ Si cualquier hard blocker esta activo → NO GO inmediato, sin calcular score.
 | Niebla proxy | spread_c | 0.056 | 1 si spread<2°C, 0 si spread>5°C |
 | Riesgo TAF | PROB/TEMPO | 0.039 | Escalonado por tipo de deterioro |
 
-Penalizacion orografica: +0.05 al R_total final cuando `nwp_estimated=True`. ⚠️ Hoy
-solo aplica a SACC — pendiente de generalizar a partir del terreno (ver regla de alcance).
+El score NO penaliza la fuente del dato: las mismas condiciones dan el mismo R vengan
+de METAR (observacion) o de NWP (pronostico). La distincion se le informa al piloto en
+la interfaz, no se le carga al puntaje.
+
+> **Penalizacion orografica: ELIMINADA (agosto 2026).** Existia un `delta_r = +0.05`
+> que se sumaba al R_total cuando la fuente era NWP, pero solo estaba configurado para
+> SACC: cubria 1 de 561 aerodromos, con lo cual no corregia nada a escala nacional y
+> violaba la regla de alcance. Se removio junto con `features/orographic.py` y con los
+> dos escenarios de la bateria que existian solo para probarla. Verificado: los
+> resultados de calibracion y sensibilidad NO cambiaron (misma concordancia 97%, mismos
+> umbrales optimos, misma estabilidad). El perfil de terreno (SRTM) se conserva: sigue
+> alimentando el perfil vertical de ruta y la deteccion de conflicto de terreno en VFR.
 
 **Barrera no-compensatoria (veto conjuntivo)** — `conjunctive_floor` en `soft_scoring.py`.
 El promedio ponderado es compensatorio: un factor bueno tapa a uno malo. Eso deja

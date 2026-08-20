@@ -20,9 +20,10 @@ Para desarrollo sin conexion, activar modo mock:
 Nota
 ----
 Los datos de Open-Meteo son estimaciones de modelos numericos (NWP), NO observaciones
-directas. El campo nwp_estimated=True en RawNWP indica esta condicion al adaptador y
-al motor de riesgo, que aplicara la penalizacion orografica correspondiente (+0.05
-al R_total) para zonas de sierras como SACC.
+directas. El campo nwp_estimated=True en RawNWP marca esa condicion para el adaptador
+y para quien muestre el dato al piloto (la interfaz distingue pronostico de
+observacion). El score de riesgo NO penaliza la fuente: las mismas condiciones dan
+el mismo R vengan de METAR o de NWP.
 """
 
 import time
@@ -102,9 +103,8 @@ class RawNWP:
     Pronostico NWP completo para un punto geografico.
 
     nwp_estimated=True indica que estos datos son estimaciones de modelo numerico,
-    NO observaciones directas. El motor de riesgo aplica penalizacion orografica
-    adicional (+0.05 al R_total) cuando esta flag esta activa y el punto es SACC
-    o similar zona de sierras.
+    NO observaciones directas. Se usa para informar la fuente al piloto; el score
+    de riesgo no penaliza el origen del dato.
     """
     lat           : float
     lon           : float
@@ -539,7 +539,7 @@ if __name__ == "__main__":
             continue
 
         print(f"\n  Fuente        : {nwp.source}")
-        print(f"  NWP estimado  : {nwp.nwp_estimated}  (penalizacion orografica aplica)")
+        print(f"  NWP estimado  : {nwp.nwp_estimated}  (pronostico, no observacion)")
         print(f"  Coordenadas   : {nwp.lat}°, {nwp.lon}°")
         print(f"  Elevacion     : {nwp.elevation_m} m AMSL")
         print(f"  Consulta UTC  : {nwp.fetch_time}")

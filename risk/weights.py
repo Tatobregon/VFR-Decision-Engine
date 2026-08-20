@@ -4,13 +4,13 @@ weights.py
 Pesos y funciones r_i del soft scoring.
 
 El score total se calcula como:
-    R_total = sum(w_i * r_i)  +  delta_orografico
+    R_total = sum(w_i * r_i)
 
 Cada r_i es una funcion de riesgo en [0, 1]:
   - 0.0 = sin riesgo para esa componente
   - 1.0 = riesgo maximo (condicion en o mas alla del limite operacional)
 
-Los pesos suman 1.0. El delta orografico se aplica DESPUES del weighted sum.
+Los pesos suman 1.0.
 
 Los pesos fueron derivados por AHP (Analytic Hierarchy Process) a partir de
 comparaciones de a pares fundamentadas en accidentologia de aviacion general,

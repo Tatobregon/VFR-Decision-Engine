@@ -18,11 +18,14 @@ Open-Meteo no provee la altura de la base de las nubes. El adapter estima el
 ceiling usando cloudcover_low_pct: si la cobertura de nubes bajas alcanza umbral
 BKN (>= 63 %), se asume el techo en low_cloud_base_ft (default: 2000 ft AGL).
 
-Este valor es configurable al instanciar el adapter. Para SACC (Sierras Chicas),
-2000 ft AGL representa una estimacion conservadora apropiada al terreno.
+Este valor es configurable al instanciar el adapter: 2000 ft AGL es una estimacion
+conservadora de base para nubes bajas.
 
-La penalizacion orografica (+0.05 al R_total) aplicada en el risk engine
-compensa parcialmente la incertidumbre de esta estimacion.
+LIMITACION: el techo estimado por NWP es intrinsecamente menos preciso que el
+observado en un METAR, sobre todo en terreno complejo (cordillera, precordillera,
+sierras), donde los modelos de grilla no resuelven bien los efectos locales.
+El sistema NO aplica hoy ninguna correccion por terreno: la estimacion se usa tal
+cual y la limitacion se declara.
 
 Uso tipico
 ----------

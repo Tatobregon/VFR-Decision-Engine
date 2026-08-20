@@ -87,7 +87,7 @@ APÉNDICE METODOLÓGICO (no se importa en runtime):
   risk/ahp_weights.py · risk/scenarios.py · risk/calibration.py · risk/sensitivity.py
 ```
 
-### Inventario de módulos (33 archivos `.py`)
+### Inventario de módulos (32 archivos `.py`)
 
 | Módulo | Rol |
 |---|---|
@@ -112,7 +112,6 @@ APÉNDICE METODOLÓGICO (no se importa en runtime):
 | `features/vfr_altitude.py` | Regla de los semicírculos + declinación magnética aproximada AR |
 | `features/daylight.py` | Orto/ocaso (sin dependencias). Habilita el bloqueo por vuelo nocturno |
 | `features/notam_impact.py` | Impacto operacional del NOTAM (solo cierre total bloquea) |
-| `features/orographic.py` | Penalización NWP por terreno complejo — **hoy solo SACC (ver §7)** |
 | **RISK** | |
 | `risk/aircraft_profiles.py` | `AircraftProfile` (5 perfiles) + límites, performance, designador OACI |
 | `risk/personal_minima.py` | Mínimos personales por experiencia (Alumno / PPL / Avanzado) |
@@ -140,7 +139,7 @@ APÉNDICE METODOLÓGICO (no se importa en runtime):
    - **Fuente**: con código ICAO → intenta METAR+TAF; si no reporta METAR, **cae a NWP**. Sin ICAO → NWP directo.
    - **Pista**: si el usuario no eligió, `favored_runway()` toma la cabecera más alineada al viento (menor cruzado; desempate por mayor viento de proa).
    - **Hard blockers** → NO GO inmediato sin score. En NWP se revisa **toda la ventana horaria**; en METAR también los períodos TAF activos.
-   - **Soft score** `R = Σ wᵢ·rᵢ + δ_orográfico`, umbrales 0.22 / 0.50, y **barrera no-compensatoria**. Veredicto = **el peor** de los dos.
+   - **Soft score** `R = Σ wᵢ·rᵢ`, umbrales 0.22 / 0.50, y **barrera no-compensatoria**. Veredicto = **el peor** de los dos.
    - NWP toma la **peor hora** de la ventana; METAR usa la observación actual + `r_taf`.
 4. **Ruta** — `optimize(mode="suggested")`: A* sobre un grafo restringido a un corredor geográfico (ancho `clamp(20 % de la distancia, 80, 250)` km, más banda latitudinal ±3°), probando dos topes de tramo (500 km y sin tope) y quedándose con el candidato de **mayor cobertura de aerovía**.
 5. **Aerovías (solo IFR)** — primero un camino continuo origen→destino; fallback por tramo. Filtrado por MEA ≤ `cruise_alt_ft`.
@@ -214,9 +213,9 @@ R < 0.22          → GO
 R ≥ 0.50          → NO GO
 ```
 
-Resultado reproducido hoy sobre los 38 escenarios de referencia:
+Resultado reproducido hoy sobre los 36 escenarios de referencia:
 
-- **Concordancia 37/38 (97 %)**, **0 sub-avisos**, 1 sobre-aviso, costo 1.
+- **Concordancia 35/36 (97 %)**, **0 sub-avisos**, 1 sobre-aviso, costo 1.
 - El óptimo **no es un punto sino un rango** (`t_go ∈ [0.14, 0.22]`, `t_caution ∈ [0.46, 0.52]`) → robusto.
 - Único desacuerdo: escenario G2 (nieve moderada, vis 6 km, techo 1500 ft) → el sistema dice CAUTION, la norma GO. Es un **sobre-aviso**, el error del lado seguro.
 - Con `t_go = 0.24` o más aparecen **2 sub-avisos** y el costo salta de 1 a 9: por eso 0.22 y no 0.25.
@@ -225,9 +224,9 @@ Resultado reproducido hoy sobre los 38 escenarios de referencia:
 
 ### 4.5 Sensibilidad (`risk/sensitivity.py`)
 
-- **Monte Carlo** (5000 sorteos, los 7 pesos a la vez ±20 %): **estabilidad del veredicto 97.1 %**; peor sorteo 92.1 %; **33/38 escenarios (87 %) nunca cambian**.
+- **Monte Carlo** (5000 sorteos, los 7 pesos a la vez ±20 %): **estabilidad del veredicto 97.0 %**; peor sorteo 91.7 %; **31/36 escenarios (86 %) nunca cambian**.
 - Los cambios se concentran en escenarios cuyo R cae **pegado a un umbral** (B1: R=0.223, B3: R=0.223), no en los showstoppers, que quedan clavados por la barrera.
-- Umbrales ±0.05: entre 0 y 2 cambios sobre 38.
+- Umbrales ±0.05: entre 0 y 2 cambios sobre 36.
 
 **Conclusión defendible:** el veredicto no depende de los pesos exactos del AHP.
 
@@ -274,8 +273,10 @@ Tests standalone de un módulo: `.\.venv\Scripts\python.exe risk\calibration.py`
 
 `render.yaml`: Python 3.12, `pip install -r requirements.txt`,
 `uvicorn web.app:app --host 0.0.0.0 --port $PORT`, plan **free**.
-URL: https://vfr-decision-engine.onrender.com — **al 2026-08-20 responde HTTP 503**.
+URL: https://vfr-decision-engine.onrender.com — operativa (el HTTP 503 observado el
+2026-08-20 fue una incidencia de los servidores de Render, ya resuelta).
 Repo: `github.com/Tatobregon/VFR-Decision-Engine`, rama `master`.
+Los commits y el push se manejan con **GitHub Desktop**.
 
 ---
 
@@ -292,32 +293,40 @@ Repo: `github.com/Tatobregon/VFR-Decision-Engine`, rama `master`.
 | `risk/aircraft_profiles.py` | espera `cruise_alt_ft = 5500` en Alpha, vale 6000 | assert viejo |
 | `route/graph.py` | (a) algún nodo sin vecinos a ≤ 500 km; (b) aristas `SAOM`/`SAOE` | (a) posible aislamiento real; (b) test atado a Córdoba |
 
-**End-to-end verificado:** `POST /api/evaluate` con SASA→SAAR (1004 km) en Cessna 172 responde **200 en 7.5 s**, decisión GO, METAR en ambos extremos, 3 NOTAMs en Salta, 6 waypoints.
+**End-to-end verificado:** `POST /api/evaluate` con SASA→SAAR (1004 km) en Cessna 172 responde **200 en 5-7 s**, decisión GO, METAR en ambos extremos, 3 NOTAMs en Salta, 6 waypoints. También verificado SACC→SAAR en Alpha Trainer (fuente NWP en origen, METAR en destino).
 
-### 7.2 ⚠️ Lo desplegado NO es lo que está en el disco
+### 7.2 Trabajo recuperado y versionado
 
-El working tree tiene **cambios sin commitear** que incluyen la contribución
-metodológica central:
+Al retomar el proyecto, la contribución metodológica central (`scenarios`,
+`calibration`, `sensitivity`, la barrera no-compensatoria y el umbral 0.22)
+estaba **sin commitear** en el working tree: no existía ni en GitHub ni en el
+despliegue. Quedó versionada en dos commits:
 
-| Estado | Archivos |
+| Commit | Contenido |
 |---|---|
-| Modificados sin commitear | `CLAUDE.md`, `decision/engine.py`, `output/briefing.py`, `risk/soft_scoring.py` (+150 líneas), `risk/weights.py`, `web/app.py`, `web/static/index.html` |
-| Nuevos sin trackear | `risk/scenarios.py`, `risk/calibration.py`, `risk/sensitivity.py` |
+| `813fbc0` | Calibración, barrera no-compensatoria, mínimos personales y apéndice metodológico |
+| `0363bb4` | Robustez: fallback ante caída del proveedor, alternativo apto, umbral único |
 
-El último commit (`908ed89 "fixes"`), que es **lo que corre en Render**, tiene
-`THRESHOLD_GO = 0.25`, **sin barrera no-compensatoria** y **sin los tres módulos
-metodológicos**. Es decir: la versión desplegada decide distinto que la local y no
-contiene la calibración ni el análisis de sensibilidad de la tesis.
+Hasta que se haga push, el despliegue sigue corriendo `908ed89`, que decide con
+`THRESHOLD_GO = 0.25` y sin barrera no-compensatoria.
 
-### 7.3 Hallazgos abiertos
+### 7.3 Hallazgos — estado
+
+**Resueltos (agosto 2026):**
+
+| # | Hallazgo | Solución |
+|---|---|---|
+| 1 | Un 502 transitorio de aviationweather.gov devolvía **HTTP 500** al piloto | `_get()` ya no lanza: reintenta transitorios (429/5xx), descarta 4xx y devuelve lista vacía → el engine degrada a NWP. Verificado: responde en 1.3 s con fuente NWP |
+| 2 | La alternativa al destino era **arbitraria** (para Rosario proponía General Acha, 609 km, "SIN DATOS") | Ahora es la **más cercana meteorológicamente apta**: evalúa en paralelo los 8 candidatos más próximos dentro del alcance de la aeronave, a la hora de arribo. Para Rosario propone Alvear a 23.6 km con GO |
+| 3 | **Umbral 0.25 hardcodeado** en tres lugares pese a que el calibrado es 0.22 | Los tres usan `apply_decision_threshold()` de `risk/weights.py` |
+| 5a | **Penalización orográfica en 1 de 561 aeródromos** | **Eliminada** junto con `features/orographic.py` y los 2 escenarios que la probaban. Verificado que no altera las conclusiones (§4.4 y §4.5). El terreno SRTM se conserva para el perfil vertical |
+
+**Abiertos:**
 
 | # | Hallazgo | Ubicación |
 |---|---|---|
-| 1 | **Un fallo transitorio de aviationweather.gov tumba la evaluación con HTTP 500.** `_get()` lanza `ValueError` ante cualquier status ≠ 200/204/429 y nadie lo captura; el diseño (y el propio CLAUDE.md) dice devolver `None` y degradar a NWP. Observado en vivo con un 502 del proveedor | `data/fetcher_aviationweather.py:297` |
-| 2 | **La alternativa al destino es arbitraria.** `_find_alternate` compara por `r_map`, que solo contiene origen y destino; todos los candidatos valen 0.0 y gana el primero del diccionario. Verificado: para Rosario propuso **General Acha (La Pampa), a 609 km**, con decisión "SIN DATOS" | `route/optimizer.py:269` |
-| 3 | **Umbral 0.25 hardcodeado** en tres lugares pese a que el calibrado es 0.22 | `web/app.py:632`, `web/app.py:1271`, `route/optimizer.py:323` |
-| 4 | **El briefing se arma antes de aplicar los bloqueos operacionales**: puede decir GO mientras la tarjeta dice NO GO por noche o NOTAM | `web/app.py:1547` vs `1560` |
-| 5 | **Corrección orográfica en 1 de 561 aeródromos** (solo SACC), y base de nubes NWP fija en 2000 ft calibrada para Sierras Chicas aplicada a todo el país | `features/orographic.py:37`, `parsers/openmeteo_adapter.py:60` |
+| 4 | **El briefing se arma antes de aplicar los bloqueos operacionales**: puede decir GO mientras la tarjeta dice NO GO por noche o NOTAM | `web/app.py` |
+| 5b | **Base de nubes NWP fija en 2000 ft**, un valor calibrado para Sierras Chicas que se aplica a todo el país. Es una limitación declarada del pronóstico, no una corrección pendiente | `parsers/openmeteo_adapter.py:60` |
 | 6 | **El componente TAF (w=0.039) vale 0 en casi todo el país**: solo existe en el camino METAR | `decision/engine.py` |
 | 7 | `duration_hours` **declarado dos veces** en `EvaluateRequest`; el segundo anula el `Field(ge/le)` | `web/app.py:74,78` |
 | 8 | **Código inalcanzable desde la web**: modos `shortest`/`fastest`/`safest`, `evaluate_intermediate`, todo `route/weather_sampler.py` (`weather_reroute` nunca se activa), y `r_fog()` en `weights.py` (se usa el de `features/fog_risk`) | varios |
