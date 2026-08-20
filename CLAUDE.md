@@ -50,6 +50,7 @@ automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a
 | `data/airways.py` | **COMPLETO** | Grafo bidireccional de aerovias inferiores del AIP (ENR-3.1) desde `aerovias_argentinas.json`. `AIRWAY_NODES`, `AIRWAY_GRAPH`. |
 | `data/fir_zones.py` | **COMPLETO** | FIR de un punto → contacto ATC ("Cordoba Control", etc.) desde `FIRs_Argenina.geojson`. |
 | `data/terrain.py` | **COMPLETO** | Terreno SRTM 30m via Open-Topo-Data. Usado por el perfil vertical. |
+| `data/cache.py` | **COMPLETO** | Cache en memoria con TTL por tipo de dato (METAR 10min, TAF/NOTAM/NWP 30min). A nivel de modulo (los fetchers se crean por request) y thread-safe. No cachea respuestas vacias ni el modo mock. |
 | `data/fetcher_madhel.py` | **HERRAMIENTA** | Regenera `madhel_cache.json`. NO corre en runtime. |
 | `data/fetcher_openaip.py` | **HERRAMIENTA** | Regenera `ar-airspace.json`. NO corre en runtime (requiere API key). |
 
@@ -58,7 +59,7 @@ automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a
 | Archivo | Estado | Descripcion |
 |---|---|---|
 | `parsers/metar_parser.py` | **COMPLETO** | Define `ParsedWeather` (contrato central). Parsea `RawMetar` → `ParsedWeather`. Incluye vis ICAO/SM, ceiling, spread T/Td, categoria ANAC/OACI. |
-| `parsers/openmeteo_adapter.py` | **COMPLETO** | Convierte `RawNWPHour` → `ParsedWeather`. Traduce % cobertura a capas estimadas, WMO codes a tokens wx. |
+| `parsers/openmeteo_adapter.py` | **COMPLETO** | Convierte `RawNWPHour` → `ParsedWeather`. Traduce % cobertura a capas estimadas, WMO codes a tokens wx. La base de nubes bajas se calcula con la **regla de Espy** (`400 ft x spread T/Td`), no con una constante: con aire saturado da nubes al ras del suelo. |
 | `parsers/taf_parser.py` | **COMPLETO** | Define `ParsedTaf` + `ParsedTafPeriod`. Parsea `RawTaf`. Normaliza TEMPO/BECMG/PROB, calcula `is_transient`. |
 
 ### FEATURE LAYER
@@ -67,7 +68,7 @@ automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a
 |---|---|---|
 | `features/crosswind.py` | **COMPLETO** | `compute_crosswind()`, `crosswind_risk_score()`. VRB → worst-case conservador. |
 | `features/fog_risk.py` | **COMPLETO** | `r_fog = max(r_spread, r_wx)`. Spread lineal 2-5°C, matching exacto por token wx. |
-| `features/taf_window.py` | **COMPLETO** | `TafAnalyzer.analyze()`: herencia BASE→TEMPO/BECMG, worst-case, `r_taf`, `next_go_from`. |
+| `features/taf_window.py` | **COMPLETO** | `TafAnalyzer.analyze()`: herencia BASE→TEMPO/BECMG, worst-case, `r_taf`, `next_go_from`. Ademas `nwp_trend_r_taf()`: **sintetiza la tendencia desde la serie NWP** para los aerodromos sin TAF (la mayoria del pais), con la misma escala de severidad que un TAF real. |
 | `features/vfr_altitude.py` | **COMPLETO** | `hemispheric_vfr_altitude()`: altitud de crucero VFR por regla de los semicirculos (rumbo magnetico). `magnetic_declination_ar()` aprox AR. |
 | `features/density_altitude.py` | **COMPLETO** | `compute_density_altitude(temp_c, elevation_ft, qnh_hpa)` → `DensityAltitudeResult`. Niveles NORMAL/ELEVATED(>5000ft)/HIGH(>8000ft). |
 | `features/daylight.py` | **COMPLETO** | Orto/ocaso sin dependencias externas. `daylight_status()` habilita el bloqueo por vuelo nocturno (solo VFR) y el aviso de luz ajustada (<45 min al ocaso). |
@@ -320,7 +321,19 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m uvicorn web.app:app --reload --port 8000
 ```
 
-Test standalone de un modulo: `.\.venv\Scripts\python.exe risk\calibration.py`
+Suite de regresion (122 tests, sin red, < 1 s):
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m pytest
+```
+
+`tests/test_regression_scenarios.py` es el test critico: fija el comportamiento del
+veredicto sobre la bateria de referencia (0 sub-avisos, concordancia >= 90%). Si un
+cambio en pesos, umbrales o barrera altera lo que el sistema decide, ahi salta.
+
+Test standalone de un modulo (se conservan, son parte de la convencion del proyecto):
+`.\.venv\Scripts\python.exe risk\calibration.py`
 
 Si `python` o `git` no se reconocen en una terminal nueva, refrescar el PATH:
 ```powershell

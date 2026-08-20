@@ -29,6 +29,14 @@ from typing import Optional
 
 import requests
 
+try:
+    from data.cache import METAR_CACHE, TAF_CACHE, NOTAM_CACHE
+except ImportError:
+    import sys as _sys
+    import os as _os
+    _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+    from data.cache import METAR_CACHE, TAF_CACHE, NOTAM_CACHE
+
 logger = logging.getLogger(__name__)
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -406,7 +414,13 @@ class AviationWeatherFetcher:
         if self.mock:
             raw_data = _mock_metar_saco() if icao == "SACO" else []
         else:
-            raw_data = self._get(METAR_ENDPOINT, params={"ids": icao, "format": "json", "hours": hours})
+            # Cacheado: un METAR se emite cada 30-60 min, no tiene sentido volver
+            # a pedirlo en cada evaluacion (ver data/cache.py).
+            raw_data = METAR_CACHE.get_or_call(
+                (icao, hours),
+                lambda: self._get(METAR_ENDPOINT,
+                                  params={"ids": icao, "format": "json", "hours": hours}),
+            )
         return self._parse_metar_response(raw_data, icao)
 
     def get_taf(self, icao: str) -> Optional[RawTaf]:
@@ -415,7 +429,10 @@ class AviationWeatherFetcher:
         if self.mock:
             raw_data = _mock_taf_saco() if icao == "SACO" else []
         else:
-            raw_data = self._get(TAF_ENDPOINT, params={"ids": icao, "format": "json"})
+            raw_data = TAF_CACHE.get_or_call(
+                icao,
+                lambda: self._get(TAF_ENDPOINT, params={"ids": icao, "format": "json"}),
+            )
         return self._parse_taf_response(raw_data, icao)
 
     def get_metar_and_taf(self, icao: str) -> tuple[Optional[RawMetar], Optional[RawTaf]]:
@@ -440,26 +457,29 @@ class AviationWeatherFetcher:
         if not indicador:
             return []
 
-        try:
-            resp = requests.post(
-                ANAC_NOTAM_URL,
-                data={"indicador": indicador},
-                headers={
-                    "User-Agent":       DEFAULT_HEADERS["User-Agent"],
-                    "Content-Type":     "application/x-www-form-urlencoded; charset=UTF-8",
-                    "X-Requested-With": "XMLHttpRequest",
-                    "Referer":          "https://ais.anac.gob.ar/notam",
-                    "Accept":           "*/*",
-                },
-                timeout=REQUEST_TIMEOUT,
-            )
-            resp.raise_for_status()
-            html_text = resp.text
-        except Exception as exc:
-            logger.warning(f"Error obteniendo NOTAMs ANAC para {code}: {exc}")
-            return []
+        def _fetch_notams() -> list:
+            try:
+                resp = requests.post(
+                    ANAC_NOTAM_URL,
+                    data={"indicador": indicador},
+                    headers={
+                        "User-Agent":       DEFAULT_HEADERS["User-Agent"],
+                        "Content-Type":     "application/x-www-form-urlencoded; charset=UTF-8",
+                        "X-Requested-With": "XMLHttpRequest",
+                        "Referer":          "https://ais.anac.gob.ar/notam",
+                        "Accept":           "*/*",
+                    },
+                    timeout=REQUEST_TIMEOUT,
+                )
+                resp.raise_for_status()
+            except Exception as exc:
+                logger.warning(f"Error obteniendo NOTAMs ANAC para {code}: {exc}")
+                return []
+            return _parse_anac_notams(code, resp.text)
 
-        return _parse_anac_notams(code, html_text)
+        # Cacheado por indicador: los NOTAM cambian con baja frecuencia y la
+        # misma consulta se repite en cada evaluacion del mismo aerodromo.
+        return NOTAM_CACHE.get_or_call(indicador, _fetch_notams)
 
 
 def _resolve_anac_indicador(code: str) -> str:

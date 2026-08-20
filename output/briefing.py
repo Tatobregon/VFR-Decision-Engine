@@ -23,6 +23,7 @@ try:
     from route.optimizer import OptimizeResult
     from parsers.metar_parser import ParsedWeather
     from risk.soft_scoring import SoftScoreResult
+    from risk.weights import THRESHOLD_GO, THRESHOLD_CAUTION
 except ImportError:
     import sys, os
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -30,6 +31,7 @@ except ImportError:
     from route.optimizer import OptimizeResult
     from parsers.metar_parser import ParsedWeather
     from risk.soft_scoring import SoftScoreResult
+    from risk.weights import THRESHOLD_GO, THRESHOLD_CAUTION
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -54,13 +56,19 @@ def _decision_label(decision: str) -> str:
 
 
 def _r_label(r: float) -> str:
-    if r < 0.15:
+    """
+    Etiqueta cualitativa del nivel de riesgo. Los cortes se anclan a los umbrales
+    de decision calibrados (risk/weights.py) para que el adjetivo no contradiga
+    al veredicto: nada por debajo de t_go puede sonar peor que "bajo", y nada por
+    encima de t_caution puede sonar mejor que "critico".
+    """
+    if r < THRESHOLD_GO / 2:
         return "muy bajo"
-    if r < 0.25:
+    if r < THRESHOLD_GO:
         return "bajo"
-    if r < 0.40:
+    if r < (THRESHOLD_GO + THRESHOLD_CAUTION) / 2:
         return "moderado"
-    if r < 0.55:
+    if r < THRESHOLD_CAUTION:
         return "elevado"
     return "critico"
 
@@ -398,9 +406,9 @@ def _section_recomendacion(
         lines.append("\nProceder con PRECAUCION.")
         lines.append("Condiciones son marginales pero dentro de limites VFR.")
         lines.append("Acciones recomendadas:")
-        if origin_r.r_total >= 0.25:
+        if origin_r.r_total >= THRESHOLD_GO:
             lines.append(f"  - Verificar condiciones actualizadas en {origin_r.station_id} antes del despegue.")
-        if dest_r.r_total >= 0.25:
+        if dest_r.r_total >= THRESHOLD_GO:
             lines.append(f"  - Confirmar condiciones en {dest_r.station_id} antes del inicio del descenso.")
         if route_r and route_r.alternate:
             lines.append(f"  - Verificar alternativo {route_r.alternate.code} antes de partir.")

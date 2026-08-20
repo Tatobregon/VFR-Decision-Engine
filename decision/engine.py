@@ -39,7 +39,7 @@ try:
     from parsers.metar_parser          import MetarParser, ParsedWeather
     from parsers.taf_parser            import TafParser
     from parsers.openmeteo_adapter     import OpenMeteoAdapter
-    from features.taf_window           import TafAnalyzer, TafWindowResult
+    from features.taf_window           import TafAnalyzer, TafWindowResult, nwp_trend_r_taf
     from risk.hard_blockers            import (
         check_hard_blockers,
         check_hard_blockers_from_weather,
@@ -59,7 +59,7 @@ except ImportError:
     from parsers.metar_parser          import MetarParser, ParsedWeather
     from parsers.taf_parser            import TafParser
     from parsers.openmeteo_adapter     import OpenMeteoAdapter
-    from features.taf_window           import TafAnalyzer, TafWindowResult
+    from features.taf_window           import TafAnalyzer, TafWindowResult, nwp_trend_r_taf
     from risk.hard_blockers            import (
         check_hard_blockers,
         check_hard_blockers_from_weather,
@@ -250,8 +250,12 @@ class DecisionEngine:
                     runway_heading  = rwy,
                 )
 
+        # ── Tendencia: los aerodromos sin METAR tampoco tienen TAF, asi que el
+        # componente de tendencia se sintetiza desde la propia serie NWP. ──────
+        r_taf = nwp_trend_r_taf(window_wx, ref_wx)
+
         # ── Soft scoring: peor caso dentro de la ventana ─────────────────────
-        scores  = [compute_soft_score(w, rwy, self.aircraft,
+        scores  = [compute_soft_score(w, rwy, self.aircraft, taf_r_taf=r_taf,
                                       personal_minima=self.personal_minima) for w in window_wx]
         worst   = max(scores, key=lambda s: s.r_total)
 

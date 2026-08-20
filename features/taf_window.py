@@ -68,6 +68,18 @@ _RANK_DEFAULT = 3   # None o cualquier desconocido = sin restriccion
 # Tokens que producen r_taf = 1.0 si aparecen en un periodo transitorio
 TAF_HARD_BLOCKERS = {"TS", "TSRA", "TSGR", "GR", "FC", "VA", "FZRA", "FZDZ"}
 
+# Severidad del deterioro segun la categoria de vuelo alcanzada. Compartida por
+# el TAF real (_taf_score) y por la tendencia sintetizada del NWP
+# (nwp_trend_r_taf), para que el componente signifique lo mismo venga de donde
+# venga el pronostico.
+_CATEGORY_TAF_SCORE = {
+    "IFR bajo mínimos": 1.00,
+    "IFR":              0.75,
+    "VFR marginal":     0.45,
+    "VFR":              0.15,   # VFR con alguna degradacion respecto del inicio
+}
+_CATEGORY_TAF_DEFAULT = 0.15
+
 # Duracion minima (segundos) de una franja para ser considerada "ventana GO"
 _DEFAULT_MIN_GO_S = int(1.5 * 3600)   # 1 h 30 min
 
@@ -306,10 +318,7 @@ class TafAnalyzer:
             ind = p.change_indicator
 
             # Score por categoria de vuelo efectiva
-            if   cat == "IFR bajo mínimos": cat_score = 1.00
-            elif cat == "IFR":              cat_score = 0.75
-            elif cat == "VFR marginal":     cat_score = 0.45
-            else:                           cat_score = 0.15  # VFR con alguna degradacion
+            cat_score = _CATEGORY_TAF_SCORE.get(cat, _CATEGORY_TAF_DEFAULT)
 
             # Modificador por certeza del deterioro
             if   ind == "TEMPO":  modifier = 1.00
@@ -320,6 +329,10 @@ class TafAnalyzer:
             max_score = max(max_score, cat_score * modifier)
 
         return min(max_score, 1.0)
+
+    # ── Tendencia sintetizada desde NWP (aerodromos sin TAF) ──────────────────
+
+    # (funcion a nivel de modulo, ver mas abajo: nwp_trend_r_taf)
 
     # ── Proxima ventana GO ─────────────────────────────────────────────────────
 
@@ -382,6 +395,65 @@ class TafAnalyzer:
                 go_start = None  # reiniciar si las condiciones no son GO
 
         return None
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Tendencia sintetizada desde NWP (para aerodromos sin TAF)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def nwp_trend_r_taf(window_wx: list, ref_wx=None) -> float:
+    """
+    Score de tendencia [0, 1] equivalente a `r_taf`, derivado de la serie NWP.
+
+    Problema que resuelve
+    ---------------------
+    Un aerodromo sin METAR tampoco tiene TAF, y esos son la mayoria del pais: el
+    componente de tendencia (w=0.039) valia 0 para casi todos. Open-Meteo no
+    publica TAF, pero SI entrega la serie horaria futura, asi que la tendencia se
+    puede sintetizar a partir de los datos que el sistema ya descarga.
+
+    Criterio
+    --------
+    Se compara la categoria de vuelo al momento de la salida (`ref_wx`) contra la
+    PEOR categoria pronosticada dentro de la ventana del vuelo. Solo puntua el
+    DETERIORO: si la condicion mejora o se mantiene, devuelve 0.0. La severidad
+    usa la misma tabla que el TAF real (`_CATEGORY_TAF_SCORE`), de modo que el
+    componente significa lo mismo venga de un TAF o de un pronostico NWP.
+
+    A diferencia del TAF real no hay modificador de certeza (TEMPO / PROB30 /
+    PROB40): el NWP es determinista y no publica probabilidad de ocurrencia.
+
+    Nota de diseno
+    --------------
+    El camino NWP del engine ya evalua toda la ventana y se queda con el peor
+    caso, de modo que existe una superposicion parcial entre ese worst-case y
+    esta tendencia. Se acepta a proposito y es conservadora: el componente pesa
+    0.039 (aporta a lo sumo +0.04 al R) y un deterioro sostenido deja menos
+    margen para regresar o desviarse, algo que el peor caso puntual no expresa.
+    """
+    if not window_wx:
+        return 0.0
+
+    ref = ref_wx if ref_wx is not None else window_wx[0]
+    ref_rank = CATEGORY_RANK.get(ref.flight_category, _RANK_DEFAULT)
+
+    worst_rank = ref_rank
+    worst_cat  = ref.flight_category
+    for w in window_wx:
+        rank = CATEGORY_RANK.get(w.flight_category, _RANK_DEFAULT)
+        if rank < worst_rank:      # menor rank = condicion mas restrictiva
+            worst_rank = rank
+            worst_cat  = w.flight_category
+
+    if worst_rank >= ref_rank:
+        return 0.0                 # no se deteriora dentro de la ventana
+
+    score = _CATEGORY_TAF_SCORE.get(worst_cat, _CATEGORY_TAF_DEFAULT)
+    logger.debug(
+        f"Tendencia NWP: {ref.flight_category} -> {worst_cat} en ventana "
+        f"| r_taf sintetico={score:.2f}"
+    )
+    return min(score, 1.0)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

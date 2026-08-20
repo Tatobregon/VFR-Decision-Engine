@@ -34,6 +34,14 @@ from typing import Optional
 
 import requests
 
+try:
+    from data.cache import NWP_CACHE
+except ImportError:
+    import sys as _sys
+    import os as _os
+    _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+    from data.cache import NWP_CACHE
+
 logger = logging.getLogger(__name__)
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -487,21 +495,32 @@ class OpenMeteoFetcher:
         if pressure_lvl:
             hourly_vars += f",windspeed_{pressure_lvl}hPa,winddirection_{pressure_lvl}hPa"
 
-        try:
-            raw_data = self._get(params={
-                "latitude"       : lat,
-                "longitude"      : lon,
-                "elevation"      : elevation_m,
-                "hourly"         : hourly_vars,
-                "wind_speed_unit": "kn",
-                "timezone"       : "America/Argentina/Buenos_Aires",
-                "forecast_days"  : FORECAST_DAYS,
-            })
-            return self._parse_response(raw_data, hours_ahead, pressure_lvl=pressure_lvl)
+        # Clave de cache: el punto (redondeado a ~100 m) y el nivel de presion.
+        # Los checkpoints de una ruta y las evaluaciones sucesivas del mismo
+        # aerodromo caen en la misma clave; un modelo NWP se actualiza cada
+        # 1-6 h, asi que reconsultarlo en cada evaluacion es puro costo.
+        cache_key = (round(lat, 3), round(lon, 3), round(elevation_m or 0.0),
+                     pressure_lvl, FORECAST_DAYS)
 
-        except (ConnectionError, ValueError) as e:
-            logger.error(f"No se pudo obtener pronostico NWP: {e}")
+        def _fetch():
+            try:
+                return self._get(params={
+                    "latitude"       : lat,
+                    "longitude"      : lon,
+                    "elevation"      : elevation_m,
+                    "hourly"         : hourly_vars,
+                    "wind_speed_unit": "kn",
+                    "timezone"       : "America/Argentina/Buenos_Aires",
+                    "forecast_days"  : FORECAST_DAYS,
+                })
+            except (ConnectionError, ValueError) as e:
+                logger.error(f"No se pudo obtener pronostico NWP: {e}")
+                return None
+
+        raw_data = NWP_CACHE.get_or_call(cache_key, _fetch)
+        if raw_data is None:
             return None
+        return self._parse_response(raw_data, hours_ahead, pressure_lvl=pressure_lvl)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

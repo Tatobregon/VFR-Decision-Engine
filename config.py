@@ -76,8 +76,12 @@ if __name__ == "__main__":
     print()
     check("SACC en NWP_STATIONS",
           "SACC" in NWP_STATIONS)
-    check(f"710 aerodromos registrados  (got {len(NWP_STATIONS)})",
-          len(NWP_STATIONS) == 710)
+    # El registro sale de data/madhel_cache.json (ANAC/MADHEL), no de OurAirports:
+    # 563 aerodromos AD (los 149 helipuertos se excluyen) de los que 561 quedan
+    # cargados. Se verifica un piso, no un numero exacto, para que el test no se
+    # rompa cada vez que ANAC actualice el registro.
+    check(f"al menos 500 aerodromos registrados  (got {len(NWP_STATIONS)})",
+          len(NWP_STATIONS) >= 500)
     check("METAR_STATIONS vacio",
           len(METAR_STATIONS) == 0)
     sacc = NWP_STATIONS.get("SACC", {})

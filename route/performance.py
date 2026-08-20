@@ -177,9 +177,11 @@ if __name__ == "__main__":
         print(f"  [{'OK' if cond else 'FALLO'}] {desc}")
 
     # -- haversine_km --
-    # La Cumbre (SACC) - Alta Gracia (SAAG): ~73 km
+    # La Cumbre - Alta Gracia (coordenadas literales; ~73 km).
+    # NOTA: el codigo SAAG corresponde hoy a GUALEGUAYCHU en el registro MADHEL,
+    # no a Alta Gracia. Por eso el test usa coordenadas, no codigos.
     d = haversine_km(-31.010853, -64.526899, -31.657347, -64.397470)
-    check(f"SACC-SAAG distancia ~73 km  (got {d:.1f})", 65.0 <= d <= 80.0)
+    check(f"La Cumbre-Alta Gracia ~73 km  (got {d:.1f})", 65.0 <= d <= 80.0)
 
     # Punto identico = 0
     check("Punto identico = 0 km", haversine_km(0, 0, 0, 0) == 0.0)
@@ -193,9 +195,9 @@ if __name__ == "__main__":
     b_este = bearing_deg(0.0, 0.0, 0.0, 1.0)
     check(f"Rumbo Este puro ~90  (got {b_este:.1f})", abs(b_este - 90.0) < 1.0)
 
-    # SACC - SAAG (al sur-este)
+    # La Cumbre - Alta Gracia (al sur-este)
     b = bearing_deg(-31.010853, -64.526899, -31.657347, -64.397470)
-    check(f"SACC-SAAG rumbo SE ~160  (got {b:.1f})", 140.0 <= b <= 180.0)
+    check(f"La Cumbre-Alta Gracia rumbo SE ~160  (got {b:.1f})", 140.0 <= b <= 180.0)
 
     # -- effective_groundspeed_kt --
     # Sin viento = crucero puro

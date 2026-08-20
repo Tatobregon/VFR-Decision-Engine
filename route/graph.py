@@ -199,8 +199,15 @@ if __name__ == "__main__":
     total_edges = sum(len(v) for v in g_short.edges.values())
     check("Modo guardado correctamente", g_short.mode == "shortest")
     check(f"max_leg_km=500 reduce aristas vs grafo completo", total_edges < total_edges_full)
-    check(f"max_leg_km=500: al menos 1 vecino por nodo",
-          all(len(v) > 0 for v in g_short.edges.values()))
+    # Todo aerodromo CONTINENTAL tiene al menos un vecino a <= 500 km.
+    # Excepcion real y esperada: la base antartica Marambio (SAWB, lat -64.2)
+    # tiene su vecino mas cercano a 1230 km, cruzando el Pasaje de Drake. Ninguna
+    # de las aeronaves del sistema opera ese tramo, asi que queda como nodo
+    # aislado del grafo: es un dato geografico correcto, no un defecto.
+    aislados = [code for code, v in g_short.edges.items() if len(v) == 0]
+    antarticos = [c for c in aislados if g_short.nodes[c].lat < -60.0]
+    check(f"max_leg_km=500: solo nodos antarticos quedan aislados  (aislados={aislados})",
+          set(aislados) == set(antarticos))
 
     # Sin autolazo
     sacc_dests = [e.dest for e in neighbors(g_short, "SACC")]
@@ -232,19 +239,19 @@ if __name__ == "__main__":
           e_fast.weight <= e_fast_noviento.weight)
 
     # ── Modo safest ──
-    r_test = {"SACC": 0.3, "SAOM": 0.8, "SAOE": 0.0}
+    r_test = {"SACC": 0.3, "SAOM": 0.8, "SAOC": 0.0}
     g_safe = build_graph("safest", r_map=r_test)
     e_safe_saom = get_edge(g_safe, "SACC", "SAOM")
-    e_safe_saoe = get_edge(g_safe, "SACC", "SAOE")
-    check("Modo safest: aristas SAOM y SAOE presentes",
+    e_safe_saoe = get_edge(g_safe, "SACC", "SAOC")
+    check("Modo safest: aristas SAOM y SAOC presentes",
           e_safe_saom is not None and e_safe_saoe is not None)
     d_saom = get_edge(g_short, "SACC", "SAOM").distance_km
-    d_saoe = get_edge(g_short, "SACC", "SAOE").distance_km
+    d_saoe = get_edge(g_short, "SACC", "SAOC").distance_km
     expected_saom = d_saom * 1.8   # r=0.8 → factor 1.8
     expected_saoe = d_saoe * 1.0   # r=0.0 → factor 1.0
     check(f"Modo safest: peso SAOM ~{expected_saom:.0f}  (got {e_safe_saom.weight:.1f})",
           e_safe_saom is not None and abs(e_safe_saom.weight - expected_saom) < 1.0)
-    check(f"Modo safest: peso SAOE ~{expected_saoe:.0f}  (got {e_safe_saoe.weight:.1f})",
+    check(f"Modo safest: peso SAOC ~{expected_saoe:.0f}  (got {e_safe_saoe.weight:.1f})",
           e_safe_saoe is not None and abs(e_safe_saoe.weight - expected_saoe) < 1.0)
 
     # ── Modo invalido ──

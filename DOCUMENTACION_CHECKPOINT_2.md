@@ -87,7 +87,7 @@ APÉNDICE METODOLÓGICO (no se importa en runtime):
   risk/ahp_weights.py · risk/scenarios.py · risk/calibration.py · risk/sensitivity.py
 ```
 
-### Inventario de módulos (32 archivos `.py`)
+### Inventario de módulos (33 archivos `.py`)
 
 | Módulo | Rol |
 |---|---|
@@ -99,6 +99,7 @@ APÉNDICE METODOLÓGICO (no se importa en runtime):
 | `data/airways.py` | Grafo bidireccional de aerovías inferiores del AIP (ENR 3.1) |
 | `data/fir_zones.py` | FIR de un punto → contacto ATC ("Córdoba Control", etc.) |
 | `data/terrain.py` | Terreno SRTM 30 m (Open-Topo-Data) |
+| `data/cache.py` | Caché en memoria con TTL para las respuestas de las APIs externas |
 | `data/fetcher_madhel.py`, `data/fetcher_openaip.py` | **Herramientas offline** que regeneran los caches. No corren en runtime |
 | **PARSING** | |
 | `parsers/metar_parser.py` | Define **`ParsedWeather`** (contrato central) + categoría ANAC/OACI |
@@ -318,21 +319,23 @@ Hasta que se haga push, el despliegue sigue corriendo `908ed89`, que decide con
 |---|---|---|
 | 1 | Un 502 transitorio de aviationweather.gov devolvía **HTTP 500** al piloto | `_get()` ya no lanza: reintenta transitorios (429/5xx), descarta 4xx y devuelve lista vacía → el engine degrada a NWP. Verificado: responde en 1.3 s con fuente NWP |
 | 2 | La alternativa al destino era **arbitraria** (para Rosario proponía General Acha, 609 km, "SIN DATOS") | Ahora es la **más cercana meteorológicamente apta**: evalúa en paralelo los 8 candidatos más próximos dentro del alcance de la aeronave, a la hora de arribo. Para Rosario propone Alvear a 23.6 km con GO |
-| 3 | **Umbral 0.25 hardcodeado** en tres lugares pese a que el calibrado es 0.22 | Los tres usan `apply_decision_threshold()` de `risk/weights.py` |
+| 3 | **Umbral 0.25 hardcodeado** pese a que el calibrado es 0.22 | Los 3 que definían el veredicto (`web/app.py` ×2, `route/optimizer.py`) usan `apply_decision_threshold()`. Los 3 restantes en `output/briefing.py` (etiqueta cualitativa y acciones recomendadas) se anclaron a `THRESHOLD_GO`/`THRESHOLD_CAUTION` |
+| 4 | **El briefing se armaba antes de los bloqueos operacionales**: decía GO mientras la tarjeta decía NO GO por noche o NOTAM | `_apply_operational_blockers()` propaga el veredicto final al `DecisionResult` y el briefing se genera después. Verificado con un despegue a las 03:00 UTC: briefing y tarjeta dicen NO GO por vuelo nocturno |
 | 5a | **Penalización orográfica en 1 de 561 aeródromos** | **Eliminada** junto con `features/orographic.py` y los 2 escenarios que la probaban. Verificado que no altera las conclusiones (§4.4 y §4.5). El terreno SRTM se conserva para el perfil vertical |
+| 7 | `duration_hours` **declarado dos veces** en `EvaluateRequest` | Campo eliminado: la duración se deriva de la ruta calculada. También se quitó del payload del frontend |
+| — | **Tests con asserts desactualizados o atados a Córdoba** | `config.py` y `data/airports.py` verifican un piso (≥500) en vez de 710; `aircraft_profiles.py` espera 6000 ft; `SAOE` (inexistente) → `SAOC`; el test de vecinos tolera el aislamiento **real** de la base antártica Marambio (SAWB, vecino más cercano a 1230 km). **23 módulos pasan, 0 fallos** |
 
-**Abiertos:**
+| 5b | **Base de nubes NWP fija en 2000 ft** aplicada a todo el país | Reemplazada por la **regla de Espy** (`base ≈ 400 ft × spread T/Td`), estándar en aviación general y calculada con datos que el NWP ya entrega. Con aire saturado da ~100 ft (nubes al ras) en vez de 2000 ft |
+| 6 | **El componente TAF (w=0.039) valía 0 en casi todo el país** | `nwp_trend_r_taf()` sintetiza la tendencia desde la serie horaria de Open-Meteo comparando la categoría de salida con la peor de la ventana. Solo puntúa el deterioro; usa la misma escala que un TAF real |
+| 10 | **Sin caché de requests** | `data/cache.py`: TTL por tipo de dato, thread-safe, sin cachear respuestas vacías. Medido: 3 evaluaciones iguales pasaron de 5.46 s a **1.4 s** |
+| 11 | **Sin README ni pytest** | `README.md` completo y suite de **122 tests** en `tests/` que corre en < 1 s sin salir a la red, con `test_regression_scenarios.py` fijando el comportamiento del veredicto |
 
-| # | Hallazgo | Ubicación |
+**Abiertos (por decisión explícita, no por olvido):**
+
+| # | Hallazgo | Decisión |
 |---|---|---|
-| 4 | **El briefing se arma antes de aplicar los bloqueos operacionales**: puede decir GO mientras la tarjeta dice NO GO por noche o NOTAM | `web/app.py` |
-| 5b | **Base de nubes NWP fija en 2000 ft**, un valor calibrado para Sierras Chicas que se aplica a todo el país. Es una limitación declarada del pronóstico, no una corrección pendiente | `parsers/openmeteo_adapter.py:60` |
-| 6 | **El componente TAF (w=0.039) vale 0 en casi todo el país**: solo existe en el camino METAR | `decision/engine.py` |
-| 7 | `duration_hours` **declarado dos veces** en `EvaluateRequest`; el segundo anula el `Field(ge/le)` | `web/app.py:74,78` |
-| 8 | **Código inalcanzable desde la web**: modos `shortest`/`fastest`/`safest`, `evaluate_intermediate`, todo `route/weather_sampler.py` (`weather_reroute` nunca se activa), y `r_fog()` en `weights.py` (se usa el de `features/fog_risk`) | varios |
-| 9 | **Datos huérfanos** (~1.6 MB): `ar-airports.csv`, `datos_vfr_argentina.json`, `aerovias_LOWER_limpio.geojson`, `manual_runways.json` — ningún `.py` los referencia | `data/` |
-| 10 | **Sin caché de requests**: cada evaluación dispara decenas de llamadas HTTP; pesa en el plan free de Render | `web/app.py` |
-| 11 | **Sin README ni pytest**: la verificación son bloques `__main__` manuales | raíz |
+| 8 | **Código inalcanzable desde la web**: modos `shortest`/`fastest`/`safest`, `evaluate_intermediate`, `route/weather_sampler.py`, y `r_fog()` en `weights.py` | **Se conserva** a pedido, por si más adelante se exponen esos modos o el rerouteo meteorológico en la interfaz |
+| 9 | **Datos huérfanos** (~1.57 MB): `ar-airports.csv`, `datos_vfr_argentina.json`, `aerovias_LOWER_limpio.geojson`, `manual_runways.json` (vacío) | **Se conservan** a pedido |
 
 ---
 

@@ -72,11 +72,13 @@ class EvaluateRequest(BaseModel):
     dest_runway: Optional[int] = None
     aircraft: str = "Pipistrel Alpha Trainer"
     departure_time: str = ""       # "HH:MM" UTC; vacío = ahora + 1h
-    duration_hours: float = Field(default=2.0, ge=0.3, le=12.0)
     avoid_airspace: bool = True    # si True, la ruta evita zonas R/P/D
     flight_rules: str = "VFR"      # "VFR" (default) | "IFR" — define routing/altitud
     experience: str = "PPL"        # "Alumno" | "PPL" | "Avanzado" — mínimos personales
-    duration_hours: float = 0.0   # ignorado; calculado internamente desde la ruta
+    # NOTA: la duración del vuelo NO es un parámetro de entrada. Se deriva de la
+    # ruta calculada (distancia / velocidad de crucero de la aeronave), porque
+    # una duración declarada por el usuario que no coincida con la ruta real
+    # desplazaría la ventana meteorológica evaluada.
 
 
 class Notam(BaseModel):
@@ -335,6 +337,7 @@ def _to_card(result, runway_heading: int, ap: AirportInfo, notams: list = None) 
 def _apply_operational_blockers(
     card: WeatherCard, ap: AirportInfo, when_unix: int, notams: list, phase: str,
     flight_rules: str = "VFR", cruise_alt_ft: int = 7500,
+    result = None,
 ) -> None:
     """
     Aplica los bloqueos operacionales NO meteorológicos sobre una ficha ya
@@ -383,6 +386,16 @@ def _apply_operational_blockers(
             card.cloud_below_cruise = True
             if card.decision == "GO":
                 card.decision = "CAUTION"
+
+    # ── Propagar el veredicto final al DecisionResult ──
+    # El briefing se arma desde el DecisionResult, no desde la ficha. Sin esta
+    # sincronizacion el briefing podia afirmar GO mientras la tarjeta mostraba
+    # NO GO por vuelo nocturno o por NOTAM de cierre: dos veredictos distintos
+    # para el mismo vuelo en la misma pantalla.
+    if result is not None:
+        result.decision        = card.decision
+        result.hard_blocked    = card.hard_blocked
+        result.blocker_summary = card.blocker_summary
 
 
 # ── Helper: aeródromos de desvío por waypoint ────────────────────────────────
@@ -1547,21 +1560,26 @@ async def evaluate(req: EvaluateRequest):
     except Exception:
         pass
 
-    briefing_text = generate_briefing(
-        origin_result, dest_result,
-        route_result if route_result.found else None,
-        notams_orig=notams_orig,
-        notams_dest=notams_dest,
-    )
-
     # Fichas + bloqueos operacionales no meteorológicos (noche / NOTAM).
     # El despegue se evalúa a la hora de salida; el aterrizaje, a la ETA (para
     # que un vuelo que aterriza de noche sea NO GO aunque despegue de día).
     arr_time = dep_time + int(actual_duration * 3600)
     origin_card = _to_card(origin_result, origin_result.runway_heading, orig_ap, notams_orig)
     dest_card   = _to_card(dest_result,   dest_result.runway_heading,   dest_ap, notams_dest)
-    _apply_operational_blockers(origin_card, orig_ap, dep_time, notams_orig, "despegue", flight_rules, aircraft.cruise_alt_ft)
-    _apply_operational_blockers(dest_card,   dest_ap, arr_time, notams_dest, "aterrizaje", flight_rules, aircraft.cruise_alt_ft)
+    _apply_operational_blockers(origin_card, orig_ap, dep_time, notams_orig, "despegue",
+                                flight_rules, aircraft.cruise_alt_ft, result=origin_result)
+    _apply_operational_blockers(dest_card,   dest_ap, arr_time, notams_dest, "aterrizaje",
+                                flight_rules, aircraft.cruise_alt_ft, result=dest_result)
+
+    # El briefing se genera DESPUES de los bloqueos operacionales: si se armara
+    # antes, describiria solo la meteorologia e ignoraria un NO GO por noche o
+    # por NOTAM de cierre.
+    briefing_text = generate_briefing(
+        origin_result, dest_result,
+        route_result if route_result.found else None,
+        notams_orig=notams_orig,
+        notams_dest=notams_dest,
+    )
 
     decisions = [origin_card.decision, dest_card.decision]
     global_dec = "NO GO" if "NO GO" in decisions else "CAUTION" if "CAUTION" in decisions else "GO"

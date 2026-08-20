@@ -1,0 +1,8 @@
+# Dependencias de desarrollo y testing.
+# NO se instalan en el deploy: render.yaml usa requirements.txt.
+#
+#   .venv/Scripts/python -m pip install -r requirements-dev.txt
+#   .venv/Scripts/python -m pytest -q
+
+-r requirements.txt
+pytest

@@ -1683,7 +1683,7 @@ function app() {
           dest_runway:    Number.isFinite(this.form.dest_runway) ? this.form.dest_runway : null,
           aircraft:       this.form.aircraft,
           departure_time: this.form.departure_time,
-          duration_hours: this.form.duration_hours,
+          // la duración la deriva el backend de la ruta calculada
           avoid_airspace: this.form.avoid_airspace,
           flight_rules:   this.form.flight_rules,
           experience:     this.form.experience,

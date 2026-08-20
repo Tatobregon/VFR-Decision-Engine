@@ -439,7 +439,10 @@ if __name__ == "__main__":
     N        = len(AIRPORTS)
     N_public = len(AIRPORTS_PUBLIC)
 
-    check(f"Total aerodromos cargados   : {N}  (minimo 700)", N >= 700)
+    # MADHEL trae 712 registros: 563 aerodromos (AD) + 149 helipuertos (HEL, que
+    # se excluyen por ser el sistema de ala fija). Se verifica un piso, no un
+    # numero exacto, para tolerar actualizaciones del registro de ANAC.
+    check(f"Total aerodromos cargados   : {N}  (minimo 500)", N >= 500)
     check(f"Aerodromos publicos         : {N_public}  (minimo 200)", N_public >= 200)
     check("Todos son is_madhel=True", all(a.is_madhel for a in AIRPORTS.values()))
 

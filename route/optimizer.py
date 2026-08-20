@@ -845,20 +845,20 @@ if __name__ == "__main__":
     from risk.aircraft_profiles import ALPHA_TRAINER, CESSNA_172, CESSNA_152
 
     # ── Modo shortest, Alpha Trainer (default) ──
-    r1 = optimize("SACC", "SAOE", mode="shortest")
-    check("shortest SACC-SAOE: found",        r1.found)
-    check("shortest SACC-SAOE: path correcto", r1.found and r1.path[0] == "SACC" and r1.path[-1] == "SAOE")
-    check("shortest SACC-SAOE: legs correctos", r1.found and len(r1.legs) == len(r1.path) - 1)
-    check("shortest SACC-SAOE: fuel_ok",      r1.found and r1.fuel_ok)
-    check("shortest SACC-SAOE: aircraft = ALPHA_TRAINER", r1.aircraft is ALPHA_TRAINER)
-    print_result("shortest SACC-SAOE (Alpha Trainer)", r1)
+    r1 = optimize("SACC", "SAOC", mode="shortest")
+    check("shortest SACC-SAOC: found",        r1.found)
+    check("shortest SACC-SAOC: path correcto", r1.found and r1.path[0] == "SACC" and r1.path[-1] == "SAOC")
+    check("shortest SACC-SAOC: legs correctos", r1.found and len(r1.legs) == len(r1.path) - 1)
+    check("shortest SACC-SAOC: fuel_ok",      r1.found and r1.fuel_ok)
+    check("shortest SACC-SAOC: aircraft = ALPHA_TRAINER", r1.aircraft is ALPHA_TRAINER)
+    print_result("shortest SACC-SAOC (Alpha Trainer)", r1)
 
     # ── Modo shortest con C172 (mayor velocidad y consumo) ──
-    r1c = optimize("SACC", "SAOE", mode="shortest", aircraft=CESSNA_172)
+    r1c = optimize("SACC", "SAOC", mode="shortest", aircraft=CESSNA_172)
     check("C172: aircraft correcto",   r1c.found and r1c.aircraft is CESSNA_172)
     check("C172: fuel_flow mayor",     r1c.found and r1c.total_fuel_l > r1.total_fuel_l)
     check("C172: tiempo menor (mas rapido)", r1c.found and r1c.total_time_h < r1.total_time_h)
-    print_result("shortest SACC-SAOE (Cessna 172)", r1c)
+    print_result("shortest SACC-SAOC (Cessna 172)", r1c)
 
     # ── Modo fastest ──
     r2 = optimize("SACC", "SAOM", mode="fastest", wind_dir=270, wind_spd_kt=15.0)
@@ -892,25 +892,25 @@ if __name__ == "__main__":
     print_result("shortest con alternativo", r5)
 
     # ── Meteo intermedia (mock, ruta con intermedios) ──
-    r6 = optimize("SACC", "SAOE", mode="suggested",
+    r6 = optimize("SACC", "SAOC", mode="suggested",
                   evaluate_intermediate=True, mock=True)
     check("Meteo intermedia: found", r6.found)
     if len(r6.path) > 2:
         check("Meteo intermedia: results presentes",
               len(r6.intermediate_results) == len(r6.path) - 2)
-    print_result("suggested SACC-SAOE con meteo intermedia", r6)
+    print_result("suggested SACC-SAOC con meteo intermedia", r6)
 
     # ── C152: rango menor afecta fuel_ok ──
     r7 = optimize("SACC", "SAOM", mode="shortest", aircraft=CESSNA_152)
     check("C152: aircraft guardado", r7.found and r7.aircraft is CESSNA_152)
 
     # ── Error: modo invalido ──
-    r_bad = optimize("SACC", "SAOE", mode="turbo")
+    r_bad = optimize("SACC", "SAOC", mode="turbo")
     check("Modo invalido: not found",  not r_bad.found)
     check("Modo invalido: error string", "invalido" in r_bad.error.lower())
 
     # ── Error: nodo desconocido ──
-    r_bad2 = optimize("XXXX", "SAOE")
+    r_bad2 = optimize("XXXX", "SAOC")
     check("Nodo desconocido: not found", not r_bad2.found)
 
     # ── Todos los modos corren en subset de pares ──

@@ -58,11 +58,53 @@ logger = logging.getLogger(__name__)
 # Umbral de cobertura (%) a partir del cual una capa constituye ceiling (BKN = 5/8 = 62.5%)
 CEILING_COVER_THRESHOLD_PCT = 63
 
-# Alturas estimadas de base por capa cuando NWP reporta cobertura significativa.
-# Son valores por defecto para la region de Sierras Chicas; ajustables por sitio.
+# ── Altura de la base de nubes bajas: REGLA DE ESPY ───────────────────────────
+# La base de las nubes se estima con la regla de Espy (tambien llamada
+# "regla de los 400 pies"), estandar en aviacion general:
+#
+#     base_nubes (ft AGL) ~= 400 x (T - Td)      [T y Td en grados C]
+#
+# El aire ascendente se enfria ~3 C por cada 1000 ft (adiabatica seca) mientras
+# el punto de rocio baja ~0.5 C, de modo que la saturacion (y por lo tanto la
+# base de la nube) se alcanza a unos 400 ft por cada grado de spread.
+#
+# Por que reemplaza a una constante: antes se asumia una base FIJA de 2000 ft AGL
+# para toda nubosidad baja del pais. Eso es falso justamente en los casos que mas
+# importan: con spread cercano a 0 (niebla, stratus) las nubes estan practicamente
+# a nivel del suelo, y la constante las ubicaba 2000 ft mas arriba, subestimando
+# el riesgo. La regla de Espy usa datos que el NWP ya provee (T y Td) y responde a
+# la condicion real de cada punto y cada hora.
+CLOUD_BASE_FT_PER_DEG_C = 400
+
+# Acotado: por debajo, una base menor a 100 ft es indistinguible de niebla en
+# superficie; por encima, si la formula da mas que esto la capa ya no se comporta
+# como nube baja y se usa el techo del rango.
+MIN_CLOUD_BASE_FT     = 100
+MAX_LOW_CLOUD_BASE_FT = 6000
+
+# Fallback cuando el NWP no trae temperatura o punto de rocio (sin spread no hay
+# forma de aplicar Espy). Valor conservador de nube baja.
 DEFAULT_LOW_CLOUD_BASE_FT  = 2000
 DEFAULT_MID_CLOUD_BASE_FT  = 8000
 DEFAULT_HIGH_CLOUD_BASE_FT = 20000
+
+
+def estimate_cloud_base_ft(
+    temp_c    : Optional[float],
+    dewpoint_c: Optional[float],
+    fallback_ft: int = DEFAULT_LOW_CLOUD_BASE_FT,
+) -> int:
+    """
+    Altura estimada de la base de nubes bajas (ft AGL) por la regla de Espy.
+
+    Devuelve `fallback_ft` si falta temperatura o punto de rocio.
+    El resultado queda acotado a [MIN_CLOUD_BASE_FT, MAX_LOW_CLOUD_BASE_FT].
+    """
+    if temp_c is None or dewpoint_c is None:
+        return fallback_ft
+    spread_c = max(temp_c - dewpoint_c, 0.0)
+    base_ft  = CLOUD_BASE_FT_PER_DEG_C * spread_c
+    return int(round(min(max(base_ft, MIN_CLOUD_BASE_FT), MAX_LOW_CLOUD_BASE_FT)))
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Tabla de codigos WMO → tokens wx (compatibles con hard_blockers)
@@ -161,6 +203,8 @@ class OpenMeteoAdapter:
             nwp_hour.cloudcover_low_pct,
             nwp_hour.cloudcover_mid_pct,
             nwp_hour.cloudcover_high_pct,
+            temp_c     = nwp_hour.temperature_2m_c,
+            dewpoint_c = nwp_hour.dewpoint_2m_c,
         )
         ceiling_ft = _extract_ceiling_ft(sky_layers)
         wx_codes   = _wmo_to_wx_codes(nwp_hour.weathercode)
@@ -243,18 +287,32 @@ class OpenMeteoAdapter:
         low_pct : Optional[int],
         mid_pct : Optional[int],
         high_pct: Optional[int],
+        temp_c    : Optional[float] = None,
+        dewpoint_c: Optional[float] = None,
     ) -> list:
         """
         Construye capas de nubosidad estimadas a partir de porcentajes de cobertura.
+
+        La base de la capa BAJA se calcula con la regla de Espy a partir del spread
+        T/Td de esa misma hora (ver estimate_cloud_base_ft): con aire saturado la
+        capa queda cerca del suelo, y con aire seco, alta. Las capas media y alta
+        conservan alturas de referencia, porque no condicionan el techo operativo
+        en la practica y el NWP no aporta datos para estimarlas mejor.
 
         Cada capa resultante incluye "estimated": True para distinguirla de capas
         observadas directamente en un METAR.
         """
         layers = []
 
+        low_base_ft = estimate_cloud_base_ft(
+            temp_c, dewpoint_c, fallback_ft=self.low_cloud_base_ft,
+        )
+        # La capa media nunca puede quedar por debajo de la baja
+        mid_base_ft = max(self.mid_cloud_base_ft, low_base_ft + 1000)
+
         for cover_pct, base_ft in (
-            (low_pct,  self.low_cloud_base_ft),
-            (mid_pct,  self.mid_cloud_base_ft),
+            (low_pct,  low_base_ft),
+            (mid_pct,  mid_base_ft),
             (high_pct, self.high_cloud_base_ft),
         ):
             if cover_pct is None:

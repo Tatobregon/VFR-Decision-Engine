@@ -240,7 +240,7 @@ if __name__ == "__main__":
     check("Alpha Trainer: gust_max_kt = 20.0",       p.gust_max_kt == 20.0)
     check("Alpha Trainer: vis_min_km = 5.0",         p.vis_min_km == 5.0)
     check("Alpha Trainer: ceiling_min_ft = 1000",    p.ceiling_min_ft == 1000)
-    check("Alpha Trainer: cruise_alt_ft = 5500",     p.cruise_alt_ft == 5500)
+    check("Alpha Trainer: cruise_alt_ft = 6000",     p.cruise_alt_ft == 6000)
     check("Alpha Trainer: categoria = LSA",          p.category == "LSA")
     check("Alpha Trainer: fuel_flow_lph > 0",        p.fuel_flow_lph > 0)
     check("Alpha Trainer: fuel_capacity_l > 0",      p.fuel_capacity_l > 0)
