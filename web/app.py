@@ -43,6 +43,7 @@ from risk.aircraft_profiles import PROFILE_NAMES, get_profile, AircraftProfile
 from risk.personal_minima import get_minima, LEVEL_NAMES
 from risk.soft_scoring import compute_soft_score
 from risk.hard_blockers import check_hard_blockers_from_weather
+from risk.weights import apply_decision_threshold
 from features.crosswind import compute_crosswind
 from features.density_altitude import advisory as da_advisory
 from features.vfr_altitude import hemispheric_vfr_altitude
@@ -629,7 +630,9 @@ def _generate_route_waypoints(
         is_off_spine = is_intermediate and leg_before_aw and leg_after_aw
 
         r_val = r_map.get(code, 0.0)
-        dec = "GO" if r_val < 0.25 else "CAUTION" if r_val < 0.50 else "NO GO"
+        # Umbrales calibrados (risk/weights.py), nunca hardcodeados: el mismo R
+        # tiene que dar el mismo veredicto en la ficha, el mapa y la timeline.
+        dec = apply_decision_threshold(r_val)
         sequence.append(RouteWaypoint(
             code=code, name=ap.name,
             lat=ap.lat, lon=ap.lon,
@@ -1268,7 +1271,7 @@ async def timeline(req: TimelineRequest):
         if pd is None:
             continue
         r_max = max(po['r'], pd['r'])
-        dec = "NO GO" if r_max >= 0.50 else "CAUTION" if r_max >= 0.25 else "GO"
+        dec = apply_decision_threshold(r_max)
         combined.append({
             'hour_utc': po['t'],
             'r_origin': po['r'], 'dec_origin': po['dec'],

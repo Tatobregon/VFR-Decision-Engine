@@ -275,6 +275,22 @@ class AviationWeatherFetcher:
         self.session.headers.update(DEFAULT_HEADERS)
 
     def _get(self, endpoint: str, params: dict) -> list[dict]:
+        """
+        GET con reintentos. NUNCA lanza: ante cualquier fallo devuelve lista vacia.
+
+        Convencion del proyecto: la capa de datos reporta AUSENCIA de datos, no
+        excepciones (el engine maneja la ausencia). Una lista vacia se traduce en
+        `RawMetar = None`, y el engine degrada automaticamente a NWP, que cubre
+        todo el pais.
+
+        Motivo: aviationweather.gov es un proveedor externo y tiene caidas
+        transitorias (se observo un 502 del gateway). Antes ese 502 se propagaba
+        como excepcion hasta el endpoint y el piloto recibia un HTTP 500, en vez
+        del pronostico NWP que el sistema ya sabe calcular.
+
+        Los fallos transitorios (429 y 5xx) se reintentan; los 4xx no, porque
+        reintentar una peticion mal formada no cambia el resultado.
+        """
         last_error = None
         for attempt in range(1, MAX_RETRIES + 1):
             try:
@@ -284,17 +300,29 @@ class AviationWeatherFetcher:
                 if response.status_code == 200:
                     data = response.json()
                     if not isinstance(data, list):
-                        raise ValueError(f"Respuesta inesperada: se esperaba lista, se recibio {type(data)}")
+                        last_error = f"Respuesta inesperada: se esperaba lista, se recibio {type(data)}"
+                        logger.warning(last_error)
+                        return []
                     return data
-                elif response.status_code == 204:
-                    logger.warning(f"Sin datos para los parametros: {params}")
+
+                if response.status_code == 204:
+                    logger.info(f"Sin datos para los parametros: {params}")
                     return []
-                elif response.status_code == 429:
-                    logger.warning(f"Rate limit (429). Esperando {RETRY_DELAY * attempt}s...")
+
+                if response.status_code == 429 or response.status_code >= 500:
+                    # Transitorio (rate limit o fallo del servidor): reintentar
+                    last_error = f"API respondio {response.status_code}"
+                    logger.warning(
+                        f"{last_error}. Reintento {attempt}/{MAX_RETRIES} "
+                        f"en {RETRY_DELAY * attempt}s..."
+                    )
                     time.sleep(RETRY_DELAY * attempt)
                     continue
-                else:
-                    raise ValueError(f"API respondio {response.status_code}: {response.text[:200]}")
+
+                # 4xx distinto de 429: error de la peticion, no se reintenta
+                last_error = f"API respondio {response.status_code}: {response.text[:200]}"
+                logger.warning(last_error)
+                return []
 
             except requests.exceptions.Timeout:
                 last_error = f"Timeout en intento {attempt}"
@@ -304,13 +332,17 @@ class AviationWeatherFetcher:
                 last_error = f"Error de conexion: {e}"
                 logger.warning(last_error)
                 time.sleep(RETRY_DELAY)
-            except ValueError:
-                raise
+            except ValueError as e:
+                # JSONDecodeError hereda de ValueError: respuesta no parseable
+                last_error = f"Respuesta no es JSON valido: {e}"
+                logger.warning(last_error)
+                return []
 
-        raise ConnectionError(
-            f"No se pudo conectar a {endpoint} despues de {MAX_RETRIES} intentos. "
-            f"Ultimo error: {last_error}"
+        logger.error(
+            f"Sin datos de {endpoint} despues de {MAX_RETRIES} intentos "
+            f"(ultimo error: {last_error}). El engine degrada a NWP."
         )
+        return []
 
     def _parse_metar_response(self, data: list[dict], icao: str) -> Optional[RawMetar]:
         if not data:

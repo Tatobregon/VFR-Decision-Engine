@@ -20,6 +20,7 @@ intermedios y sugiere un aerodromo alternativo automatico.
 import math as _math
 import time as _time_module
 import logging as _logging
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
@@ -36,6 +37,7 @@ try:
         route_summary,
     )
     from risk.aircraft_profiles import AircraftProfile, ALPHA_TRAINER
+    from risk.weights import apply_decision_threshold
     from route.weather_sampler import sample_route_weather, blocked_legs
     from route.airway_router import find_airways_for_leg
 except ImportError:
@@ -51,6 +53,7 @@ except ImportError:
         route_summary,
     )
     from risk.aircraft_profiles import AircraftProfile, ALPHA_TRAINER
+    from risk.weights import apply_decision_threshold
     from route.weather_sampler import sample_route_weather, blocked_legs
     from route.airway_router import find_airways_for_leg
 
@@ -231,12 +234,15 @@ class OptimizeResult:
 # ────────────────────────────────────────────────────────────────────────────
 
 def _evaluate_airport(
-    code    : str,
-    aircraft: AircraftProfile,
-    mock    : bool = False,
+    code     : str,
+    aircraft : AircraftProfile,
+    mock     : bool = False,
+    when_unix: int  = 0,
 ) -> tuple:
     """
     Evalua las condiciones meteorologicas de un aerodromo.
+
+    `when_unix`: momento para el que se evalua (Unix UTC). 0 = ahora.
     Retorna (decision: str, r_total: float).
     """
     try:
@@ -250,20 +256,28 @@ def _evaluate_airport(
     if code not in aps:
         return ("SIN DATOS", 0.5)
 
-    airport = aps[code]
-    heading = airport.runways[0].heading if airport.runways else 180
-
     try:
         engine = DecisionEngine(mock=mock, aircraft=aircraft)
         result = engine.evaluate(
             station_id     = code,
-            runway_heading = heading,
-            departure_time = int(_time_module.time()),
+            runway_heading = None,   # auto: cabecera favorable al viento
+            departure_time = when_unix if when_unix > 0 else int(_time_module.time()),
             flight_duration_h = 1.0,
         )
         return (result.decision, result.r_total)
-    except Exception:
+    except Exception as exc:
+        _logger.debug(f"No se pudo evaluar {code} como alternativo: {exc}")
         return ("SIN DATOS", 0.5)
+
+
+# Candidatos a alternativo que se evaluan meteorologicamente. Acotado a
+# proposito: cada evaluacion es un fetch (METAR o NWP) y el objetivo es hallar
+# el mas cercano APTO, no rankear los 561 aerodromos del pais.
+ALTERNATE_MAX_CANDIDATES = 8
+
+# Radio maximo de busqueda desde el destino. Un alternativo lejano no sirve:
+# hay que poder alcanzarlo con la reserva reglamentaria.
+ALTERNATE_MAX_DIST_KM = 250.0
 
 
 def _find_alternate(
@@ -273,69 +287,80 @@ def _find_alternate(
     aircraft  : AircraftProfile,
     airports  : Dict[str, AirportInfo],
     mock      : bool = False,
+    when_unix : int  = 0,
 ) -> Optional[AlternateInfo]:
     """
-    Sugiere el mejor aerodromo alternativo al destino.
+    Sugiere el aerodromo alternativo al destino: el MAS CERCANO que ademas sea
+    METEOROLOGICAMENTE APTO.
 
-    Criterio: aerodromo dentro del rango de la aeronave desde el destino,
-    excluyendo el destino y el origen, con el menor r_total conocido.
-    Si r_map no contiene el candidato, se asume r=0 (sin penalizacion) —
-    nunca se hace un fetch meteorologico en esta funcion para evitar
-    cientos de requests HTTP con 710 aerodromos cargados.
+    Criterio, en orden:
+      1. Candidatos dentro de ALTERNATE_MAX_DIST_KM del destino y dentro del
+         alcance util de la aeronave, excluyendo origen y destino.
+      2. Se ordenan por distancia y se evaluan en paralelo los
+         ALTERNATE_MAX_CANDIDATES mas cercanos.
+      3. Gana el mas cercano con decision GO. Si ninguno da GO, el mas cercano
+         con CAUTION. Si tampoco, el mas cercano evaluado con su decision real.
+
+    Por que cercania Y aptitud: un alternativo existe para desviarse cuando el
+    destino no es utilizable. Si esta lejos no se alcanza con la reserva, y si
+    no es apto no es alternativo. Un criterio puramente geometrico proponia
+    aerodromos con la meteorologia sin verificar ("SIN DATOS").
     """
     dest_ap = airports.get(dest_code)
     if dest_ap is None:
         return None
 
-    max_range_km = aircraft.range_km * 0.80   # 80% del rango como limite seguro
+    # Limite de busqueda: el menor entre el radio razonable de desvio y el
+    # alcance util de ESTA aeronave (escalable a todos los perfiles).
+    max_dist_km = min(ALTERNATE_MAX_DIST_KM, aircraft.range_km * 0.80)
 
     candidates = []
     for code, ap in airports.items():
         if code in (dest_code, origin_code):
             continue
         dist = haversine_km(dest_ap.lat, dest_ap.lon, ap.lat, ap.lon)
-        if dist <= max_range_km:
-            candidates.append((code, ap, dist))
+        if dist <= max_dist_km:
+            candidates.append((dist, code, ap))
 
     if not candidates:
         return None
 
-    best_code  = None
-    best_r     = float("inf")
-    best_dist  = 0.0
-    best_name  = ""
+    # Los mas cercanos primero: se evalua solo esa franja
+    candidates.sort(key=lambda c: c[0])
+    shortlist = candidates[:ALTERNATE_MAX_CANDIDATES]
 
-    for code, ap, dist in candidates:
-        # Solo usar r_map; nunca hacer HTTP request por cada candidato
-        r_val = r_map.get(code, 0.0)
-        if r_val < best_r:
-            best_r    = r_val
-            best_code = code
-            best_dist = dist
-            best_name = ap.name
+    def _eval(item):
+        dist, code, ap = item
+        # Si ya se evaluo en esta corrida (origen/destino/ruta), reusar el valor
+        if code in r_map:
+            r_val = r_map[code]
+            return (dist, code, ap, apply_decision_threshold(r_val), r_val)
+        decision, r_val = _evaluate_airport(code, aircraft, mock=mock, when_unix=when_unix)
+        return (dist, code, ap, decision, r_val)
 
-    if best_code is None:
-        return None
+    with ThreadPoolExecutor(max_workers=min(ALTERNATE_MAX_CANDIDATES, len(shortlist))) as ex:
+        evaluated = list(ex.map(_eval, shortlist))
 
-    time_h   = leg_time_hours(best_dist, aircraft.cruise_kt)
-    r_final  = r_map.get(best_code, best_r)
-    if best_code in r_map:
-        if r_final < 0.25:
-            decision = "GO"
-        elif r_final < 0.50:
-            decision = "CAUTION"
-        else:
-            decision = "NO GO"
-    else:
-        decision = "SIN DATOS"
+    # Ya vienen ordenados por distancia: el primero que cumpla, gana.
+    best = (
+        next((e for e in evaluated if e[3] == "GO"), None)
+        or next((e for e in evaluated if e[3] == "CAUTION"), None)
+        or evaluated[0]
+    )
+
+    dist, code, ap, decision, r_val = best
+    _logger.info(
+        f"Alternativo de {dest_code}: {code} a {dist:.0f} km [{decision}] "
+        f"(evaluados {len(evaluated)} candidatos)"
+    )
 
     return AlternateInfo(
-        code             = best_code,
-        name             = best_name,
+        code             = code,
+        name             = ap.name,
         decision         = decision,
-        r_total          = round(r_final, 3),
-        dist_from_dest_km= round(best_dist, 1),
-        time_from_dest_h = round(time_h, 3),
+        r_total          = round(r_val, 3),
+        dist_from_dest_km= round(dist, 1),
+        time_from_dest_h = round(leg_time_hours(dist, aircraft.cruise_kt), 3),
     )
 
 
@@ -655,7 +680,10 @@ def optimize(
     # ── Alternativo automatico ───────────────────────────────────────────────
     alternate: Optional[AlternateInfo] = None
     if suggest_alternate:
-        alternate = _find_alternate(dest, origin, r, ac, aps, mock=mock)
+        # El alternativo se usa AL LLEGAR: se evalua a la hora estimada de
+        # arribo, no a la de despegue.
+        _eta = (dep_time + int(summary["total_time_hours"] * 3600)) if dep_time > 0 else 0
+        alternate = _find_alternate(dest, origin, r, ac, aps, mock=mock, when_unix=_eta)
 
     # ── Meteorologia en ruta con rerouteo automatico ─────────────────────────
     route_wx_points: List = []
