@@ -803,6 +803,13 @@
             ⛔ <span x-text="card.blocker_summary"></span>
           </div>
 
+          <!-- Barrera no-compensatoria: un factor showstopper impuso el veredicto
+               (explica un NO GO/CAUTION con R bajo: el factor no se promedia, veta) -->
+          <div x-show="card.guardrail_reason && !card.hard_blocked"
+               class="bg-caution/10 border border-caution/30 rounded-lg px-3 py-2 mb-3 text-sm text-caution">
+            🚧 Factor limitante (no se compensa con el resto): <span class="font-semibold" x-text="card.guardrail_reason"></span>
+          </div>
+
           <!-- Sin datos -->
           <div x-show="!card.fetch_ok"
                class="bg-caution/10 border border-caution/30 rounded-lg px-3 py-2 mb-3 text-sm text-caution">

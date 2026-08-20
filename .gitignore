@@ -2,6 +2,8 @@ __pycache__/
 *.pyc
 *.pyo
 .env
+.venv/
+venv/
 webserver.log
 data/madhel_fetch.log
 data/madhel_fetch_err.log

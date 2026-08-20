@@ -9,7 +9,24 @@ Cessna 172 Skyhawk, Piper PA-28 Cherokee, Diamond DA40 (SEP). Altitudes de cruce
 
 **Cobertura**: todo el territorio argentino — 561 aerodromos del registro oficial
 ANAC/MADHEL, con rutas largas (ej. Salta-Ushuaia) y aerovias inferiores del AIP (ENR-3.1).
-(El alcance v1.0 original eran 8 aeroclubes de Cordoba; el proyecto crecio a escala nacional.)
+
+> ## ⚠️ REGLA DE ALCANCE — leer antes de tocar nada
+>
+> El sistema es **NACIONAL y MULTI-AERONAVE**. Cordoba, SACC y el Pipistrel Alpha
+> Trainer fueron el alcance de la v1.0 (8 aeroclubes cordobeses) y **hoy son solo
+> casos de prueba, NO el dominio del sistema**.
+>
+> - Ninguna solucion, heuristica, umbral o test puede quedar atada a un aerodromo
+>   particular ni a una aeronave particular.
+> - Lo que depende de la aeronave se deriva del `AircraftProfile` (crosswind_max_kt,
+>   gust_max_kt, cruise_kt, cruise_alt_ft, range_km), nunca de constantes del Alpha.
+> - Lo que depende del lugar se deriva de los datos del aerodromo (`AirportInfo`) o
+>   del terreno (SRTM), nunca de un `if station_id == "SACC"`.
+> - Al probar un cambio, usar aerodromos de **distintas regiones** (NOA, Cuyo,
+>   Patagonia, Litoral, Pampa) y **al menos dos aeronaves** de distinto porte.
+>
+> Sesgos historicos ya detectados y pendientes de corregir: `features/orographic.py`
+> (solo SACC) y varios asserts de test atados a Cordoba / Alpha Trainer.
 
 **Fuentes meteo por aerodromo**: METAR + TAF (aviationweather.gov) cuando el aerodromo
 tiene estacion; NWP (Open-Meteo) cuando no (la mayoria de los rurales). El engine elige
@@ -25,8 +42,14 @@ automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a
 | Archivo | Estado | Descripcion |
 |---|---|---|
 | `data/fetcher_aviationweather.py` | **COMPLETO** | METAR + TAF de aviationweather.gov. Produce `RawMetar`, `RawTaf`, `RawTafPeriod`. Mock de SACO incluido. |
-| `data/fetcher_openmeteo.py` | **COMPLETO** | Pronostico NWP de Open-Meteo. Produce `RawNWP` + `RawNWPHour`. Mock de SACC incluido. |
+| `data/fetcher_openmeteo.py` | **COMPLETO** | Pronostico NWP de Open-Meteo. Produce `RawNWP` + `RawNWPHour`. Soporta viento en nivel de presion segun `cruise_alt_ft`. Mock incluido. |
 | `data/airports.py` | **COMPLETO** | Registro canonico de aerodromos. `AirportInfo`, `RunwayInfo` dataclasses. `AIRPORTS`, `AIRPORTS_PUBLIC`. Fuente unica de verdad para coords, elevacion y cabeceras. |
+| `data/airspace.py` | **COMPLETO** | Zonas CTR/TMA/R/P/D. Fuente `ar-airspace.json` (OpenAIP); fallback Cordoba si falta el cache. `zones_along_route()`, `route_intersects_zone()`. |
+| `data/airways.py` | **COMPLETO** | Grafo bidireccional de aerovias inferiores del AIP (ENR-3.1) desde `aerovias_argentinas.json`. `AIRWAY_NODES`, `AIRWAY_GRAPH`. |
+| `data/fir_zones.py` | **COMPLETO** | FIR de un punto → contacto ATC ("Cordoba Control", etc.) desde `FIRs_Argenina.geojson`. |
+| `data/terrain.py` | **COMPLETO** | Terreno SRTM 30m via Open-Topo-Data. Usado por el perfil vertical. |
+| `data/fetcher_madhel.py` | **HERRAMIENTA** | Regenera `madhel_cache.json`. NO corre en runtime. |
+| `data/fetcher_openaip.py` | **HERRAMIENTA** | Regenera `ar-airspace.json`. NO corre en runtime (requiere API key). |
 
 ### PARSING LAYER
 
@@ -43,28 +66,47 @@ automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a
 | `features/crosswind.py` | **COMPLETO** | `compute_crosswind()`, `crosswind_risk_score()`. VRB → worst-case conservador. |
 | `features/fog_risk.py` | **COMPLETO** | `r_fog = max(r_spread, r_wx)`. Spread lineal 2-5°C, matching exacto por token wx. |
 | `features/taf_window.py` | **COMPLETO** | `TafAnalyzer.analyze()`: herencia BASE→TEMPO/BECMG, worst-case, `r_taf`, `next_go_from`. |
-| `features/orographic.py` | **COMPLETO** | `delta_r = 0.05` si `nwp_estimated=True` y `station_id="SACC"`. Dict extensible. |
+| `features/orographic.py` | **LIMITADO** ⚠️ | `delta_r = 0.05` si `nwp_estimated=True` y `station_id="SACC"`. **Cubre 1 de 561 aerodromos**: viola la regla de alcance nacional. Debe derivarse del terreno (SRTM ya disponible), no de un dict manual. |
 | `features/vfr_altitude.py` | **COMPLETO** | `hemispheric_vfr_altitude()`: altitud de crucero VFR por regla de los semicirculos (rumbo magnetico). `magnetic_declination_ar()` aprox AR. |
 | `features/density_altitude.py` | **COMPLETO** | `compute_density_altitude(temp_c, elevation_ft, qnh_hpa)` → `DensityAltitudeResult`. Niveles NORMAL/ELEVATED(>5000ft)/HIGH(>8000ft). |
+| `features/daylight.py` | **COMPLETO** | Orto/ocaso sin dependencias externas. `daylight_status()` habilita el bloqueo por vuelo nocturno (solo VFR) y el aviso de luz ajustada (<45 min al ocaso). |
+| `features/notam_impact.py` | **COMPLETO** | `assess_notam_impact()`: solo el cierre total (AD CLSD o todas las cabeceras cerradas) bloquea; el resto es informativo. |
 
 ### RISK ENGINE
 
 | Archivo | Estado | Descripcion |
 |---|---|---|
-| `risk/aircraft_profiles.py` | **COMPLETO** | `AircraftProfile` dataclass frozen. `ALPHA_TRAINER` instancia. `get_profile(name)`. |
-| `risk/weights.py` | **COMPLETO** | Pesos W_VIS=0.25 W_CEIL=0.25 W_XWIND=0.20 W_GUST=0.10 W_WX=0.10 W_FOG=0.05 W_TAF=0.05. Funciones r_i. Thresholds GO/CAUTION/NO GO. |
+| `risk/aircraft_profiles.py` | **COMPLETO** | `AircraftProfile` dataclass frozen. 5 perfiles + `get_profile(name)` + `PROFILE_NAMES`. Incluye designador OACI y estela para el plan de vuelo. |
+| `risk/personal_minima.py` | **COMPLETO** | Minimos personales por experiencia (Alumno / PPL / Avanzado): endurecen vis, techo y tolerancia al cruzado. NO tocan los pesos AHP. |
+| `risk/ahp_weights.py` | **COMPLETO** | Derivacion AHP de los pesos (jerarquia 3 grupos, matrices de a pares, autovector, CR=0.063). Reproducible; documenta el origen de los w_i. |
+| `risk/weights.py` | **COMPLETO** | Pesos AHP W_VIS=0.279 W_CEIL=0.279 W_XWIND=0.179 W_GUST=0.090 W_WX=0.078 W_FOG=0.056 W_TAF=0.039. Funciones r_i. Thresholds **calibrados**: t_go=0.22, t_caution=0.50. |
 | `risk/hard_blockers.py` | **COMPLETO** | Tokens TS/TSRA/TSGR/GR/FC/VA/FZRA/FZDZ + vis<1.5km + ceil<500ft → NO GO inmediato. |
-| `risk/soft_scoring.py` | **COMPLETO** | `compute_soft_score(weather, runway_heading, aircraft, taf_r_taf)` → `SoftScoreResult`. Llama a features internamente. |
+| `risk/soft_scoring.py` | **COMPLETO** | `compute_soft_score(...)` → `SoftScoreResult`. Score compensatorio + **barrera no-compensatoria** (`conjunctive_floor`): `decision = worst(umbral(R), piso)`. Expone `guardrail_floor`/`guardrail_reason`. |
+| `risk/scenarios.py` | **COMPLETO** | Bateria de 38 escenarios de referencia con etiqueta normativa ANAC/OACI (`normative_label`). Fuente compartida por calibracion y sensibilidad. |
+| `risk/calibration.py` | **COMPLETO** | Calibracion de umbrales por anclaje normativo (grid search + costo asimetrico). Resultado: t_go 0.25→0.22 (97% concordancia, 0 sub-avisos). Validez de constructo, no empirica. |
+| `risk/sensitivity.py` | **COMPLETO** | Analisis de sensibilidad de pesos (OAT ±20% + Monte Carlo). Estabilidad del veredicto 97%; los showstoppers quedan clavados por la barrera. |
 
 ### INTEGRACION
 
 | Archivo | Estado | Descripcion |
 |---|---|---|
-| `config.py` | **COMPLETO** | Constantes globales: `NWP_STATIONS` (SACC coords), `METAR_STATIONS`, `NWP_HOURS_AHEAD`. |
-| `decision/engine.py` | **COMPLETO** | `DecisionEngine.evaluate()` → `DecisionResult`. Pipeline completo: fetch→parse→hard_blockers→soft_score+taf_window→decision. NWP para SACC, METAR+TAF para SACO/etc. |
-| `output/briefing.py` | **COMPLETO** | `generate_briefing(...)` → briefing meteorologico multi-linea para el piloto (origen, destino, ruta, NOTAMs). |
-| `web/app.py` | **COMPLETO** | Backend FastAPI + frontend HTML (`web/static`). Interfaz principal. Endpoints: `/api/evaluate`, `/api/profile`, `/api/timeline`, `/api/airport/{code}`, `/api/vfr_corridors`, `/api/airspace`. Switch VFR/IFR, corredores VFR, perfil vertical. |
+| `config.py` | **COMPLETO** | Constantes globales: `NWP_STATIONS` (derivado de los 561 aerodromos de `AIRPORTS`), `METAR_STATIONS` (vacio, vestigio v1.0), `NWP_HOURS_AHEAD`. |
+| `decision/engine.py` | **COMPLETO** | `DecisionEngine.evaluate()` → `DecisionResult`. Pipeline: fetch→parse→hard_blockers→soft_score+taf_window→decision. **Regla de fuente**: con codigo ICAO intenta METAR+TAF y cae a NWP si no hay METAR; sin ICAO va directo a NWP. |
+| `output/briefing.py` | **COMPLETO** | `generate_briefing(...)` → briefing meteorologico multi-linea para el piloto (origen, destino, ruta, NOTAMs). 100% reglas, sin IA. |
+| `output/flight_plan.py` | **COMPLETO** | `build_flight_plan(...)` → plan de vuelo OACI (casillas 7-19 + mensaje FPL). **No radica** el plan: lo presenta el piloto. |
+| `web/app.py` | **COMPLETO** | Backend FastAPI + frontend HTML (`web/static`). **Entry point unico del sistema.** Endpoints: `/api/evaluate`, `/api/profile`, `/api/timeline`, `/api/flightplan`, `/api/airport/{code}`, `/api/airports`, `/api/airports/map`, `/api/aircraft`, `/api/vfr_corridors`, `/api/airspace`. Switch VFR/IFR, corredores VFR, perfil vertical. |
+
+### ROUTE LAYER
+
+| Archivo | Estado | Descripcion |
+|---|---|---|
+| `route/optimizer.py` | **COMPLETO** | Interfaz unica: `optimize()`. La web usa siempre `mode="suggested"` (A* sobre corredor geografico, eligiendo el candidato con mayor cobertura de aerovia). |
+| `route/graph.py` | **COMPLETO** | Grafo de aerodromos con `max_leg_km` + rechazo por bounding box. Modos shortest/fastest/safest. |
+| `route/astar.py` | **COMPLETO** | A* con heuristica haversine admisible en los tres modos. |
+| `route/airway_router.py` | **COMPLETO** | Dijkstra sobre aerovias filtrado por MEA de la aeronave. `find_airways_for_leg()`, `find_airways_for_route_legs()` (camino continuo end-to-end). |
 | `route/vfr_corridors.py` | **COMPLETO** | Ruteo VFR por corredores visuales de las TMA BA/Cordoba (grafo + Dijkstra por cluster). `corridor_path_for_leg()`. |
+| `route/performance.py` | **COMPLETO** | Haversine, rumbo, groundspeed con viento, combustible, altitud segura. |
+| `route/weather_sampler.py` | **INACTIVO** ⚠️ | Muestreo meteo en ruta con rerouteo. Solo se activa con `weather_reroute=True`, que la web nunca pasa. |
 
 ---
 
@@ -106,8 +148,8 @@ class ParsedWeather:
     # Fenomenos
     wx_codes      : list            = ...     # ["-RA", "BR"], ["TSRA"], etc.
 
-    # Categoria ANAC/OACI
-    flight_category : Optional[str] = None   # "VFR" | "MVFR" | "IFR" | "LIFR"
+    # Categoria ANAC/OACI (etiquetas OACI, NO las siglas MVFR/LIFR de la FAA/NWS)
+    flight_category : Optional[str] = None   # "VFR" | "VFR marginal" | "IFR" | "IFR bajo mínimos"
 
     # Posicion
     lat, lon, elevation_m, station_name, raw_string
@@ -155,12 +197,13 @@ la resuelve `features/taf_window.py`, no el parser.
 
 ### Normativa: ANAC/OACI (NO FAA)
 
-Categorias de vuelo (umbrales):
+Categorias de vuelo (umbrales). Se usan **etiquetas OACI en espanol**, no las siglas
+MVFR/LIFR que son de la FAA/NWS (`_compute_flight_category` en `parsers/metar_parser.py`):
 ```
-VFR  : vis >= 5.0 km  AND  ceil >= 1000 ft
-MVFR : vis >= 3.0 km  AND  ceil >=  500 ft
-IFR  : vis >= 0.8 km  AND  ceil >=  200 ft
-LIFR : vis <  0.8 km   OR  ceil <   200 ft
+VFR              : vis >= 5.0 km  AND  ceil >= 1000 ft
+VFR marginal     : vis >= 3.0 km  AND  ceil >=  500 ft
+IFR              : vis >= 0.8 km  AND  ceil >=  200 ft
+IFR bajo mínimos : vis <  0.8 km   OR  ceil <   200 ft
 ```
 La excepcion OACI para <= 140 kt NO se implementa (criterio conservador).
 
@@ -178,26 +221,44 @@ Si cualquier hard blocker esta activo → NO GO inmediato, sin calcular score.
 
 ### Soft Scoring
 
-`R_total = sum(w_i * r_i)` donde `R_total ∈ [0, 1]`
+`R_total = sum(w_i * r_i)` donde `R_total ∈ [0, 1]`. Pesos derivados por AHP (ver `risk/ahp_weights.py`).
 
-| Componente | Variable | Peso | Funcion r_i |
+| Componente | Variable | Peso (AHP) | Funcion r_i |
 |---|---|---|---|
-| Visibilidad | vis_km | 0.25 | Sigmoide: 1 si vis<3km, 0 si vis>8km |
-| Ceiling | ceil_ft | 0.25 | Sigmoide: 1 si ceil<500ft, 0 si ceil>2000ft |
-| Crosswind | xw_kt | 0.20 | Lineal: xw/12. Si xw>=12kt → 1.0 |
-| Rafagas | gust-spd kt | 0.10 | Lineal: delta/20 |
-| Fenomenos | wx_codes | 0.10 | Escalonado por severidad |
-| Niebla proxy | spread_c | 0.05 | 1 si spread<2°C, 0 si spread>5°C |
-| Riesgo TAF | PROB/TEMPO | 0.05 | Escalonado por tipo de deterioro |
+| Visibilidad | vis_km | 0.279 | Rampa: 1 si vis<3km, 0 si vis>8km |
+| Ceiling | ceil_ft | 0.279 | Rampa: 1 si ceil<500ft, 0 si ceil>2000ft |
+| Crosswind | xw_kt | 0.179 | Lineal: xw/xw_max. Si xw>=xw_max → 1.0 |
+| Rafagas | gust-spd kt | 0.090 | Lineal: delta/gust_max |
+| Fenomenos | wx_codes | 0.078 | Escalonado por severidad |
+| Niebla proxy | spread_c | 0.056 | 1 si spread<2°C, 0 si spread>5°C |
+| Riesgo TAF | PROB/TEMPO | 0.039 | Escalonado por tipo de deterioro |
 
-Penalizacion orografica SACC: +0.05 al R_total final (cuando `nwp_estimated=True`).
+Penalizacion orografica: +0.05 al R_total final cuando `nwp_estimated=True`. ⚠️ Hoy
+solo aplica a SACC — pendiente de generalizar a partir del terreno (ver regla de alcance).
 
-**Thresholds de decision** (conservadores, pendientes calibracion):
+**Barrera no-compensatoria (veto conjuntivo)** — `conjunctive_floor` en `soft_scoring.py`.
+El promedio ponderado es compensatorio: un factor bueno tapa a uno malo. Eso deja
+pasar showstoppers de bajo peso (un cruzado SOBRE el limite del avion aportaria
+solo 0.179 y daria GO). La barrera impone un PISO por factor y
+`decision = worst(umbral(R), piso)`:
 ```
-R < 0.25           → GO
-0.25 <= R < 0.50   → CAUTION
+cruzado efectivo >= limite avion   → NO GO      cruzado >= 50% limite → CAUTION
+delta rafaga >= gust_max avion     → NO GO      delta >= 50% gust_max → CAUTION
+niebla probable (r_fog >= 0.9)     → CAUTION     deterioro TAF (r_taf >= 0.6) → CAUTION
+```
+Cubre los factores de bajo peso que el score diluye; vis/techo (peso alto, deterioro
+gradual) siguen compensatorios. Elevo la concordancia con la norma de 66% a 92%.
+
+**Thresholds de decision** — CALIBRADOS por anclaje normativo (`risk/calibration.py`):
+```
+R < 0.22           → GO
+0.22 <= R < 0.50   → CAUTION
 R >= 0.50          → NO GO
 ```
+Los cortes se ajustaron sobre la bateria de referencia (`risk/scenarios.py`) minimizando
+un costo asimetrico (sub-aviso >> sobre-aviso). t_go bajo de 0.25 a 0.22 (cambio minimo
+que elimina los sub-avisos peligrosos); el optimo es un rango (t_go∈[0.14,0.22]) → robusto.
+Es validez de CONSTRUCTO (reproduce la regulacion), no empirica. Concordancia final 97%.
 
 ### Perfiles de aeronave (5)
 
@@ -226,23 +287,36 @@ Nunca basar tests solo en el Alpha Trainer o en un aerodromo unico (ej. SACC).
 
 ---
 
-## Orden de construccion — estado actual
+## Estado actual
 
-### Completado
+Todas las capas estan completas y operativas: Data → Parsing → Feature → Risk →
+Decision → Route → Output → Web. El sistema corre como web app.
 
-Capas 1-11 completas. Data → Parsing → Feature → Risk → Integracion (engine) operativos.
+**Documento de referencia**: `DOCUMENTACION_CHECKPOINT_2.md` (agosto 2026) tiene el
+estado verificado por ejecucion, el inventario completo de modulos, los resultados
+reproducidos de AHP/calibracion/sensibilidad y la lista de deuda tecnica abierta.
+`DOCUMENTACION_CHECKPOINT.md` (mayo 2026) quedo **obsoleto** — describe la CLI, la GUI
+Tkinter y el algoritmo genetico, todos eliminados. Conservar solo como historico.
 
-### Completado
+### Entorno de desarrollo
 
-Todas las capas del sistema v1.0 estan completas y testeadas:
-- Data layer (fetchers METAR+TAF, NWP)
-- Parsing layer (metar_parser, openmeteo_adapter, taf_parser)
-- Feature layer (crosswind, fog_risk, taf_window, orographic, density_altitude, vfr_altitude)
-- Risk engine (aircraft_profiles, weights/ahp_weights, hard_blockers, soft_scoring)
-- Integracion (config, decision/engine)
-- Output + Web (output/briefing, web/app.py + web/static)
+Python **3.12** (misma version que Render), entorno virtual en `.venv/`:
 
-El sistema corre como web app: `uvicorn web.app:app --reload --port 8000`.
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m uvicorn web.app:app --reload --port 8000
+```
+
+Test standalone de un modulo: `.\.venv\Scripts\python.exe risk\calibration.py`
+
+Si `python` o `git` no se reconocen en una terminal nueva, refrescar el PATH:
+```powershell
+$env:Path = [Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [Environment]::GetEnvironmentVariable("Path","User")
+```
+
+**Despliegue**: Render (plan free), `render.yaml` → `uvicorn web.app:app --host 0.0.0.0 --port $PORT`.
+URL: https://vfr-decision-engine.onrender.com · Repo: `github.com/Tatobregon/VFR-Decision-Engine` (rama `master`).
 
 ### Interfaz del engine (referencia para implementacion)
 
@@ -296,7 +370,7 @@ except ImportError:
 ```
 
 ### Lo que NO hacer
-- No implementar FastAPI ni endpoints REST (fase 2, fuera de v1.0).
+- No atar ninguna solucion a un aerodromo o a una aeronave particular (ver REGLA DE ALCANCE).
 - No usar frameworks de ML; el sistema es motor de reglas + funciones de riesgo.
 - No implementar Iowa State Mesonet (archivo historico, fuera de v1.0).
 - No implementar la excepcion OACI para aeronaves <= 140 kt (criterio conservador).

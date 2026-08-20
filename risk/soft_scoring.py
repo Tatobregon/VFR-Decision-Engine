@@ -7,10 +7,16 @@ Formula:
     R_total = sum(w_i * r_i)  +  delta_orografico
     R_total = clamp(R_total, 0.0, 1.0)
 
-Decision:
-    R < 0.25           -> GO
-    0.25 <= R < 0.50   -> CAUTION
+Decision (compensatoria, umbrales calibrados en risk/calibration.py):
+    R < 0.22           -> GO
+    0.22 <= R < 0.50   -> CAUTION
     R >= 0.50          -> NO GO
+
+La decision final combina esta decision compensatoria con una BARRERA
+NO-COMPENSATORIA (piso conjuntivo, ver conjunctive_floor): un factor showstopper
+individual (cruzado sobre el limite del avion, rafaga excesiva, niebla probable,
+deterioro TAF) impone un veredicto minimo, de modo que no quede diluido por el
+promedio ponderado. decision = worst(umbral(R), piso_conjuntivo).
 
 Este modulo NO evalua hard blockers. El llamador debe verificar
 hard_blockers.py primero y solo invocar el soft scoring si is_blocked=False.
@@ -62,6 +68,89 @@ logger = logging.getLogger(__name__)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Barrera no-compensatoria (veto conjuntivo)
+# ──────────────────────────────────────────────────────────────────────────────
+# El soft score es una suma ponderada COMPENSATORIA: un factor bueno puede
+# "tapar" a uno malo. Eso es adecuado para el deterioro gradual (visibilidad,
+# techo), pero es peligroso para los factores que son showstoppers por si solos
+# y que ademas pesan poco (viento cruzado 0.18, rafaga 0.09, niebla 0.06,
+# tendencia TAF 0.04): un cruzado que SUPERA el maximo demostrado del avion
+# aportaria a lo sumo 0.18 al score y quedaria como GO, diluido por el resto.
+#
+# Las decisiones GO/NO GO reales son CONJUNTIVAS (lista de chequeo): cualquier
+# item critico veta, sin importar lo bueno del resto. Esta barrera implementa ese
+# criterio como un PISO: cada factor showstopper impone un veredicto minimo, y el
+# veredicto final es el peor entre el score compensatorio y este piso.
+#
+# Cubre exactamente los factores de bajo peso que el score diluye; la visibilidad
+# y el techo (peso alto, deterioro gradual) siguen en el score compensatorio.
+
+_VERDICT_RANK = {"GO": 0, "CAUTION": 1, "NO GO": 2}
+
+
+def _worst_verdict(a: str, b: str) -> str:
+    """Devuelve el veredicto mas restrictivo entre dos."""
+    return a if _VERDICT_RANK[a] >= _VERDICT_RANK[b] else b
+
+
+def conjunctive_floor(
+    xw_eff_kt   : float,           # cruzado efectivo (con rafaga si la hay)
+    xw_limit_kt : float,           # limite de cruzado del avion (ya ajustado por minimos)
+    gust_kt     : float,           # rafaga sostenida (o None)
+    spd_kt      : float,           # viento sostenido (o None)
+    gust_max_kt : float,           # rafaga maxima de referencia del avion
+    r_fog       : float,           # score de niebla ya calculado [0,1]
+    r_taf       : float,           # score de tendencia TAF [0,1]
+) -> tuple:
+    """
+    Piso no-compensatorio. Devuelve (veredicto_piso, motivo).
+
+    Reglas (relativas a los limites de CADA aeronave — escalable):
+      - Cruzado efectivo >= limite del avion            -> NO GO
+      - Cruzado efectivo >= 50% del limite              -> CAUTION
+      - Delta de rafaga  >= gust_max del avion          -> NO GO
+      - Delta de rafaga  >= 50% del gust_max            -> CAUTION
+      - Niebla probable (r_fog >= 0.9, spread bajo)     -> CAUTION
+      - Deterioro pronosticado en TAF (r_taf >= 0.6)    -> CAUTION
+    """
+    floor   = "GO"
+    reasons = []
+
+    # ── Viento cruzado (control primario en el aterrizaje) ────────────────────
+    if xw_limit_kt > 0:
+        if xw_eff_kt >= xw_limit_kt:
+            floor = _worst_verdict(floor, "NO GO")
+            reasons.append(
+                f"viento cruzado {xw_eff_kt:.0f} kt supera el limite del avion ({xw_limit_kt:.0f} kt)")
+        elif xw_eff_kt >= 0.5 * xw_limit_kt:
+            floor = _worst_verdict(floor, "CAUTION")
+            reasons.append(
+                f"viento cruzado {xw_eff_kt:.0f} kt (>=50% del limite de {xw_limit_kt:.0f} kt)")
+
+    # ── Rafagas (variabilidad del viento) ─────────────────────────────────────
+    if gust_kt is not None and spd_kt is not None and gust_max_kt > 0:
+        delta = gust_kt - spd_kt
+        if delta >= gust_max_kt:
+            floor = _worst_verdict(floor, "NO GO")
+            reasons.append(f"rafaga +{delta:.0f} kt supera el maximo del avion ({gust_max_kt:.0f} kt)")
+        elif delta >= 0.5 * gust_max_kt:
+            floor = _worst_verdict(floor, "CAUTION")
+            reasons.append(f"rafaga +{delta:.0f} kt (>=50% del maximo de {gust_max_kt:.0f} kt)")
+
+    # ── Niebla probable (indicador adelantado: puede pasar a IMC rapido) ──────
+    if r_fog >= 0.9:
+        floor = _worst_verdict(floor, "CAUTION")
+        reasons.append("niebla probable (spread termico bajo)")
+
+    # ── Tendencia TAF a deterioro dentro de la ventana ────────────────────────
+    if r_taf >= 0.6:
+        floor = _worst_verdict(floor, "CAUTION")
+        reasons.append("deterioro pronosticado en el TAF (ventana de vuelo)")
+
+    return floor, "; ".join(reasons)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Modelo de salida
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -97,6 +186,10 @@ class SoftScoreResult:
 
     # ── Componente dominante ──────────────────────────────────────────────────
     dominant_factor   : str             # Componente con mayor contribucion ponderada
+
+    # ── Barrera no-compensatoria (veto conjuntivo) ────────────────────────────
+    guardrail_floor   : str  = "GO"     # Piso impuesto por un factor showstopper
+    guardrail_reason  : str  = ""       # Motivo del piso (para el briefing)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -183,8 +276,24 @@ def compute_soft_score(
 
     r_total = min(weighted_sum + orographic_delta, 1.0)
 
-    # ── Decision ──────────────────────────────────────────────────────────────
-    decision = apply_decision_threshold(r_total)
+    # ── Decision compensatoria (umbrales sobre R_total) ───────────────────────
+    threshold_decision = apply_decision_threshold(r_total)
+
+    # ── Barrera no-compensatoria (veto conjuntivo) ────────────────────────────
+    # El limite de cruzado escala con los minimos personales, igual que el score.
+    xw_limit = aircraft.crosswind_max_kt * pm.xwind_mult
+    guardrail_floor, guardrail_reason = conjunctive_floor(
+        xw_eff_kt   = _xw_eff,
+        xw_limit_kt = xw_limit,
+        gust_kt     = weather.wind_gust_kt,
+        spd_kt      = weather.wind_spd_kt,
+        gust_max_kt = aircraft.gust_max_kt,
+        r_fog       = _r_fog,
+        r_taf       = _r_taf,
+    )
+
+    # Decision final = peor entre el score compensatorio y el piso conjuntivo.
+    decision = _worst_verdict(threshold_decision, guardrail_floor)
 
     # ── Factor dominante ──────────────────────────────────────────────────────
     contributions = {
@@ -198,13 +307,14 @@ def compute_soft_score(
     }
     dominant = max(contributions, key=contributions.get)
 
+    floor_note = f" | PISO={guardrail_floor} ({guardrail_reason})" if guardrail_floor != "GO" else ""
     logger.info(
         f"SoftScore {weather.station_id} pista={runway_heading} | "
-        f"R={r_total:.3f} [{decision}] | "
+        f"R={r_total:.3f} umbral={threshold_decision} -> [{decision}] | "
         f"vis={_r_vis:.2f} ceil={_r_ceil:.2f} xw={_r_xwind:.2f} "
         f"gust={_r_gust:.2f} wx={_r_wx:.2f} fog={_r_fog:.2f} "
         f"taf={_r_taf:.2f} oro={orographic_delta:.2f} | "
-        f"dominante={dominant}"
+        f"dominante={dominant}{floor_note}"
     )
 
     return SoftScoreResult(
@@ -223,6 +333,8 @@ def compute_soft_score(
         runway_heading   = runway_heading,
         aircraft_name    = aircraft.name,
         dominant_factor  = dominant,
+        guardrail_floor  = guardrail_floor,
+        guardrail_reason = guardrail_reason,
     )
 
 
@@ -368,23 +480,31 @@ if __name__ == "__main__":
     )
     check("r_taf=1.0 aumenta R_total vs r_taf=0.0",
           r_withtaf.r_total > r_notaf.r_total)
-    check("diferencia = W_TAF * 1.0 = 0.05",
-          abs(r_withtaf.r_total - r_notaf.r_total - 0.05) < 0.001)
+    check("diferencia = W_TAF * 1.0",
+          abs(r_withtaf.r_total - r_notaf.r_total - W_TAF) < 0.001)
 
     # R_total siempre en [0, 1]
     check("R_total siempre en [0, 1]",
           all(0.0 <= r.r_total <= 1.0 for _, r in results))
 
-    # decision coherente con R_total
+    # decision coherente con R_total + piso conjuntivo (worst-case)
     for desc2, r2 in results:
-        expected = ("GO" if r2.r_total < 0.25
-                    else "CAUTION" if r2.r_total < 0.50
-                    else "NO GO")
+        threshold = apply_decision_threshold(r2.r_total)
+        expected = _worst_verdict(threshold, r2.guardrail_floor)
         if r2.decision != expected:
-            check(f"Decision coherente con R_total para '{desc2}'", False)
+            check(f"Decision coherente con R_total+piso para '{desc2}'", False)
             break
     else:
-        check("Decision coherente con R_total en todos los casos", True)
+        check("Decision coherente con R_total+piso en todos los casos", True)
+
+    # el piso conjuntivo veta el cruzado sobre el limite del avion
+    r_over_xw = compute_soft_score(
+        _MockWeather(station_id="SACO", visibility_km=10.0, wind_dir=60,
+                     wind_spd_kt=13.0, spread_c=9.0),   # cruzado 13 kt en Alpha (limite 12)
+        RUNWAY, ALPHA_TRAINER, taf_r_taf=0.0
+    )
+    check("Guardrail: cruzado sobre limite -> NO GO aunque R sea bajo",
+          r_over_xw.decision == "NO GO" and r_over_xw.r_total < 0.50)
 
     print("\n" + "=" * 72)
     print(f"  {'TODOS LOS TESTS PASARON' if all_pass else 'ALGUNOS TESTS FALLARON'}")

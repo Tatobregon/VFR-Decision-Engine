@@ -523,15 +523,30 @@ if __name__ == "__main__":
     if r_saco_ts.blocker_summary:
         print(f"  Blocker      : {r_saco_ts.blocker_summary}")
 
-    # ── Caso 3: Estacion sin datos ────────────────────────────────────────────
+    # ── Caso 4: SAVY — tiene ICAO pero no reporta METAR → cae a NWP ───────────
     print("\n" + "-" * 72)
-    print("  [3] SAVY — Sin datos (mock devuelve None)")
+    print("  [4] SAVY — sin METAR, fallback automatico a NWP")
     r_savy = engine.evaluate("SAVY", runway_heading=120,
                               departure_time=dep_time, flight_duration_h=1.0)
 
     print(f"  Decision     : {r_savy.decision}")
+    print(f"  Fuente       : {r_savy.weather_source}")
     print(f"  fetch_ok     : {r_savy.fetch_ok}")
-    print(f"  error        : {r_savy.error_message}")
+
+    # ── Caso 5: sin datos reales (fetchers devuelven None) → NO GO conservador ─
+    # En mock los fetchers siempre devuelven datos; se fuerza el caso "sin datos"
+    # parcheando ambos para verificar el camino conservador de _no_data().
+    print("\n" + "-" * 72)
+    print("  [5] Sin datos (fetchers forzados a None) → NO GO conservador")
+    engine_nd = DecisionEngine(mock=True)
+    engine_nd._aw.get_metar_and_taf = lambda sid: (None, None)
+    engine_nd._nwp_fetch.get_forecast = lambda **kw: None
+    r_nd = engine_nd.evaluate("SAVY", runway_heading=120,
+                              departure_time=dep_time, flight_duration_h=1.0)
+
+    print(f"  Decision     : {r_nd.decision}")
+    print(f"  fetch_ok     : {r_nd.fetch_ok}")
+    print(f"  error        : {r_nd.error_message}")
 
     # ── Verificaciones ────────────────────────────────────────────────────────
     print("\n" + "-" * 72)
@@ -563,10 +578,16 @@ if __name__ == "__main__":
     check("SACO TEMPO TSRA: hard_blocked=True",     r_saco_ts.hard_blocked)
     check("SACO TEMPO TSRA: decision='NO GO'",      r_saco_ts.decision == "NO GO")
 
-    # Sin datos
-    check("SAVY sin datos: fetch_ok=False",   not r_savy.fetch_ok)
-    check("SAVY sin datos: decision='NO GO'", r_savy.decision == "NO GO")
-    check("SAVY sin datos: error_message!=''",r_savy.error_message != "")
+    # SAVY: sin METAR → fallback a NWP (el mock NWP siempre devuelve datos)
+    check("SAVY fallback: fetch_ok=True",           r_savy.fetch_ok)
+    check("SAVY fallback: weather_source='nwp'",     r_savy.weather_source == "nwp")
+    check("SAVY fallback: decision en {GO,CAUTION,NO GO}",
+          r_savy.decision in {"GO", "CAUTION", "NO GO"})
+
+    # Sin datos reales (fetchers forzados a None) → NO GO conservador
+    check("Sin datos: fetch_ok=False",   not r_nd.fetch_ok)
+    check("Sin datos: decision='NO GO'", r_nd.decision == "NO GO")
+    check("Sin datos: error_message!=''",r_nd.error_message != "")
 
     # Normalización de station_id
     r_lower = engine.evaluate("saco", runway_heading=180,

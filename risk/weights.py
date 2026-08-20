@@ -48,10 +48,20 @@ W_TAF   = 0.039
 assert abs(W_VIS + W_CEIL + W_XWIND + W_GUST + W_WX + W_FOG + W_TAF - 1.0) < 1e-9, \
     "Los pesos deben sumar 1.0"
 
-# Thresholds de decision
-THRESHOLD_GO      = 0.25   # R < 0.25       → GO
-THRESHOLD_CAUTION = 0.50   # 0.25 <= R < 0.50 → CAUTION
-                           # R >= 0.50      → NO GO
+# ──────────────────────────────────────────────────────────────────────────────
+# Thresholds de decision — CALIBRADOS por anclaje normativo (ver risk/calibration.py)
+# ──────────────────────────────────────────────────────────────────────────────
+# Los cortes se ajustaron sobre una bateria de escenarios de referencia cuyo
+# veredicto correcto se deriva de la normativa ANAC/OACI + criterio aeronautico
+# (risk/scenarios.py). La busqueda minimiza un costo asimetrico donde el sub-aviso
+# (el sistema avisa menos que la norma) pesa mucho mas que el sobre-aviso.
+# Resultado: t_go bajo de 0.25 a 0.22 (cambio minimo que elimina los sub-avisos
+# peligrosos); t_caution se mantiene en 0.50. El optimo es un RANGO
+# (t_go in [0.14, 0.22], t_caution in [0.46, 0.52]), lo que indica robustez.
+# Es validez de CONSTRUCTO (reproduce la regulacion), no validez empirica.
+THRESHOLD_GO      = 0.22   # R < 0.22        → GO
+THRESHOLD_CAUTION = 0.50   # 0.22 <= R < 0.50 → CAUTION
+                           # R >= 0.50       → NO GO
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -183,10 +193,14 @@ def apply_decision_threshold(r_total: float) -> str:
     """
     Convierte R_total en la decision final GO / CAUTION / NO GO.
 
-    Thresholds (conservadores, pendientes calibracion con datos reales):
-      R < 0.25           → GO
-      0.25 <= R < 0.50   → CAUTION
+    Thresholds calibrados por anclaje normativo (risk/calibration.py):
+      R < 0.22           → GO
+      0.22 <= R < 0.50   → CAUTION
       R >= 0.50          → NO GO
+
+    NOTA: esta es la decision COMPENSATORIA. El soft_scoring la combina luego
+    con la barrera no-compensatoria (piso conjuntivo) por worst-case, de modo
+    que un factor showstopper individual no quede diluido por el resto.
     """
     if r_total < THRESHOLD_GO:
         return "GO"
@@ -312,8 +326,10 @@ if __name__ == "__main__":
     check("spread=2.0  -> 1.0",     r_fog(2.0)  == 1.0)
     check("spread=3.5  -> 0.5",     abs(r_fog(3.5) - 0.5) < 0.001)
 
-    print("\n  -- apply_decision_threshold --")
+    print("\n  -- apply_decision_threshold (t_go=0.22, t_caution=0.50) --")
     check("R=0.10 -> GO",           apply_decision_threshold(0.10) == "GO")
+    check("R=0.21 -> GO (bajo t_go)",apply_decision_threshold(0.21) == "GO")
+    check("R=0.22 -> CAUTION (en t_go)", apply_decision_threshold(0.22) == "CAUTION")
     check("R=0.25 -> CAUTION",      apply_decision_threshold(0.25) == "CAUTION")
     check("R=0.40 -> CAUTION",      apply_decision_threshold(0.40) == "CAUTION")
     check("R=0.50 -> NO GO",        apply_decision_threshold(0.50) == "NO GO")
