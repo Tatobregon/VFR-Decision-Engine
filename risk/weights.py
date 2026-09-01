@@ -12,19 +12,30 @@ Cada r_i es una funcion de riesgo en [0, 1]:
 
 Los pesos suman 1.0.
 
-Los pesos fueron derivados por AHP (Analytic Hierarchy Process) a partir de
-comparaciones de a pares fundamentadas en accidentologia de aviacion general,
-no fijados a ojo. La derivacion completa (jerarquia, matrices, autovector y
-razon de consistencia CR) es reproducible en risk/ahp_weights.py.
+Los pesos fueron derivados por AHP (Analytic Hierarchy Process). Los juicios de
+a pares NO se fijaron a ojo: se derivan de un indice de riesgo de accidentologia
+(I = probabilidad x severidad, definicion del Doc 9859 de OACI) mediante la
+operacion explicita a_ij = redondeo_Saaty(I_i / I_j). La derivacion completa
+—evidencia, jerarquia, matrices, autovector, razon de consistencia CR y la
+procedencia declarada de cada entrada— es reproducible en risk/ahp_weights.py.
 
-Pesos AHP (CR global = 0.063, aceptable por ser <= 0.10):
-  Visibilidad  | vis_km      | 0.279 | Rampa: 1 si vis<3km, 0 si vis>8km
-  Ceiling      | ceil_ft     | 0.279 | Rampa: 1 si ceil<500ft, 0 si ceil>2000ft
-  Crosswind    | xw_kt       | 0.179 | Lineal: xw / xw_max
-  Rafagas      | gust-spd kt | 0.090 | Lineal: delta / gust_max
-  Fenomenos    | wx_codes    | 0.078 | Escalonado por severidad
-  Niebla proxy | spread_c    | 0.056 | Rampa: 1 si spread<2C, 0 si spread>5C
-  Riesgo TAF   | PROB/TEMPO  | 0.039 | Escalonado (calculado en taf_window.py)
+Pesos AHP (CR global = 0.069, aceptable por ser <= 0.10):
+  Visibilidad  | vis_km      | 0.357 | Rampa: 1 si vis<3km, 0 si vis>8km
+  Ceiling      | ceil_ft     | 0.357 | Rampa: 1 si ceil<500ft, 0 si ceil>2000ft
+  Crosswind    | xw_kt       | 0.099 | Lineal: xw / xw_max
+  Niebla proxy | spread_c    | 0.071 | Rampa: 1 si spread<2C, 0 si spread>5C
+  Rafagas      | gust-spd kt | 0.050 | Lineal: delta / gust_max
+  Fenomenos    | wx_codes    | 0.044 | Escalonado por severidad
+  Riesgo TAF   | PROB/TEMPO  | 0.022 | Escalonado (calculado en taf_window.py)
+
+NOTA sobre el peso del cruzado. Es bajo A PROPOSITO y no subestima el riesgo:
+la evidencia indica que la referencia visual domina al viento por casi un orden
+de magnitud en terminos de fatalidad, lo que en la escala de Saaty significa que
+ambos criterios dejan de ser conmensurables. Por eso el viento cruzado NO se
+gestiona por su peso en la suma compensatoria sino en la BARRERA
+NO-COMPENSATORIA (soft_scoring.conjunctive_floor), que impone un piso de
+veredicto cuando supera los limites de la aeronave. El peso solo carga su
+contribucion residual dentro de la banda admisible.
 """
 
 from typing import Optional
@@ -33,17 +44,17 @@ from typing import Optional
 # ──────────────────────────────────────────────────────────────────────────────
 # Pesos del scoring — derivados por AHP (ver risk/ahp_weights.py)
 # ──────────────────────────────────────────────────────────────────────────────
-# Redondeados a 3 decimales por el metodo del resto mayor (largest remainder)
-# para que sumen exactamente 1.000. Valores exactos del autovector AHP:
-#   vis .2793  ceil .2793  xwind .1789  gust .0895  wx .0781  fog .0559  taf .0391
+# Redondeados a 3 decimales. Valores exactos del autovector AHP:
+#   vis .35700  ceil .35700  xwind .09921  fog .07140  gust .04960
+#   wx .04386  taf .02193
 
-W_VIS   = 0.279
-W_CEIL  = 0.279
-W_XWIND = 0.179
-W_GUST  = 0.090
-W_WX    = 0.078
-W_FOG   = 0.056
-W_TAF   = 0.039
+W_VIS   = 0.357
+W_CEIL  = 0.357
+W_XWIND = 0.099
+W_GUST  = 0.050
+W_WX    = 0.044
+W_FOG   = 0.071
+W_TAF   = 0.022
 
 assert abs(W_VIS + W_CEIL + W_XWIND + W_GUST + W_WX + W_FOG + W_TAF - 1.0) < 1e-9, \
     "Los pesos deben sumar 1.0"
@@ -55,13 +66,20 @@ assert abs(W_VIS + W_CEIL + W_XWIND + W_GUST + W_WX + W_FOG + W_TAF - 1.0) < 1e-
 # veredicto correcto se deriva de la normativa ANAC/OACI + criterio aeronautico
 # (risk/scenarios.py). La busqueda minimiza un costo asimetrico donde el sub-aviso
 # (el sistema avisa menos que la norma) pesa mucho mas que el sobre-aviso.
-# Resultado: t_go bajo de 0.25 a 0.22 (cambio minimo que elimina los sub-avisos
-# peligrosos); t_caution se mantiene en 0.50. El optimo es un RANGO
-# (t_go in [0.14, 0.22], t_caution in [0.46, 0.52]), lo que indica robustez.
+# Resultado: t_go = 0.22, t_caution = 0.59. El optimo es un RANGO
+# (t_go in [0.15, 0.28], t_caution in [0.59, 0.66]), lo que indica robustez.
 # Es validez de CONSTRUCTO (reproduce la regulacion), no validez empirica.
-THRESHOLD_GO      = 0.22   # R < 0.22        → GO
-THRESHOLD_CAUTION = 0.50   # 0.22 <= R < 0.50 → CAUTION
-                           # R >= 0.50       → NO GO
+#
+# HISTORIA DE LA CALIBRACION (relevante para la trazabilidad de la tesis):
+#   1. Pesos por juicio experto  -> optimo t_go 0.22 / t_caution 0.50 -> 97%, 0 sub-avisos
+#   2. Pesos derivados de evidencia (ver ahp_weights.py) -> optimo t_go 0.22 /
+#      t_caution 0.59 -> 97%, 0 sub-avisos
+# Dos derivaciones independientes de los pesos, recalibradas cada una, producen
+# la MISMA concordancia y los mismos veredictos: el comportamiento decisional
+# del sistema no depende de la ponderacion exacta. t_go ni siquiera se movio.
+THRESHOLD_GO      = 0.22   # R < 0.22         → GO
+THRESHOLD_CAUTION = 0.59   # 0.22 <= R < 0.59 → CAUTION
+                           # R >= 0.59        → NO GO
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -195,8 +213,8 @@ def apply_decision_threshold(r_total: float) -> str:
 
     Thresholds calibrados por anclaje normativo (risk/calibration.py):
       R < 0.22           → GO
-      0.22 <= R < 0.50   → CAUTION
-      R >= 0.50          → NO GO
+      0.22 <= R < 0.59   → CAUTION
+      R >= 0.59          → NO GO
 
     NOTA: esta es la decision COMPENSATORIA. El soft_scoring la combina luego
     con la barrera no-compensatoria (piso conjuntivo) por worst-case, de modo
@@ -326,13 +344,14 @@ if __name__ == "__main__":
     check("spread=2.0  -> 1.0",     r_fog(2.0)  == 1.0)
     check("spread=3.5  -> 0.5",     abs(r_fog(3.5) - 0.5) < 0.001)
 
-    print("\n  -- apply_decision_threshold (t_go=0.22, t_caution=0.50) --")
+    print("\n  -- apply_decision_threshold (t_go=0.22, t_caution=0.59) --")
     check("R=0.10 -> GO",           apply_decision_threshold(0.10) == "GO")
     check("R=0.21 -> GO (bajo t_go)",apply_decision_threshold(0.21) == "GO")
     check("R=0.22 -> CAUTION (en t_go)", apply_decision_threshold(0.22) == "CAUTION")
     check("R=0.25 -> CAUTION",      apply_decision_threshold(0.25) == "CAUTION")
     check("R=0.40 -> CAUTION",      apply_decision_threshold(0.40) == "CAUTION")
-    check("R=0.50 -> NO GO",        apply_decision_threshold(0.50) == "NO GO")
+    check("R=0.58 -> CAUTION",      apply_decision_threshold(0.58) == "CAUTION")
+    check("R=0.59 -> NO GO",        apply_decision_threshold(0.59) == "NO GO")
     check("R=0.80 -> NO GO",        apply_decision_threshold(0.80) == "NO GO")
     check("R=0.00 -> GO",           apply_decision_threshold(0.00) == "GO")
     check("R=1.00 -> NO GO",        apply_decision_threshold(1.00) == "NO GO")

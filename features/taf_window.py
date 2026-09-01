@@ -408,7 +408,7 @@ def nwp_trend_r_taf(window_wx: list, ref_wx=None) -> float:
     Problema que resuelve
     ---------------------
     Un aerodromo sin METAR tampoco tiene TAF, y esos son la mayoria del pais: el
-    componente de tendencia (w=0.039) valia 0 para casi todos. Open-Meteo no
+    componente de tendencia (w=0.022) valia 0 para casi todos. Open-Meteo no
     publica TAF, pero SI entrega la serie horaria futura, asi que la tendencia se
     puede sintetizar a partir de los datos que el sistema ya descarga.
 
@@ -428,7 +428,7 @@ def nwp_trend_r_taf(window_wx: list, ref_wx=None) -> float:
     El camino NWP del engine ya evalua toda la ventana y se queda con el peor
     caso, de modo que existe una superposicion parcial entre ese worst-case y
     esta tendencia. Se acepta a proposito y es conservadora: el componente pesa
-    0.039 (aporta a lo sumo +0.04 al R) y un deterioro sostenido deja menos
+    0.022 (aporta a lo sumo +0.02 al R) y un deterioro sostenido deja menos
     margen para regresar o desviarse, algo que el peor caso puntual no expresa.
     """
     if not window_wx:

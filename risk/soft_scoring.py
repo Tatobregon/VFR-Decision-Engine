@@ -9,8 +9,8 @@ Formula:
 
 Decision (compensatoria, umbrales calibrados en risk/calibration.py):
     R < 0.22           -> GO
-    0.22 <= R < 0.50   -> CAUTION
-    R >= 0.50          -> NO GO
+    0.22 <= R < 0.59   -> CAUTION
+    R >= 0.59          -> NO GO
 
 La decision final combina esta decision compensatoria con una BARRERA
 NO-COMPENSATORIA (piso conjuntivo, ver conjunctive_floor): un factor showstopper
@@ -42,7 +42,7 @@ try:
     from risk.weights          import (
         W_VIS, W_CEIL, W_XWIND, W_GUST, W_WX, W_FOG, W_TAF,
         r_visibility, r_ceiling, r_crosswind, r_gust, r_wx_codes,
-        apply_decision_threshold,
+        apply_decision_threshold, THRESHOLD_CAUTION,
     )
     from risk.aircraft_profiles import AircraftProfile, ALPHA_TRAINER
     from features.crosswind     import compute_crosswind_from_weather
@@ -55,7 +55,7 @@ except ImportError:
     from risk.weights          import (
         W_VIS, W_CEIL, W_XWIND, W_GUST, W_WX, W_FOG, W_TAF,
         r_visibility, r_ceiling, r_crosswind, r_gust, r_wx_codes,
-        apply_decision_threshold,
+        apply_decision_threshold, THRESHOLD_CAUTION,
     )
     from risk.aircraft_profiles import AircraftProfile, ALPHA_TRAINER
     from features.crosswind     import compute_crosswind_from_weather
@@ -496,7 +496,7 @@ if __name__ == "__main__":
         RUNWAY, ALPHA_TRAINER, taf_r_taf=0.0
     )
     check("Guardrail: cruzado sobre limite -> NO GO aunque R sea bajo",
-          r_over_xw.decision == "NO GO" and r_over_xw.r_total < 0.50)
+          r_over_xw.decision == "NO GO" and r_over_xw.r_total < THRESHOLD_CAUTION)
 
     print("\n" + "=" * 72)
     print(f"  {'TODOS LOS TESTS PASARON' if all_pass else 'ALGUNOS TESTS FALLARON'}")

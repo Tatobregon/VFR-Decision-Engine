@@ -30,9 +30,31 @@ def test_los_pesos_suman_uno():
 
 
 def test_jerarquia_de_pesos_ahp():
-    """Visibilidad y techo dominan; la tendencia es el factor de menor peso."""
-    assert W_VIS == W_CEIL                      # co-iguales en el AHP
-    assert W_VIS > W_XWIND > W_GUST > W_WX > W_FOG > W_TAF
+    """
+    Visibilidad y techo dominan; la tendencia es el factor de menor peso.
+
+    El orden refleja la derivacion por evidencia de ahp_weights.py: el grupo de
+    referencia visual concentra ~0.79 del peso porque la accidentologia le
+    atribuye una severidad de 72.9% frente al 1.5% del grupo de viento.
+    """
+    assert W_VIS == W_CEIL                      # co-iguales en el AHP (minimo legal VFR)
+    assert W_VIS > W_XWIND                      # referencia visual domina al viento
+    assert W_XWIND > W_GUST                     # el cruzado domina a la rafaga
+    assert W_WX > W_TAF                         # lo observado domina a lo pronosticado
+    assert W_TAF == min(W_VIS, W_CEIL, W_XWIND, W_GUST, W_WX, W_FOG, W_TAF)
+
+
+def test_el_cruzado_no_alcanza_el_umbral_de_caution_por_si_solo():
+    """
+    Documenta POR QUE el peso del cruzado es bajo sin que eso subestime el riesgo.
+
+    Un cruzado en el limite de la aeronave (r_xwind = 1.0) aporta solo W_XWIND al
+    score: por debajo de t_go. Si el sistema dependiera solo de la suma ponderada
+    daria GO. No lo hace porque la barrera no-compensatoria lo intercepta antes
+    (ver test_regression_scenarios.py). Este test fija esa dependencia: si alguien
+    sube W_XWIND creyendo "arreglar" algo, o baja la barrera, el diseno se rompe.
+    """
+    assert W_XWIND < THRESHOLD_GO
 
 
 # ── Funciones de riesgo ───────────────────────────────────────────────────────
@@ -80,13 +102,14 @@ def test_r_wx_codes_toma_el_fenomeno_mas_severo():
 # ── Umbrales ──────────────────────────────────────────────────────────────────
 
 def test_umbrales_calibrados():
+    """Umbrales optimos de risk/calibration.py sobre la bateria de referencia."""
     assert THRESHOLD_GO == 0.22
-    assert THRESHOLD_CAUTION == 0.50
+    assert THRESHOLD_CAUTION == 0.59
 
 
 @pytest.mark.parametrize("r,esperado", [
-    (0.0, "GO"), (0.21, "GO"), (0.22, "CAUTION"), (0.49, "CAUTION"),
-    (0.50, "NO GO"), (1.0, "NO GO"),
+    (0.0, "GO"), (0.21, "GO"), (0.22, "CAUTION"), (0.58, "CAUTION"),
+    (0.59, "NO GO"), (1.0, "NO GO"),
 ])
 def test_apply_decision_threshold(r, esperado):
     assert apply_decision_threshold(r) == esperado
