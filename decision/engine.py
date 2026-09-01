@@ -29,7 +29,7 @@ Uso tipico
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Optional
 
 try:
@@ -202,17 +202,23 @@ class DecisionEngine:
         departure_time   : int,
         flight_duration_h: float,
     ) -> DecisionResult:
-        cfg     = NWP_STATIONS[sid]
-        raw_nwp = self._nwp_fetch.get_forecast(
+        cfg = NWP_STATIONS[sid]
+
+        # Muestreo en anillo: el aerodromo mas un anillo de puntos a su alrededor,
+        # en UNA sola peticion. El primero es siempre el aerodromo.
+        # Motivo: la grilla del modelo global suaviza la orografia, de modo que un
+        # unico punto entrega el promedio de la celda y no describe ni el valle ni
+        # la ladera. Ver data/fetcher_openmeteo.get_forecast_ring.
+        ring = self._nwp_fetch.get_forecast_ring(
             lat         = cfg["lat"],
             lon         = cfg["lon"],
             elevation_m = cfg["elev_m"],
             hours_ahead = NWP_HOURS_AHEAD,
         )
-        if raw_nwp is None:
+        if not ring:
             return self._no_data(sid, "nwp")
 
-        all_wx = self._nwp_adapter.adapt_all(raw_nwp, station_id=sid)
+        all_wx = self._nwp_adapter.adapt_all(ring[0], station_id=sid)
         if not all_wx:
             return self._no_data(sid, "nwp")
 
@@ -254,12 +260,47 @@ class DecisionEngine:
         # componente de tendencia se sintetiza desde la propia serie NWP. ──────
         r_taf = nwp_trend_r_taf(window_wx, ref_wx)
 
-        # ── Soft scoring: peor caso dentro de la ventana ─────────────────────
+        # ── Soft scoring: peor caso en TIEMPO y en ESPACIO ────────────────────
+        # A la ventana horaria del aerodromo se le suman las mismas horas en cada
+        # punto del anillo. El peor de todos define el puntaje.
+        #
+        # Por que los hard blockers NO usan el anillo: son la traduccion de una
+        # regla normativa que se refiere AL AERODROMO ("visibilidad en el
+        # aerodromo por debajo de X"). Extenderla a un punto a 10 km seria
+        # inventar una regla que la regulacion no tiene. El puntaje blando, en
+        # cambio, es una ESTIMACION de riesgo, y tomar la peor estimacion
+        # plausible del entorno es un tratamiento legitimo de la incertidumbre.
+        # De los puntos del anillo se toma el estado de la MASA DE AIRE
+        # (visibilidad, techo, humedad, fenomenos) y NO el viento: el viento se
+        # conserva el del aerodromo. El motivo es que el criterio de viento
+        # cruzado se define contra la PISTA y contra el maximo demostrado del
+        # avion; comparar la rafaga de un cordon a 400 m de altura sobre el
+        # campo con el limite de cruzado del avion es un error de categoria,
+        # porque la aeronave no va a aterrizar alli. Sin esta salvedad el
+        # muestreo produce NO GO por viento en dias de calma en el aerodromo
+        # (verificado en SACC: rafaga de ladera del 056 contra pista 320).
+        site_wind = {w.obs_time: w for w in window_wx}
+        candidates = list(window_wx)
+        for extra in ring[1:]:
+            pt_wx = self._nwp_adapter.adapt_all(extra, station_id=sid)
+            for w in pt_wx:
+                if not (departure_time <= w.obs_time <= window_end):
+                    continue
+                site = site_wind.get(w.obs_time)
+                if site is not None:
+                    w = replace(w,
+                                wind_dir      = site.wind_dir,
+                                wind_spd_kt   = site.wind_spd_kt,
+                                wind_gust_kt  = site.wind_gust_kt,
+                                wind_variable = site.wind_variable)
+                candidates.append(w)
+
         scores  = [compute_soft_score(w, rwy, self.aircraft, taf_r_taf=r_taf,
-                                      personal_minima=self.personal_minima) for w in window_wx]
+                                      personal_minima=self.personal_minima) for w in candidates]
         worst   = max(scores, key=lambda s: s.r_total)
 
-        logger.info(f"NWP {sid}: R_total={worst.r_total:.3f} [{worst.decision}] pista={rwy}")
+        logger.info(f"NWP {sid}: R_total={worst.r_total:.3f} [{worst.decision}] pista={rwy} "
+                    f"(peor de {len(candidates)} muestras sobre {len(ring)} puntos)")
 
         return DecisionResult(
             station_id       = sid,

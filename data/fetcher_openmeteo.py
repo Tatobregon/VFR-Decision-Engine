@@ -26,11 +26,12 @@ observacion). El score de riesgo NO penaliza la fuente: las mismas condiciones d
 el mismo R vengan de METAR o de NWP.
 """
 
+import math
 import time
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
-from typing import Optional
+from typing import List, Optional, Tuple
 
 import requests
 
@@ -50,6 +51,15 @@ logger = logging.getLogger(__name__)
 
 BASE_URL     = "https://api.open-meteo.com/v1/forecast"
 FORECAST_DAYS = 2   # solicitar 2 dias para cubrir cualquier ventana de hours_ahead
+
+# ── Muestreo en anillo (incertidumbre orografica, ver get_forecast_ring) ───────
+# 10 km: del orden de una celda de modelo global, y la porcion de terreno que el
+# piloto sobrevuela inmediatamente despues del despegue.
+# 6 puntos: cobertura angular uniforme cada 60 grados. Se prefiere a los cuatro
+# rumbos cardinales porque estos se alinean con la grilla del modelo y podrian
+# caer sistematicamente en las mismas celdas.
+RING_RADIUS_KM = 10.0
+RING_POINTS    = 6
 
 # Variables horarias a solicitar en cada llamada (especificacion del proyecto)
 HOURLY_VARIABLES = ",".join([
@@ -230,6 +240,32 @@ def _mock_nwp_sacc(hours_ahead: int) -> dict:
 # Helpers internos
 # ──────────────────────────────────────────────────────────────────────────────
 
+def sample_ring(
+    lat      : float,
+    lon      : float,
+    radius_km: float = RING_RADIUS_KM,
+    n_points : int   = RING_POINTS,
+) -> List[Tuple[float, float]]:
+    """
+    Puntos equiespaciados sobre una circunferencia de `radius_km` alrededor de
+    (lat, lon). NO incluye el centro.
+
+    La conversion km->grados usa 111.32 km por grado de latitud y la correccion
+    por coseno de la latitud en longitud. A 10 km el error de la aproximacion
+    plana es de centimetros: irrelevante frente a la resolucion del modelo.
+    """
+    if n_points <= 0 or radius_km <= 0:
+        return []
+    dlat = radius_km / 111.32
+    dlon = radius_km / (111.32 * max(math.cos(math.radians(lat)), 0.01))
+    pts: List[Tuple[float, float]] = []
+    for i in range(n_points):
+        ang = 2.0 * math.pi * i / n_points
+        pts.append((round(lat + dlat * math.cos(ang), 4),
+                    round(lon + dlon * math.sin(ang), 4)))
+    return pts
+
+
 def _pressure_level_for_alt(alt_ft: int) -> str:
     """
     Retorna el nivel de presion Open-Meteo mas cercano a una altitud en pies MSL.
@@ -334,12 +370,15 @@ class OpenMeteoFetcher:
 
                 if response.status_code == 200:
                     data = response.json()
-                    if not isinstance(data, dict):
+                    # Con UNA coordenada la API devuelve un dict; con VARIAS
+                    # (muestreo en anillo, ver get_forecast_ring) devuelve una
+                    # lista de dicts, uno por punto.
+                    if not isinstance(data, (dict, list)):
                         raise ValueError(
-                            f"Respuesta inesperada de Open-Meteo: se esperaba dict, "
-                            f"se recibio {type(data)}"
+                            f"Respuesta inesperada de Open-Meteo: se esperaba dict o "
+                            f"list, se recibio {type(data)}"
                         )
-                    if "error" in data:
+                    if isinstance(data, dict) and "error" in data:
                         raise ValueError(f"Open-Meteo reporto error: {data.get('reason', data)}")
                     return data
 
@@ -521,6 +560,89 @@ class OpenMeteoFetcher:
         if raw_data is None:
             return None
         return self._parse_response(raw_data, hours_ahead, pressure_lvl=pressure_lvl)
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Muestreo en anillo — tratamiento de la incertidumbre orografica
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def get_forecast_ring(
+        self,
+        lat         : float,
+        lon         : float,
+        elevation_m : float,
+        hours_ahead : int = 12,
+        radius_km   : float = RING_RADIUS_KM,
+        n_points    : int   = RING_POINTS,
+    ) -> List[RawNWP]:
+        """
+        Pronostico en el aerodromo Y en un anillo de puntos a su alrededor.
+
+        Por que
+        -------
+        Un modelo global resuelve la atmosfera en celdas de ~11 km y, para
+        hacerlo, SUAVIZA la orografia: la celda que contiene un aerodromo de
+        sierra promedia el valle y la ladera. Pedir un unico punto es pedir ese
+        promedio, que no describe ni al valle (donde se forma la niebla) ni a la
+        ladera (donde se apoya la nubosidad). El resultado es un pronostico
+        sistematicamente mas benigno que la condicion real en terreno complejo.
+
+        La respuesta de este metodo no es corregir el modelo —no hay con que
+        calibrar la correccion— sino MUESTREARLO: se consulta el entorno del
+        aerodromo en varios puntos y se deja que el motor se quede con el peor.
+        Es un tratamiento conservador de la incertidumbre, no una penalizacion.
+
+        Detalle que lo hace funcionar
+        -----------------------------
+        A los puntos del anillo NO se les pasa `elevation`. Open-Meteo hace
+        entonces su propio downscaling con un modelo digital de elevacion de
+        90 m, de modo que cada punto recibe la altura real de SU ubicacion. Un
+        anillo alrededor de un aerodromo de sierra muestrea por si solo alturas
+        distintas, sin necesidad de consultar el terreno en tiempo de ejecucion.
+        En llanura los puntos dan practicamente lo mismo y el peor caso coincide
+        con el punto central: el mecanismo no hace nada donde no hace falta, que
+        es justamente lo que corresponde a un sistema de alcance nacional.
+
+        Devuelve
+        --------
+        Lista de RawNWP: el primero es el aerodromo, el resto el anillo. Lista
+        vacia si la consulta falla. Toda la consulta es UNA sola peticion HTTP.
+        """
+        points = [(lat, lon)] + sample_ring(lat, lon, radius_km, n_points)
+
+        if self.mock:
+            single = self.get_forecast(lat, lon, elevation_m, hours_ahead)
+            return [single] if single else []
+
+        cache_key = ("ring", round(lat, 3), round(lon, 3),
+                     round(radius_km, 1), n_points, FORECAST_DAYS)
+
+        def _fetch():
+            try:
+                return self._get(params={
+                    "latitude"       : ",".join(f"{p[0]:.4f}" for p in points),
+                    "longitude"      : ",".join(f"{p[1]:.4f}" for p in points),
+                    # sin "elevation": cada punto usa su propia altura del DEM
+                    "hourly"         : HOURLY_VARIABLES,
+                    "wind_speed_unit": "kn",
+                    "timezone"       : "America/Argentina/Buenos_Aires",
+                    "forecast_days"  : FORECAST_DAYS,
+                })
+            except (ConnectionError, ValueError) as e:
+                logger.error(f"No se pudo obtener el anillo NWP: {e}")
+                return None
+
+        raw = NWP_CACHE.get_or_call(cache_key, _fetch)
+        if raw is None:
+            return []
+
+        blocks = raw if isinstance(raw, list) else [raw]
+        out: List[RawNWP] = []
+        for block in blocks:
+            try:
+                out.append(self._parse_response(block, hours_ahead, pressure_lvl=None))
+            except Exception as e:
+                logger.warning(f"Punto del anillo ilegible, se descarta: {e}")
+        return out
 
 
 # ──────────────────────────────────────────────────────────────────────────────

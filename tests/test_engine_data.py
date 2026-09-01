@@ -13,6 +13,7 @@ from decision.engine import DecisionEngine
 from data.airports import AIRPORTS, AIRPORTS_PUBLIC, get_by_code, search_airports
 from data.cache import TTLCache, METAR_CACHE
 from data.fetcher_aviationweather import AviationWeatherFetcher
+from data.fetcher_openmeteo import RawNWP, RawNWPHour
 from risk.aircraft_profiles import get_profile
 
 
@@ -78,6 +79,8 @@ def test_sin_datos_el_veredicto_es_conservador():
     """Si ninguna fuente responde, el sistema no puede decir GO."""
     engine = DecisionEngine(mock=True)
     engine._aw.get_metar_and_taf = lambda sid: (None, None)
+    # El camino NWP consulta el anillo de puntos, no un punto suelto
+    engine._nwp_fetch.get_forecast_ring = lambda **kw: []
     engine._nwp_fetch.get_forecast = lambda **kw: None
     res = engine.evaluate("SACC", runway_heading=150,
                           departure_time=int(time.time()) + 3600)
@@ -206,3 +209,93 @@ def test_el_modo_mock_no_usa_la_cache():
     METAR_CACHE.clear()
     AviationWeatherFetcher(mock=True).get_metar("SACO")
     assert METAR_CACHE.stats()["entries"] == 0
+
+
+# ── Muestreo en anillo (incertidumbre orografica) ─────────────────────────────
+
+def _bloque_nwp(base_ts, *, nubes_bajas, temp_c, dew_c, wind_dir, wind_kt, gust_kt,
+                elev_m=1138.0):
+    """Un RawNWP sintetico de 3 horas, todas con las mismas condiciones."""
+    horas = [
+        RawNWPHour(
+            valid_time_iso      = f"h{i}",
+            valid_time_utc      = base_ts + i * 3600,
+            windspeed_10m_kt    = wind_kt,
+            winddirection_10m   = wind_dir,
+            windgusts_10m_kt    = gust_kt,
+            visibility_m        = 20000.0,
+            cloudcover_low_pct  = nubes_bajas,
+            cloudcover_mid_pct  = 0,
+            cloudcover_high_pct = 0,
+            precipitation_mm    = 0.0,
+            temperature_2m_c    = temp_c,
+            dewpoint_2m_c       = dew_c,
+            weathercode         = 0,
+        )
+        for i in range(3)
+    ]
+    return RawNWP(lat=-31.0, lon=-64.5, elevation_m=elev_m,
+                  fetch_time="2026-01-01T00:00:00Z", hours=horas)
+
+
+def _evaluar_con_anillo(anillo, dep):
+    engine = DecisionEngine()
+    engine._aw.get_metar_and_taf = lambda sid: (None, None)
+    engine._nwp_fetch.get_forecast_ring = lambda **kw: anillo
+    return engine.evaluate("SACC", runway_heading=320,
+                           departure_time=dep, flight_duration_h=1.0)
+
+
+def test_el_anillo_toma_la_peor_masa_de_aire_del_entorno():
+    """
+    El punto central esta despejado y seco; un punto del anillo tiene nubosidad
+    baja cerrada y aire saturado. El motor debe puntuar el peor de los dos.
+
+    Es el nucleo del tratamiento de la incertidumbre orografica: la grilla del
+    modelo promedia el valle y la ladera, asi que se muestrea el entorno.
+    """
+    dep = int(time.time()) + 3600
+    centro = _bloque_nwp(dep, nubes_bajas=0,  temp_c=20.0, dew_c=2.0,
+                         wind_dir=320, wind_kt=4.0, gust_kt=6.0)
+    ladera = _bloque_nwp(dep, nubes_bajas=95, temp_c=12.0, dew_c=11.5,
+                         wind_dir=320, wind_kt=4.0, gust_kt=6.0, elev_m=1600.0)
+
+    solo_centro = _evaluar_con_anillo([centro], dep)
+    con_anillo  = _evaluar_con_anillo([centro, ladera], dep)
+
+    assert con_anillo.r_total > solo_centro.r_total
+    assert con_anillo.score_breakdown.r_ceil > solo_centro.score_breakdown.r_ceil
+
+
+def test_el_anillo_no_importa_el_viento_de_los_puntos_vecinos():
+    """
+    El viento cruzado se define contra LA PISTA y el maximo demostrado del avion.
+    Un punto del anillo puede tener rafaga fuerte y cruzada (canalizacion de
+    ladera) sin que eso signifique que el avion no pueda aterrizar en el campo.
+    El motor debe conservar el viento del aerodromo.
+
+    Sin esta regla el muestreo produce NO GO por viento en dias de calma en el
+    aerodromo (observado en SACC con rafaga de ladera del 056 contra pista 320).
+    """
+    dep = int(time.time()) + 3600
+    centro = _bloque_nwp(dep, nubes_bajas=0, temp_c=20.0, dew_c=2.0,
+                         wind_dir=320, wind_kt=3.0, gust_kt=5.0)
+    cordon = _bloque_nwp(dep, nubes_bajas=0, temp_c=20.0, dew_c=2.0,
+                         wind_dir=50, wind_kt=25.0, gust_kt=40.0, elev_m=1600.0)
+
+    solo_centro = _evaluar_con_anillo([centro], dep)
+    con_anillo  = _evaluar_con_anillo([centro, cordon], dep)
+
+    assert con_anillo.score_breakdown.r_xwind == solo_centro.score_breakdown.r_xwind
+    assert con_anillo.decision == solo_centro.decision
+
+
+def test_el_anillo_es_inocuo_cuando_el_entorno_es_homogeneo():
+    """En llanura todos los puntos dan lo mismo: el veredicto no debe cambiar."""
+    dep = int(time.time()) + 3600
+    p = lambda: _bloque_nwp(dep, nubes_bajas=10, temp_c=20.0, dew_c=8.0,
+                            wind_dir=320, wind_kt=5.0, gust_kt=8.0)
+    uno   = _evaluar_con_anillo([p()], dep)
+    siete = _evaluar_con_anillo([p() for _ in range(7)], dep)
+    assert siete.r_total == pytest.approx(uno.r_total)
+    assert siete.decision == uno.decision

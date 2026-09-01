@@ -8,3 +8,6 @@ webserver.log
 data/madhel_fetch.log
 data/madhel_fetch_err.log
 .claude/
+
+# Descargas del estudio de validacion (se regeneran solas)
+validation/cache/
