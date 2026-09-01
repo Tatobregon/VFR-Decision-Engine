@@ -140,7 +140,7 @@ APÉNDICE METODOLÓGICO (no se importa en runtime):
    - **Fuente**: con código ICAO → intenta METAR+TAF; si no reporta METAR, **cae a NWP**. Sin ICAO → NWP directo.
    - **Pista**: si el usuario no eligió, `favored_runway()` toma la cabecera más alineada al viento (menor cruzado; desempate por mayor viento de proa).
    - **Hard blockers** → NO GO inmediato sin score. En NWP se revisa **toda la ventana horaria**; en METAR también los períodos TAF activos.
-   - **Soft score** `R = Σ wᵢ·rᵢ`, umbrales 0.22 / 0.50, y **barrera no-compensatoria**. Veredicto = **el peor** de los dos.
+   - **Soft score** `R = Σ wᵢ·rᵢ`, umbrales 0.22 / 0.59, y **barrera no-compensatoria**. Veredicto = **el peor** de los dos.
    - NWP toma la **peor hora** de la ventana; METAR usa la observación actual + `r_taf`.
 4. **Ruta** — `optimize(mode="suggested")`: A* sobre un grafo restringido a un corredor geográfico (ancho `clamp(20 % de la distancia, 80, 250)` km, más banda latitudinal ±3°), probando dos topes de tramo (500 km y sin tope) y quedándose con el candidato de **mayor cobertura de aerovía**.
 5. **Aerovías (solo IFR)** — primero un camino continuo origen→destino; fallback por tramo. Filtrado por MEA ≤ `cruise_alt_ft`.
@@ -182,20 +182,26 @@ Jerarquía de 3 grupos → 8 comparaciones de a pares en vez de 21. Salida repro
 
 | Criterio | Peso | Grupo (peso) |
 |---|---|---|
-| Visibilidad | **0.279** | Referencia visual (0.6144) |
-| Techo | **0.279** | Referencia visual |
-| Niebla (spread) | **0.056** | Referencia visual |
-| Viento cruzado | **0.179** | Viento (0.2684) |
-| Ráfagas | **0.090** | Viento |
-| Fenómenos wx | **0.078** | Fenómenos/tendencia (0.1172) |
-| Tendencia TAF | **0.039** | Fenómenos/tendencia |
+| Visibilidad | **0.357** | Referencia visual (0.7854) |
+| Techo | **0.357** | Referencia visual |
+| Niebla (spread) | **0.071** | Referencia visual |
+| Viento cruzado | **0.099** | Viento (0.1488) |
+| Ráfagas | **0.050** | Viento |
+| Fenómenos wx | **0.044** | Fenómenos/tendencia (0.0658) |
+| Tendencia TAF | **0.022** | Fenómenos/tendencia |
 
-**CR global = 0.0634** (≤ 0.10 → consistente). Suma = 1.000000.
+**CR global = 0.0692** (≤ 0.10 → consistente). Suma = 1.000000.
+
+Los juicios de a pares se derivan de accidentología con la operación
+`a_ij = redondeo_Saaty(I_i / I_j)`, donde `I = probabilidad × severidad` (índice del
+Doc 9859 de OACI). `a(RV,V) = redondeo_Saaty(345/51) = 7`. Cada entrada declara su
+procedencia: **E** evidencia, **N** norma/arquitectura, **D** derivada por transitividad,
+**J** juicio experto. Ver el encabezado de `risk/ahp_weights.py`.
 
 ### 4.3 Barrera no-compensatoria (`conjunctive_floor`)
 
 El promedio ponderado es compensatorio: un factor bueno tapa a uno malo. Un cruzado que
-supera el límite del avión aportaría a lo sumo 0.179 y daría GO. La barrera impone un
+supera el límite del avión aportaría a lo sumo 0.099 y daría GO. La barrera impone un
 **piso** por factor, relativo a **los límites de cada aeronave**:
 
 ```
@@ -210,16 +216,17 @@ decisión = peor(umbral(R), piso)
 
 ```
 R < 0.22          → GO
-0.22 ≤ R < 0.50   → CAUTION
-R ≥ 0.50          → NO GO
+0.22 ≤ R < 0.59   → CAUTION
+R ≥ 0.59          → NO GO
 ```
 
 Resultado reproducido hoy sobre los 36 escenarios de referencia:
 
 - **Concordancia 35/36 (97 %)**, **0 sub-avisos**, 1 sobre-aviso, costo 1.
-- El óptimo **no es un punto sino un rango** (`t_go ∈ [0.14, 0.22]`, `t_caution ∈ [0.46, 0.52]`) → robusto.
+- El óptimo **no es un punto sino un rango** (`t_go ∈ [0.15, 0.28]`, `t_caution ∈ [0.59, 0.66]`) → robusto.
 - Único desacuerdo: escenario G2 (nieve moderada, vis 6 km, techo 1500 ft) → el sistema dice CAUTION, la norma GO. Es un **sobre-aviso**, el error del lado seguro.
-- Con `t_go = 0.24` o más aparecen **2 sub-avisos** y el costo salta de 1 a 9: por eso 0.22 y no 0.25.
+- Con `t_go = 0.30` o más aparecen **2 sub-avisos** y el costo salta de 1 a 9.
+- **Convergencia:** al pasar los pesos de juicio experto a derivación por evidencia y recalibrar, el óptimo se movió de (0.22, 0.50) a (0.22, 0.59) y la concordancia siguió siendo 35/36 con 0 sub-avisos y el mismo único desacuerdo. El veredicto no depende de la ponderación exacta.
 
 **Naturaleza de la calibración:** validez de **constructo** (reproduce la regulación), **no** validez empírica. No hay casos reales etiquetados por pilotos. Declararlo así en el documento de tesis es parte del rigor, y la validación con juicio experto queda como trabajo futuro.
 
@@ -326,7 +333,7 @@ Hasta que se haga push, el despliegue sigue corriendo `908ed89`, que decide con
 | — | **Tests con asserts desactualizados o atados a Córdoba** | `config.py` y `data/airports.py` verifican un piso (≥500) en vez de 710; `aircraft_profiles.py` espera 6000 ft; `SAOE` (inexistente) → `SAOC`; el test de vecinos tolera el aislamiento **real** de la base antártica Marambio (SAWB, vecino más cercano a 1230 km). **23 módulos pasan, 0 fallos** |
 
 | 5b | **Base de nubes NWP fija en 2000 ft** aplicada a todo el país | Reemplazada por la **regla de Espy** (`base ≈ 400 ft × spread T/Td`), estándar en aviación general y calculada con datos que el NWP ya entrega. Con aire saturado da ~100 ft (nubes al ras) en vez de 2000 ft |
-| 6 | **El componente TAF (w=0.039) valía 0 en casi todo el país** | `nwp_trend_r_taf()` sintetiza la tendencia desde la serie horaria de Open-Meteo comparando la categoría de salida con la peor de la ventana. Solo puntúa el deterioro; usa la misma escala que un TAF real |
+| 6 | **El componente TAF (w=0.022) valía 0 en casi todo el país** | `nwp_trend_r_taf()` sintetiza la tendencia desde la serie horaria de Open-Meteo comparando la categoría de salida con la peor de la ventana. Solo puntúa el deterioro; usa la misma escala que un TAF real |
 | 10 | **Sin caché de requests** | `data/cache.py`: TTL por tipo de dato, thread-safe, sin cachear respuestas vacías. Medido: 3 evaluaciones iguales pasaron de 5.46 s a **1.4 s** |
 | 11 | **Sin README ni pytest** | `README.md` completo y suite de **122 tests** en `tests/` que corre en < 1 s sin salir a la red, con `test_regression_scenarios.py` fijando el comportamiento del veredicto |
 

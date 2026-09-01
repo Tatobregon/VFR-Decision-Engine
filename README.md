@@ -92,17 +92,17 @@ granizo, engelamiento (FZRA/FZDZ), ceniza volcánica, tornado, visibilidad < 1.5
 techo < 500 ft. También vuelo nocturno en VFR y NOTAM de cierre total.
 
 **2. Score compensatorio** `R = Σ wᵢ·rᵢ`, con pesos derivados por **AHP**
-(*Analytic Hierarchy Process*, CR = 0.063):
+(*Analytic Hierarchy Process*, CR = 0.069), derivados de accidentologia:
 
 | Factor | Peso | | Factor | Peso |
 |---|---|---|---|---|
-| Visibilidad | 0.279 | | Fenómenos | 0.078 |
-| Techo | 0.279 | | Niebla (spread) | 0.056 |
-| Viento cruzado | 0.179 | | Tendencia | 0.039 |
-| Ráfagas | 0.090 | | | |
+| Visibilidad | 0.357 | | Ráfagas | 0.050 |
+| Techo | 0.357 | | Fenómenos | 0.044 |
+| Viento cruzado | 0.099 | | Tendencia | 0.022 |
+| Niebla (spread) | 0.071 | | | |
 
 **3. Barrera no-compensatoria.** Un promedio ponderado deja que un factor bueno tape a uno
-malo: un viento cruzado por encima del límite del avión aportaría apenas 0.179 y saldría
+malo: un viento cruzado por encima del límite del avión aportaría apenas 0.099 y saldría
 GO. Por eso cada factor crítico impone un **piso** de veredicto, relativo a los límites de
 *cada* aeronave, y la decisión final es la peor entre el umbral y ese piso.
 
@@ -110,8 +110,8 @@ GO. Por eso cada factor crítico impone un **piso** de veredicto, relativo a los
 
 ```
 R < 0.22          →  GO
-0.22 ≤ R < 0.50   →  CAUTION
-R ≥ 0.50          →  NO GO
+0.22 ≤ R < 0.59   →  CAUTION
+R ≥ 0.59          →  NO GO
 ```
 
 Concordancia con la norma: **97 %**, con **0 sub-avisos** (el sistema nunca avisa menos

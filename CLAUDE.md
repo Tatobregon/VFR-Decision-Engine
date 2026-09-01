@@ -44,7 +44,7 @@ automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a
 | Archivo | Estado | Descripcion |
 |---|---|---|
 | `data/fetcher_aviationweather.py` | **COMPLETO** | METAR + TAF de aviationweather.gov. Produce `RawMetar`, `RawTaf`, `RawTafPeriod`. Mock de SACO incluido. |
-| `data/fetcher_openmeteo.py` | **COMPLETO** | Pronostico NWP de Open-Meteo. Produce `RawNWP` + `RawNWPHour`. Soporta viento en nivel de presion segun `cruise_alt_ft`. Mock incluido. |
+| `data/fetcher_openmeteo.py` | **COMPLETO** | Pronostico NWP de Open-Meteo. Produce `RawNWP` + `RawNWPHour`. Soporta viento en nivel de presion segun `cruise_alt_ft`. **`get_forecast_ring()`**: consulta el aerodromo + 6 puntos a 10 km en UNA peticion, para muestrear la incertidumbre orografica. Mock incluido. |
 | `data/airports.py` | **COMPLETO** | Registro canonico de aerodromos. `AirportInfo`, `RunwayInfo` dataclasses. `AIRPORTS`, `AIRPORTS_PUBLIC`. Fuente unica de verdad para coords, elevacion y cabeceras. |
 | `data/airspace.py` | **COMPLETO** | Zonas CTR/TMA/R/P/D. Fuente `ar-airspace.json` (OpenAIP); fallback Cordoba si falta el cache. `zones_along_route()`, `route_intersects_zone()`. |
 | `data/airways.py` | **COMPLETO** | Grafo bidireccional de aerovias inferiores del AIP (ENR-3.1) desde `aerovias_argentinas.json`. `AIRWAY_NODES`, `AIRWAY_GRAPH`. |
@@ -80,20 +80,20 @@ automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a
 |---|---|---|
 | `risk/aircraft_profiles.py` | **COMPLETO** | `AircraftProfile` dataclass frozen. 5 perfiles + `get_profile(name)` + `PROFILE_NAMES`. Incluye designador OACI y estela para el plan de vuelo. |
 | `risk/personal_minima.py` | **COMPLETO** | Minimos personales por experiencia (Alumno / PPL / Avanzado): endurecen vis, techo y tolerancia al cruzado. NO tocan los pesos AHP. |
-| `risk/ahp_weights.py` | **COMPLETO** | Derivacion AHP de los pesos (jerarquia 3 grupos, matrices de a pares, autovector, CR=0.063). Reproducible; documenta el origen de los w_i. |
-| `risk/weights.py` | **COMPLETO** | Pesos AHP W_VIS=0.279 W_CEIL=0.279 W_XWIND=0.179 W_GUST=0.090 W_WX=0.078 W_FOG=0.056 W_TAF=0.039. Funciones r_i. Thresholds **calibrados**: t_go=0.22, t_caution=0.50. |
+| `risk/ahp_weights.py` | **COMPLETO** | Derivacion AHP de los pesos. Los juicios de a pares NO son a ojo: se derivan de accidentologia con la operacion explicita `a_ij = redondeo_Saaty(I_i/I_j)`, con `I = prob x severidad` (Doc 9859 OACI). Cada entrada declara su procedencia (E evidencia / N norma / D derivada / J juicio). CR=0.069. |
+| `risk/weights.py` | **COMPLETO** | Pesos AHP W_VIS=0.357 W_CEIL=0.357 W_XWIND=0.099 W_FOG=0.071 W_GUST=0.050 W_WX=0.044 W_TAF=0.022. Funciones r_i. Thresholds **calibrados**: t_go=0.22, t_caution=0.59. |
 | `risk/hard_blockers.py` | **COMPLETO** | Tokens TS/TSRA/TSGR/GR/FC/VA/FZRA/FZDZ + vis<1.5km + ceil<500ft → NO GO inmediato. |
 | `risk/soft_scoring.py` | **COMPLETO** | `compute_soft_score(...)` → `SoftScoreResult`. Score compensatorio + **barrera no-compensatoria** (`conjunctive_floor`): `decision = worst(umbral(R), piso)`. Expone `guardrail_floor`/`guardrail_reason`. |
 | `risk/scenarios.py` | **COMPLETO** | Bateria de 38 escenarios de referencia con etiqueta normativa ANAC/OACI (`normative_label`). Fuente compartida por calibracion y sensibilidad. |
-| `risk/calibration.py` | **COMPLETO** | Calibracion de umbrales por anclaje normativo (grid search + costo asimetrico). Resultado: t_go 0.25→0.22 (97% concordancia, 0 sub-avisos). Validez de constructo, no empirica. |
-| `risk/sensitivity.py` | **COMPLETO** | Analisis de sensibilidad de pesos (OAT ±20% + Monte Carlo). Estabilidad del veredicto 97%; los showstoppers quedan clavados por la barrera. |
+| `risk/calibration.py` | **COMPLETO** | Calibracion de umbrales por anclaje normativo (grid search + costo asimetrico). Resultado: t_go=0.22, t_caution=0.59 (97% concordancia, 0 sub-avisos). Validez de constructo, no empirica. |
+| `risk/sensitivity.py` | **COMPLETO** | Analisis de sensibilidad de pesos (OAT ±20% + Monte Carlo). Estabilidad del veredicto 99%; 35/36 escenarios nunca cambian. Los showstoppers quedan clavados por la barrera. |
 
 ### INTEGRACION
 
 | Archivo | Estado | Descripcion |
 |---|---|---|
 | `config.py` | **COMPLETO** | Constantes globales: `NWP_STATIONS` (derivado de los 561 aerodromos de `AIRPORTS`), `METAR_STATIONS` (vacio, vestigio v1.0), `NWP_HOURS_AHEAD`. |
-| `decision/engine.py` | **COMPLETO** | `DecisionEngine.evaluate()` → `DecisionResult`. Pipeline: fetch→parse→hard_blockers→soft_score+taf_window→decision. **Regla de fuente**: con codigo ICAO intenta METAR+TAF y cae a NWP si no hay METAR; sin ICAO va directo a NWP. |
+| `decision/engine.py` | **COMPLETO** | `DecisionEngine.evaluate()` → `DecisionResult`. Pipeline: fetch→parse→hard_blockers→soft_score+taf_window→decision. **Regla de fuente**: con codigo ICAO intenta METAR+TAF y cae a NWP si no hay METAR; sin ICAO va directo a NWP. El camino NWP usa **muestreo en anillo** (peor caso en tiempo Y espacio). |
 | `output/briefing.py` | **COMPLETO** | `generate_briefing(...)` → briefing meteorologico multi-linea para el piloto (origen, destino, ruta, NOTAMs). 100% reglas, sin IA. |
 | `output/flight_plan.py` | **COMPLETO** | `build_flight_plan(...)` → plan de vuelo OACI (casillas 7-19 + mensaje FPL). **No radica** el plan: lo presenta el piloto. |
 | `web/app.py` | **COMPLETO** | Backend FastAPI + frontend HTML (`web/static`). **Entry point unico del sistema.** Endpoints: `/api/evaluate`, `/api/profile`, `/api/timeline`, `/api/flightplan`, `/api/airport/{code}`, `/api/airports`, `/api/airports/map`, `/api/aircraft`, `/api/vfr_corridors`, `/api/airspace`. Switch VFR/IFR, corredores VFR, perfil vertical. |
@@ -228,13 +228,13 @@ Si cualquier hard blocker esta activo → NO GO inmediato, sin calcular score.
 
 | Componente | Variable | Peso (AHP) | Funcion r_i |
 |---|---|---|---|
-| Visibilidad | vis_km | 0.279 | Rampa: 1 si vis<3km, 0 si vis>8km |
-| Ceiling | ceil_ft | 0.279 | Rampa: 1 si ceil<500ft, 0 si ceil>2000ft |
-| Crosswind | xw_kt | 0.179 | Lineal: xw/xw_max. Si xw>=xw_max → 1.0 |
-| Rafagas | gust-spd kt | 0.090 | Lineal: delta/gust_max |
-| Fenomenos | wx_codes | 0.078 | Escalonado por severidad |
-| Niebla proxy | spread_c | 0.056 | 1 si spread<2°C, 0 si spread>5°C |
-| Riesgo TAF | PROB/TEMPO | 0.039 | Escalonado por tipo de deterioro |
+| Visibilidad | vis_km | 0.357 | Rampa: 1 si vis<3km, 0 si vis>8km |
+| Ceiling | ceil_ft | 0.357 | Rampa: 1 si ceil<500ft, 0 si ceil>2000ft |
+| Crosswind | xw_kt | 0.099 | Lineal: xw/xw_max. Si xw>=xw_max → 1.0 |
+| Niebla proxy | spread_c | 0.071 | 1 si spread<2°C, 0 si spread>5°C |
+| Rafagas | gust-spd kt | 0.050 | Lineal: delta/gust_max |
+| Fenomenos | wx_codes | 0.044 | Escalonado por severidad |
+| Riesgo TAF | PROB/TEMPO | 0.022 | Escalonado por tipo de deterioro |
 
 El score NO penaliza la fuente del dato: las mismas condiciones dan el mismo R vengan
 de METAR (observacion) o de NWP (pronostico). La distincion se le informa al piloto en
@@ -249,10 +249,32 @@ la interfaz, no se le carga al puntaje.
 > umbrales optimos, misma estabilidad). El perfil de terreno (SRTM) se conserva: sigue
 > alimentando el perfil vertical de ruta y la deteccion de conflicto de terreno en VFR.
 
+> ## Muestreo en anillo — tratamiento de la incertidumbre orografica (agosto 2026)
+>
+> El modelo global resuelve celdas de ~11 km y SUAVIZA la orografia: un unico punto
+> entrega el promedio de la celda, que no describe ni el valle (niebla) ni la ladera
+> (nubosidad orografica). `get_forecast_ring()` consulta el aerodromo + 6 puntos a 10 km
+> en UNA peticion y el engine se queda con el peor caso.
+>
+> - **No es la penalizacion orografica que se elimino.** Aquella sumaba un delta fijo y
+>   solo cubria SACC. Esto no suma nada: amplia el muestreo y toma la peor lectura.
+> - **Se autorregula por el terreno.** En llanura los 7 puntos dan lo mismo y el
+>   resultado es identico al de la consulta simple. La intensidad la determina el
+>   relieve, no el identificador del aerodromo -> cumple la REGLA DE ALCANCE.
+> - **A los puntos del anillo NO se les pasa `elevation`**: Open-Meteo aplica su propio
+>   downscaling con DEM de 90 m y cada punto recibe su altura real. En SACC (1138 m) el
+>   anillo abarca de 732 a 1629 m.
+> - **Del anillo se toma la masa de aire, NO el viento.** El cruzado se define contra la
+>   PISTA y el maximo demostrado del avion; la rafaga de un cordon 400 m mas arriba no
+>   aplica. Sin esta salvedad hay NO GO por viento en dias de calma (verificado en SACC).
+> - **Los hard blockers se evaluan solo en el aerodromo**: son normativos y la norma se
+>   refiere al aerodromo.
+> - Fijado por 3 tests en `tests/test_engine_data.py`.
+
 **Barrera no-compensatoria (veto conjuntivo)** — `conjunctive_floor` en `soft_scoring.py`.
 El promedio ponderado es compensatorio: un factor bueno tapa a uno malo. Eso deja
 pasar showstoppers de bajo peso (un cruzado SOBRE el limite del avion aportaria
-solo 0.179 y daria GO). La barrera impone un PISO por factor y
+solo 0.099 y daria GO). La barrera impone un PISO por factor y
 `decision = worst(umbral(R), piso)`:
 ```
 cruzado efectivo >= limite avion   → NO GO      cruzado >= 50% limite → CAUTION
@@ -265,13 +287,20 @@ gradual) siguen compensatorios. Elevo la concordancia con la norma de 66% a 92%.
 **Thresholds de decision** — CALIBRADOS por anclaje normativo (`risk/calibration.py`):
 ```
 R < 0.22           → GO
-0.22 <= R < 0.50   → CAUTION
-R >= 0.50          → NO GO
+0.22 <= R < 0.59   → CAUTION
+R >= 0.59          → NO GO
 ```
 Los cortes se ajustaron sobre la bateria de referencia (`risk/scenarios.py`) minimizando
-un costo asimetrico (sub-aviso >> sobre-aviso). t_go bajo de 0.25 a 0.22 (cambio minimo
-que elimina los sub-avisos peligrosos); el optimo es un rango (t_go∈[0.14,0.22]) → robusto.
+un costo asimetrico (sub-aviso >> sobre-aviso); el optimo es un rango
+(t_go∈[0.15,0.28], t_caution∈[0.59,0.66]) → robusto.
 Es validez de CONSTRUCTO (reproduce la regulacion), no empirica. Concordancia final 97%.
+
+> **Convergencia (resultado de validacion).** Los umbrales se recalibraron al pasar los
+> pesos de juicio experto a derivacion por evidencia. El optimo se movio de
+> (0.22, 0.50) a (0.22, 0.59) — t_go ni siquiera cambio — y la concordancia siguio
+> siendo 35/36 con 0 sub-avisos, con el mismo unico desacuerdo (G2, sobre-aviso).
+> Dos derivaciones independientes de los pesos producen el mismo comportamiento
+> decisional: el veredicto no depende de la ponderacion exacta.
 
 ### Perfiles de aeronave (5)
 
