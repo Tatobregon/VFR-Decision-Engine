@@ -132,6 +132,7 @@ Es precisamente esta clase de problema —una decisión crítica, de base normat
 - No constituye un sistema de navegación en tiempo real ni un instrumento de a bordo; su uso es previo al vuelo y no sustituye a los instrumentos ni a la información oficial en vuelo.
 - No genera pronóstico meteorológico propio: consume el de las fuentes oficiales y de modelos numéricos externos.
 - No emplea aprendizaje automático, por las razones expuestas; en particular, no realiza entrenamiento sobre datos históricos.
+- No consume la telemetría registrada por el instrumental de a bordo de la flota del comitente. Es el único activo de datos propio de la organización relevado (§ 2.2.5) y su exclusión es deliberada: un límite calibrado sobre un único tipo de aeronave en un único aeródromo no sería generalizable a los cinco perfiles y los 561 aeródromos que el sistema cubre. Se contempla como trabajo futuro (§ 6.3).
 - No implementa la excepción OACI de mínimos reducidos para aeronaves de velocidad igual o menor a 140 kt (criterio conservador), ni utiliza la normativa FAA como referencia.
 - No incorpora archivo histórico de datos (por ejemplo, Iowa State Mesonet), al no ser necesario para la evaluación en tiempo real.
 - No es una herramienta de planificación IFR completa: el modo IFR es un complemento acotado, no un sustituto de la planificación por instrumentos.

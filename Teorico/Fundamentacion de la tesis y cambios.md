@@ -14,7 +14,7 @@ Fecha de la devolución: **agosto de 2026**.
 1. [Las tres observaciones del director](#1-las-tres-observaciones-del-director)
 2. [Observación 1 — El salto lógico en el AHP · RESUELTA](#2-observación-1--el-salto-lógico-en-el-ahp--resuelta)
 3. [Observación 2 — Confianza en el NWP sobre terreno escarpado · RESUELTA](#3-observación-2--confianza-en-el-nwp-sobre-terreno-escarpado--resuelta)
-4. [Observación 3 — Coherencia del relevamiento (telemetría EFIS) · PENDIENTE](#4-observación-3--coherencia-del-relevamiento-telemetría-efis--pendiente)
+4. [Observación 3 — Coherencia del relevamiento (telemetría EFIS) · RESUELTA](#4-observación-3--coherencia-del-relevamiento-telemetría-efis--resuelta)
 5. [Registro completo de cambios aplicados](#5-registro-completo-de-cambios-aplicados)
 6. [Pendientes abiertos](#6-pendientes-abiertos)
 
@@ -30,7 +30,7 @@ interpretabilidad nativa— y planteó tres objeciones metodológicas:
 |---|---|---|
 | **1** | En el § 3.1.4 se afirma que los juicios del AHP "se fundamentaron en la accidentología", pero no se explicita **qué operación matemática** traduce un porcentaje estadístico a un valor discreto de la escala de Saaty. Sin esa operación, el AHP es un juicio subjetivo disfrazado de rigor matemático. | ✅ **Resuelta** |
 | **2** | El NWP se integra para cubrir aeródromos sin estación, pero los modelos de grilla **suavizan la orografía**, lo que altera temperatura y punto de rocío y, por lo tanto, el LCL que fundamenta la estimación del techo de nubes. ¿Hay validación cruzada del error del NWP contra METAR en aeródromos serranos? | ✅ **Resuelta** (por diseño, no por medición — ver § 3.5) |
-| **3** | En el § 2.1 se releva la telemetría EFIS de la flota, pero el motor no la consume. Todo dato relevado debe tributar a la solución: ¿se usa en una fase posterior o es información de relleno a depurar? | ⬜ Pendiente |
+| **3** | En el § 2.1 se releva la telemetría EFIS de la flota, pero el motor no la consume. Todo dato relevado debe tributar a la solución: ¿se usa en una fase posterior o es información de relleno a depurar? | ✅ **Resuelta** |
 
 La observación 1 se atacó primero porque es la que compromete la cadena
 § 3.1.4 → § 4.2 → § 5.1 completa: si la derivación de los pesos no se sostiene, todo lo
@@ -345,47 +345,87 @@ Hallazgos técnicos que quedan registrados de esa etapa, por si se retoma:
 
 ---
 
-## 4. Observación 3 — Coherencia del relevamiento (telemetría EFIS) · PENDIENTE
+## 4. Observación 3 — Coherencia del relevamiento (telemetría EFIS) · RESUELTA
 
-### 4.1. El principio es correcto, la solución no es borrar
+### 4.1. El principio era correcto; la solución no era borrar
 
-Todo lo relevado en el § 2 debe tributar a la solución. Pero el error del texto actual no
-es *incluir* la telemetría: es **presentarla sin decir qué hace o no hace por el proyecto**.
+El director tenía razón en el principio: todo lo relevado en el capítulo 2 debe tributar a
+la solución. Pero el defecto del texto no era *incluir* la telemetría, sino **presentarla
+sin decir qué hace o qué no hace por el proyecto**.
 
 Un relevamiento organizacional inventaría lo que existe, **incluido lo que se decidió no
-usar y por qué**. Eso no es relleno: es el diagnóstico. Lo que falta es cerrar el circuito.
+usar y por qué**. Eso no es relleno: es el diagnóstico. Lo que faltaba era cerrar el
+circuito.
 
-### 4.2. Cómo hacer que tribute (tres elementos)
+### 4.2. Cómo se hizo tributar
 
-**Uso potencial real.** El `crosswind_max_kt = 12` del Alpha Trainer sale del *máximo
-demostrado* del fabricante — un valor de **certificación**, no un límite operativo, y no
-necesariamente lo que los pilotos de la escuela efectivamente manejan. Las trayectorias
-GPS más el viento de aterrizajes reales darían la **distribución de componente cruzada
-realmente volada**, que es exactamente lo que permitiría validar empíricamente ese umbral
-y calibrar `risk/personal_minima.py` por nivel de experiencia.
+Se agregó el § 2.2.5, con tres elementos:
 
-**Por qué queda fuera de la v1.0.** Requiere acuerdo de cesión de datos con el comitente,
-y los registros identifican vuelos de pilotos individuales — una consideración de
-privacidad que el § 5.3 pide explícitamente abordar.
+**Qué permitiría hacer.** El `crosswind_max_kt = 12` del Alpha Trainer es el **máximo
+demostrado** por el fabricante en certificación: la componente cruzada más alta con la que
+un piloto de pruebas aterrizó en condiciones favorables. No describe lo que un alumno
+puede manejar. Las trayectorias GPS de los EFIS, cruzadas con el viento de cada
+aterrizaje, darían la distribución empírica de la componente cruzada **efectivamente
+volada** por los pilotos de la escuela, con lo que se podría contrastar ese umbral y
+calibrar con datos los mínimos personales por experiencia — que hoy salen de criterio y no
+de medición.
 
-**Referencia cruzada al § 6.3** como trabajo futuro.
+**Por qué queda fuera de la v1.0**, en orden de peso:
 
-Con eso la telemetría deja de ser relleno y pasa a ser el **único insumo relevado con
-potencial de validación empírica** en un trabajo que hoy es todo validez de constructo.
+1. **Alcance.** Un umbral calibrado sobre cinco Alpha Trainer en un único aeródromo no es
+   generalizable a los cinco perfiles y los 561 aeródromos que el sistema cubre.
+   Incorporarlo produciría exactamente el sesgo que el proyecto se propone evitar.
+2. **Acceso al dato.** Requiere un acuerdo de cesión distinto del acta de conformidad.
+3. **Privacidad.** Los registros identifican vuelos de pilotos individuales y permiten
+   reconstruir su desempeño; exigen consentimiento informado y anonimización. Es material
+   para el § 5.3, que la consigna pide expresamente.
 
-### 4.3. Problema de estructura detectado de paso
+**Dónde queda.** Trabajo futuro (§ 6.3), con una observación que conviene retener: en un
+trabajo cuya validación es de constructo, **la telemetría es el único insumo relevado con
+capacidad de aportar validación empírica**. Es el activo más valioso que el relevamiento
+identifica, aun sin usarse en esta etapa.
 
-La numeración del capítulo 2 se separó de la estructura obligatoria del director:
+### 4.3. El problema de estructura que apareció de paso
 
-| Estructura del director | Estado actual |
+Al revisar el capítulo se detectó que su numeración se había separado de la estructura
+obligatoria del director:
+
+| Estructura del director | Estado del borrador |
 |---|---|
-| 2.1 Análisis de la Organización | 2.1.1 ✅ y 2.1.2 (mercado) |
-| **2.2 Relevamiento Tecnológico** | ❌ **no existe** — el hardware está dentro de 2.1.1 |
+| 2.1 Análisis de la Organización | 2.1.1 y 2.1.2 ✅ |
+| **2.2 Relevamiento Tecnológico** | ❌ **no existía** — el equipamiento estaba dentro de 2.1.1 |
 | 2.3 Cuadro de Diagnóstico y Propuesta | numerado **2.2.1** ❌ |
 
-Se corrige moviendo el párrafo de flota / EFIS / simuladores a un **§ 2.2** propio —que
-además pide conectividad y fuentes de datos disponibles, hoy ausentes— y renumerando el
-cuadro a **§ 2.3**.
+Además, la consigna del § 2.1 pide expresamente comprender **cómo fluye la información en
+la entidad**, y el borrador no lo trataba.
+
+El capítulo se reescribió en `Teorico/02_Relevamiento_y_Diagnostico.md` conservando
+íntegramente el contenido original y redistribuyéndolo. Se agregaron tres apartados:
+
+- **§ 2.1.3 Flujo de la información en la decisión de despacho.** Describe el circuito
+  actual y lo diagnostica en tres rasgos: no queda registro, no es homogéneo y no se
+  transmite. Es el apartado que la consigna pedía y que además provee el "antes" contra el
+  que se contrasta la propuesta.
+- **§ 2.2 Relevamiento Tecnológico** completo, con equipamiento de a bordo, equipamiento
+  en tierra, conectividad y fuentes de datos disponibles.
+- **§ 2.2.5**, el tratamiento de la telemetría descrito arriba.
+
+El cuadro de diagnóstico se renumeró a **§ 2.3** y se le agregaron dos filas nuevas
+derivadas del § 2.1.3 —la decisión no deja registro y el criterio experto no se transmite—
+de modo que cada punto débil detectado en el relevamiento tenga su propuesta enfrentada,
+que es lo que la consigna pide de esa matriz.
+
+### 4.4. Lo que falta y solo puede aportar el autor
+
+El apartado de **conectividad** quedó marcado como pendiente y es el más importante de los
+que faltan: la consigna lo pide expresamente y condiciona el modo de uso del sistema. Si
+la cobertura de datos en el aeródromo fuera deficiente, la herramienta —que es una
+aplicación web y requiere conexión— debería utilizarse antes del traslado al campo, lo que
+constituye una restricción de uso a declarar.
+
+Los demás pendientes están listados al pie del capítulo 2: estructura funcional, fuentes
+meteorológicas que hoy consultan efectivamente, marca y modelo del EFIS, y software de
+gestión existente.
 
 ---
 
@@ -419,7 +459,9 @@ Todos los cambios están en el *working tree*. **El push se hace desde GitHub De
 
 | Archivo | Cambio |
 |---|---|
-| `Teorico/03_Marco_Teorico.md` | **§ 3.1.4 pasó de un párrafo a tres subsecciones nuevas**: `3.1.4.1` protocolo de traducción (6 pasos + tabla de procedencia + convergencia), `3.1.4.2` el hallazgo de no conmensurabilidad y su relación con la barrera, `3.1.4.3` limitaciones declaradas. § 3.2.4 actualizado con el peso nuevo y remisión al § 3.1.4.2. Dos referencias nuevas en la bibliografía (AOPA 2019, JST 2021). Pendiente ⚠️ de verificación visual agregado como punto 1 de la lista. |
+| `Teorico/02_Relevamiento_y_Diagnostico.md` (nuevo) | Capítulo 2 reestructurado a la numeración obligatoria. Contenido original conservado y redistribuido. Apartados agregados: **§ 2.1.3** flujo de la información (lo pide la consigna y faltaba), **§ 2.2** Relevamiento Tecnológico completo (no existía), **§ 2.2.5** tratamiento de la telemetría EFIS. El cuadro pasó de § 2.2.1 a **§ 2.3** y se le sumaron dos filas derivadas del § 2.1.3. |
+| `Teorico/01_Formulacion_y_Fundamentacion.md` | § 1.1.3: se reemplazó la afirmación genérica de letalidad "cercana al 80 %" por los datos verificados del Nall Report (72,9 % decenal, contrastado con 1,5 % en aterrizaje) y se agregó el desglose de VFR into IMC. La referencia de AOPA pasó de página web sin fecha a publicación fechada, lo que eliminó un pendiente. § 1.3.2: se agregó la exclusión explícita de la telemetría de a bordo, para coherencia con el § 2.2.5. |
+| `Teorico/03_Marco_Teorico.md` | **§ 3.1.4 pasó de un párrafo a tres subsecciones nuevas**: `3.1.4.1` protocolo de traducción (6 pasos + tabla de procedencia + convergencia), `3.1.4.2` el hallazgo de no conmensurabilidad y su relación con la barrera, `3.1.4.3` limitaciones declaradas. § 3.2.4 actualizado con el peso nuevo y remisión al § 3.1.4.2. Dos referencias nuevas en la bibliografía (AOPA 2019, JST 2021). Verificación visual del Nall Report cerrada. **§ 3.1.7**: párrafo nuevo sobre el suavizado de la orografía y su propagación hasta el techo. **§ 3.2.5**: apartado nuevo sobre el muestreo en anillo, con las tres precisiones que lo delimitan; la regla de selección de fuente pasó a ser la tercera decisión. |
 
 ### 5.4. Verificación posterior al cambio
 
@@ -439,7 +481,26 @@ web/app.py                importa                   OK
 
 ## 6. Pendientes abiertos
 
-### 6.1. Crítico antes de la entrega
+> Las tres observaciones del director están **resueltas**. Lo que sigue son datos y
+> decisiones que solo puede aportar el autor.
+
+### 6.1. Del capítulo 2 — relevamiento en el aeroclub
+
+Ninguno requiere trabajo técnico: son datos a relevar con el comitente.
+
+1. **Conectividad en el aeródromo** (§ 2.2.3). El más importante: la consigna lo pide
+   expresamente y condiciona el modo de uso del sistema. Si la cobertura fuera
+   deficiente, la herramienta debe usarse antes del traslado al campo, y eso hay que
+   declararlo como restricción.
+2. **Estructura funcional** (§ 2.1.1): instructores, alumnos activos, pilotos con acceso
+   al alquiler libre, y quién autoriza la salida de una aeronave.
+3. **Fuentes meteorológicas actuales** (§ 2.1.3): qué consultan hoy efectivamente, y si
+   existe alguna planilla o registro previo al vuelo.
+4. **EFIS** (§ 2.2.1): marca y modelo; si la telemetría se descarga o solo se muestra.
+5. **Software de gestión** (§ 2.2.2): si existe y de qué tipo.
+
+### 6.2. Verificaciones cerradas
+
 
 ✅ **Verificación visual del Nall Report — HECHA (2026-08-27).** Se renderizaron las
 páginas 5, 6 y 17 del PDF del 28.º Nall Report y se leyeron las figuras directamente.
@@ -471,7 +532,7 @@ serie verificada da **72,9 % en la década** (rango anual 52 %-79 %). El 80 % es
 del rango, no el valor central. Conviene reemplazarlo por 72,9 % citando la figura 1.7.1,
 que es un dato exacto y verificable. **Decisión del autor: es su texto.**
 
-### 6.2. Del capítulo 3
+### 6.3. Del capítulo 3
 
 - Enmienda vigente de la RAAC Parte 91 a la fecha de entrega (compartido con el cap. 1).
 - Fecha de consulta de la página del FAA Safety Team sobre FRAT.
@@ -484,7 +545,7 @@ que es un dato exacto y verificable. **Decisión del autor: es su texto.**
 - Dos figuras sugeridas: arquitectura de tres capas del modelo de riesgo (§ 3.2.4) y
   canalización por capas (§ 3.2.5).
 
-### 6.3. Del capítulo 1
+### 6.4. Del capítulo 1
 
 - Denominación formal exacta del comitente.
 - Título del Anexo N.º 1.
@@ -494,7 +555,7 @@ que es un dato exacto y verificable. **Decisión del autor: es su texto.**
 - Dos mejoras propuestas y **no aplicadas**: citar `(ANAC, 2022, Parte 91)` en el párrafo
   de encuadre ético del § 1.3.1, y formalizar la referencia al AIP ENR 1.10 en el § 1.3.2.
 
-### 6.4. Observaciones del director aún sin resolver
+### 6.5. Observaciones del director
 
-- **Observación 3** — cierre del circuito de la telemetría EFIS y corrección de la
-  numeración del capítulo 2 (§ 4 de este documento).
+Las tres observaciones del director están resueltas. Lo que queda abierto son datos que
+solo puede aportar el autor, listados en los §§ 6.1, 6.3 y 6.4.
