@@ -299,3 +299,48 @@ def test_el_anillo_es_inocuo_cuando_el_entorno_es_homogeneo():
     siete = _evaluar_con_anillo([p() for _ in range(7)], dep)
     assert siete.r_total == pytest.approx(uno.r_total)
     assert siete.decision == uno.decision
+
+
+def test_el_anillo_ignora_la_niebla_del_valle_por_debajo_del_aerodromo():
+    """
+    Niebla de radiacion en el fondo del valle, con el aerodromo despejado en la
+    ladera. El motor NO debe tomarla: se forma por drenaje de aire frio, es una
+    capa estable y no asciende. Un aerodromo a 1138 m no se ve afectado por
+    niebla cuyo tope esta a 730.
+
+    Sin esta regla el sistema daba NO GO en La Cumbre con la pista despejada
+    (r_vis=1 y r_ceil=1 -> R=0.714), que es la falsa alarma que haria que un
+    instructor deje de usar la herramienta.
+    """
+    dep = int(time.time()) + 3600
+    campo  = _bloque_nwp(dep, nubes_bajas=0,  temp_c=18.0, dew_c=2.0,
+                         wind_dir=320, wind_kt=4.0, gust_kt=6.0, elev_m=1138.0)
+    valle  = _bloque_nwp(dep, nubes_bajas=100, temp_c=6.0, dew_c=6.0,
+                         wind_dir=320, wind_kt=4.0, gust_kt=6.0, elev_m=730.0)
+
+    solo_campo = _evaluar_con_anillo([campo], dep)
+    con_valle  = _evaluar_con_anillo([campo, valle], dep)
+
+    assert con_valle.r_total == pytest.approx(solo_campo.r_total)
+    assert con_valle.decision == solo_campo.decision == "GO"
+
+
+def test_el_anillo_si_toma_la_nubosidad_de_ladera_por_encima_del_aerodromo():
+    """
+    La contracara del test anterior: la misma masa de aire saturada, pero en un
+    cordon POR ENCIMA del campo, si debe contar. Es el aire que la aeronave
+    atraviesa al despegar.
+
+    Los dos tests juntos fijan la ASIMETRIA: el filtro por elevacion no es un
+    recorte arbitrario del muestreo sino una distincion fisica.
+    """
+    dep = int(time.time()) + 3600
+    campo  = _bloque_nwp(dep, nubes_bajas=0,   temp_c=18.0, dew_c=2.0,
+                         wind_dir=320, wind_kt=4.0, gust_kt=6.0, elev_m=1138.0)
+    ladera = _bloque_nwp(dep, nubes_bajas=100, temp_c=6.0,  dew_c=6.0,
+                         wind_dir=320, wind_kt=4.0, gust_kt=6.0, elev_m=1600.0)
+
+    solo_campo = _evaluar_con_anillo([campo], dep)
+    con_ladera = _evaluar_con_anillo([campo, ladera], dep)
+
+    assert con_ladera.r_total > solo_campo.r_total

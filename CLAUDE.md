@@ -267,9 +267,17 @@ la interfaz, no se le carga al puntaje.
 > - **Del anillo se toma la masa de aire, NO el viento.** El cruzado se define contra la
 >   PISTA y el maximo demostrado del avion; la rafaga de un cordon 400 m mas arriba no
 >   aplica. Sin esta salvedad hay NO GO por viento en dias de calma (verificado en SACC).
+> - **Solo entran los puntos a la elevacion del campo O POR ENCIMA.** La niebla de
+>   radiacion y el encharcamiento de aire frio se forman por drenaje al fondo del valle,
+>   son capas estables y NO ascienden: una niebla con tope en 900 m no afecta a un campo
+>   a 1138 m. La nubosidad de un cordon POR ENCIMA si importa (es el aire que se
+>   atraviesa al despegar). Sin este filtro, el valle de Punilla (730 m) daba r_vis=1 y
+>   r_ceil=1 -> R=0.714 -> NO GO en SACC con la pista despejada. La regla no tiene
+>   parametro que calibrar: el corte es la elevacion del aerodromo. En SACC quedan 2 de
+>   6 puntos; en llanura los descartados estan a metros y no cambian nada.
 > - **Los hard blockers se evaluan solo en el aerodromo**: son normativos y la norma se
 >   refiere al aerodromo.
-> - Fijado por 3 tests en `tests/test_engine_data.py`.
+> - Fijado por 5 tests en `tests/test_engine_data.py`.
 
 **Barrera no-compensatoria (veto conjuntivo)** — `conjunctive_floor` en `soft_scoring.py`.
 El promedio ponderado es compensatorio: un factor bueno tapa a uno malo. Eso deja

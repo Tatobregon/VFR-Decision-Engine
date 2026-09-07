@@ -279,9 +279,35 @@ class DecisionEngine:
         # porque la aeronave no va a aterrizar alli. Sin esta salvedad el
         # muestreo produce NO GO por viento en dias de calma en el aerodromo
         # (verificado en SACC: rafaga de ladera del 056 contra pista 320).
+        # Del anillo se consideran SOLO los puntos a la elevacion del aerodromo o
+        # por encima. La razon es fisica y no admite parametro que calibrar: los
+        # fenomenos que degradan la visibilidad en un punto MAS BAJO -niebla de
+        # radiacion, encharcamiento de aire frio- se forman por drenaje hacia el
+        # fondo del valle, son capas estables y NO ascienden por la ladera. Una
+        # niebla cuyo tope esta a 900 m no afecta a un aerodromo a 1138 m. En
+        # cambio la nubosidad que se apoya en un cordon POR ENCIMA del campo si
+        # importa: es el aire que la aeronave atraviesa al despegar.
+        #
+        # Sin este filtro, la niebla del fondo del valle de Punilla (730 m) daba
+        # r_vis=1 y r_ceil=1, o sea 0.714 de R, y producia NO GO en La Cumbre con
+        # la pista despejada. Es la falsa alarma que haria que un instructor deje
+        # de mirar la herramienta.
+        #
+        # Si la niebla fuera lo bastante profunda como para alcanzar al campo, el
+        # punto del aerodromo -que siempre entra- ya la reporta: no se pierde nada.
+        # Si el aerodromo es el punto mas alto del entorno no queda ningun punto
+        # del anillo y el comportamiento vuelve a ser el de la consulta simple,
+        # que es lo correcto: alli la nubosidad orografica se forma sobre el campo
+        # y el propio punto central la captura.
+        site_elev = getattr(ring[0], "elevation_m", None)
+        upslope   = [p for p in ring[1:]
+                     if site_elev is None
+                     or getattr(p, "elevation_m", None) is None
+                     or p.elevation_m >= site_elev]
+
         site_wind = {w.obs_time: w for w in window_wx}
         candidates = list(window_wx)
-        for extra in ring[1:]:
+        for extra in upslope:
             pt_wx = self._nwp_adapter.adapt_all(extra, station_id=sid)
             for w in pt_wx:
                 if not (departure_time <= w.obs_time <= window_end):
@@ -300,7 +326,8 @@ class DecisionEngine:
         worst   = max(scores, key=lambda s: s.r_total)
 
         logger.info(f"NWP {sid}: R_total={worst.r_total:.3f} [{worst.decision}] pista={rwy} "
-                    f"(peor de {len(candidates)} muestras sobre {len(ring)} puntos)")
+                    f"(peor de {len(candidates)} muestras; {len(upslope)+1} de {len(ring)} "
+                    f"puntos del anillo a la elevacion del campo o por encima)")
 
         return DecisionResult(
             station_id       = sid,
