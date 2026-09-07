@@ -344,3 +344,72 @@ def test_el_anillo_si_toma_la_nubosidad_de_ladera_por_encima_del_aerodromo():
     con_ladera = _evaluar_con_anillo([campo, ladera], dep)
 
     assert con_ladera.r_total > solo_campo.r_total
+
+
+# ── Robustez y concurrencia del motor ─────────────────────────────────────────
+
+@pytest.mark.parametrize("payload,caso", [
+    ({"latitude": -31.0, "longitude": -64.5, "elevation": 1138, "hourly": {}}, "hourly vacio"),
+    ({"latitude": -31.0, "longitude": -64.5, "elevation": 1138}, "sin clave hourly"),
+    ({"latitude": -31.0, "longitude": -64.5, "elevation": 1138,
+      "hourly": {"time": []}}, "serie de tiempo vacia"),
+])
+def test_una_respuesta_200_sin_datos_no_rompe_el_parseo(payload, caso):
+    """
+    Open-Meteo puede responder 200 con el bloque horario vacio. El fetcher debe
+    devolver un RawNWP sin horas, no lanzar: el motor traduce la ausencia de
+    datos a NO GO conservador, y una excepcion aca se convierte en HTTP 500.
+    """
+    from data.fetcher_openmeteo import OpenMeteoFetcher
+    nwp = OpenMeteoFetcher()._parse_response(payload, 12)
+    assert nwp.hours == [], caso
+
+
+def test_sin_horas_en_el_pronostico_el_veredicto_es_conservador():
+    """Un anillo cuyo punto central no trae horas se degrada a 'sin datos'."""
+    from data.fetcher_openmeteo import RawNWP
+    vacio = RawNWP(lat=-31.0, lon=-64.5, elevation_m=1138.0,
+                   fetch_time="2026-01-01T00:00:00Z", hours=[])
+    engine = DecisionEngine()
+    engine._aw.get_metar_and_taf = lambda sid: (None, None)
+    engine._nwp_fetch.get_forecast_ring = lambda **kw: [vacio]
+    res = engine.evaluate("SACC", runway_heading=320,
+                          departure_time=int(time.time()) + 3600)
+    assert res.decision == "NO GO"
+    assert not res.fetch_ok
+
+
+def test_el_motor_es_seguro_entre_hilos():
+    """
+    Los checkpoints de una ruta se evaluan en paralelo, de modo que varias
+    llamadas a evaluate() coexisten. Ninguna debe lanzar ni contaminar a otra:
+    con la misma entrada, todas deben devolver el mismo veredicto.
+    """
+    import threading
+
+    engine = DecisionEngine(mock=True)
+    dep = int(time.time()) + 3600
+    resultados, errores = [], []
+    lock = threading.Lock()
+
+    def _worker():
+        try:
+            for _ in range(20):
+                r = engine.evaluate("SACO", runway_heading=180,
+                                    departure_time=dep, flight_duration_h=1.0)
+                with lock:
+                    resultados.append((r.decision, round(r.r_total, 6)))
+        except Exception as exc:                      # pragma: no cover
+            with lock:
+                errores.append(exc)
+
+    hilos = [threading.Thread(target=_worker) for _ in range(8)]
+    for h in hilos:
+        h.start()
+    for h in hilos:
+        h.join()
+
+    assert not errores, f"el motor lanzo bajo concurrencia: {errores[:2]}"
+    assert len(resultados) == 160
+    assert len(set(resultados)) == 1, (
+        f"la misma entrada dio resultados distintos entre hilos: {set(resultados)}")

@@ -60,6 +60,43 @@ assert abs(W_VIS + W_CEIL + W_XWIND + W_GUST + W_WX + W_FOG + W_TAF - 1.0) < 1e-
     "Los pesos deben sumar 1.0"
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Parametros de FORMA de las funciones r_i
+# ──────────────────────────────────────────────────────────────────────────────
+# Los pesos w_i dicen cuanto pesa cada criterio; estos parametros dicen COMO se
+# convierte una magnitud fisica en un riesgo normalizado [0,1]. Son tan
+# determinantes como los pesos —medido: mover un solo quiebre cambia mas
+# veredictos de la bateria que perturbar los siete pesos a la vez (ver la
+# seccion de forma en risk/sensitivity.py)— asi que se declara su procedencia
+# con el mismo esquema que las comparaciones del AHP:
+#
+#   (N) NORMA  -> el valor ES una frontera de la regulacion, no una eleccion
+#   (J) JUICIO -> juicio declarado, sin anclaje normativo ni empirico
+#   (A) AERONAVE -> se deriva del perfil; no es un parametro libre del modelo
+#
+# Los limites de riesgo MAXIMO no son arbitrarios: coinciden exactamente con la
+# frontera de la categoria "IFR" de la tabla ANAC/OACI que aplica el sistema
+# (ver _compute_flight_category en parsers/metar_parser.py). Es decir, r_i = 1.0
+# ocurre justo donde la condicion deja de ser legalmente volable en VFR.
+#
+# Los limites de riesgo NULO si son juicio: expresan "holgadamente por encima
+# del minimo", y el minimo VFR es 5 km / 1000 ft. El margen adoptado es de
+# 1.6x en visibilidad y 2x en techo. No hay norma ni evidencia que fije ese
+# margen; su efecto sobre el veredicto se acota por analisis de sensibilidad.
+
+VIS_RISK_MAX_KM   = 3.0    # (N) frontera IFR de la categoria ANAC/OACI
+VIS_RISK_ZERO_KM  = 8.0    # (J) minimo VFR (5 km) con margen de 1.6x
+
+CEIL_RISK_MAX_FT  = 500    # (N) frontera IFR de la categoria ANAC/OACI
+CEIL_RISK_ZERO_FT = 2000   # (J) referencia VFR (1000 ft) con margen de 2x
+
+FOG_RISK_MAX_C    = 2.0    # (J) spread al que la condensacion se considera inminente
+FOG_RISK_ZERO_C   = 5.0    # (J) spread por encima del cual no se computa riesgo
+
+# El viento cruzado y la rafaga NO tienen parametros de forma propios: su rampa
+# va de 0 al limite publicado de la aeronave (crosswind_max_kt, gust_max_kt), de
+# modo que la escala la fija el avion y no el modelo. (A)
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Thresholds de decision — CALIBRADOS por anclaje normativo (ver risk/calibration.py)
 # ──────────────────────────────────────────────────────────────────────────────
 # Los cortes se ajustaron sobre una bateria de escenarios de referencia cuyo
@@ -97,11 +134,11 @@ def r_visibility(vis_km: Optional[float]) -> float:
     """
     if vis_km is None:
         return 0.0
-    if vis_km <= 3.0:
+    if vis_km <= VIS_RISK_MAX_KM:
         return 1.0
-    if vis_km >= 8.0:
+    if vis_km >= VIS_RISK_ZERO_KM:
         return 0.0
-    return 1.0 - (vis_km - 3.0) / (8.0 - 3.0)
+    return 1.0 - (vis_km - VIS_RISK_MAX_KM) / (VIS_RISK_ZERO_KM - VIS_RISK_MAX_KM)
 
 
 def r_ceiling(ceil_ft: Optional[int]) -> float:
@@ -120,11 +157,11 @@ def r_ceiling(ceil_ft: Optional[int]) -> float:
     """
     if ceil_ft is None:
         return 0.0
-    if ceil_ft <= 500:
+    if ceil_ft <= CEIL_RISK_MAX_FT:
         return 1.0
-    if ceil_ft >= 2000:
+    if ceil_ft >= CEIL_RISK_ZERO_FT:
         return 0.0
-    return 1.0 - (ceil_ft - 500) / (2000 - 500)
+    return 1.0 - (ceil_ft - CEIL_RISK_MAX_FT) / (CEIL_RISK_ZERO_FT - CEIL_RISK_MAX_FT)
 
 
 def r_crosswind(xw_kt: float, xw_max_kt: float) -> float:
@@ -186,6 +223,16 @@ def r_wx_codes(wx_codes: list) -> float:
 
 def r_fog(spread_c: Optional[float]) -> float:
     """
+    NO SE USA EN TIEMPO DE EJECUCION. La rampa de niebla que aplica el motor
+    esta en features/fog_risk.py (SPREAD_HIGH_RISK_C / SPREAD_LOW_RISK_C), donde
+    ademas se combina con los tokens wx: r_fog = max(r_spread, r_wx). Esta
+    version cubre solo la componente de spread y se conserva por simetria con el
+    resto de las r_i y para el self-test del modulo.
+
+    ATENCION al mantener: modificar los valores de aca NO cambia el
+    comportamiento del sistema. Los dos juegos de constantes coinciden hoy
+    (2 C y 5 C); si se los toca, hay que tocarlos en features/fog_risk.py.
+
     Score de riesgo por niebla basado en el spread termico (T - Td).
 
     Rampa lineal:
@@ -200,11 +247,11 @@ def r_fog(spread_c: Optional[float]) -> float:
     """
     if spread_c is None:
         return 0.0
-    if spread_c <= 2.0:
+    if spread_c <= FOG_RISK_MAX_C:
         return 1.0
-    if spread_c >= 5.0:
+    if spread_c >= FOG_RISK_ZERO_C:
         return 0.0
-    return 1.0 - (spread_c - 2.0) / (5.0 - 2.0)
+    return 1.0 - (spread_c - FOG_RISK_MAX_C) / (FOG_RISK_ZERO_C - FOG_RISK_MAX_C)
 
 
 def apply_decision_threshold(r_total: float) -> str:
@@ -231,6 +278,27 @@ def apply_decision_threshold(r_total: float) -> str:
 # Tabla de severidad de fenomenos wx
 # ──────────────────────────────────────────────────────────────────────────────
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Severidad de los fenomenos meteorologicos
+# ──────────────────────────────────────────────────────────────────────────────
+# PROCEDENCIA, con el mismo esquema que el resto del modelo:
+#
+#   (N) Los valores 1.00 corresponden UNO A UNO a los tokens de
+#       risk/hard_blockers.HARD_BLOCKER_TOKENS. No son una eleccion: son la
+#       lista normativa de fenomenos incompatibles con el vuelo visual. En la
+#       practica nunca se evaluan aca, porque la capa categorica los intercepta
+#       antes; figuran para que la tabla sea consistente si se la usa aislada.
+#
+#   (N) El ORDEN dentro de cada familia sigue el prefijo de intensidad del
+#       codigo METAR ("-" ligera, sin prefijo moderada, "+" fuerte), que es
+#       codificacion normativa OACI y no criterio del autor.
+#
+#   (J) Los VALORES numericos concretos son juicio declarado. No existe
+#       accidentologia que asigne un incremento de riesgo a "llovizna moderada".
+#       Su efecto esta acotado por dos vias: el peso del criterio es el
+#       anteultimo del modelo (0.044, de modo que la tabla entera puede mover
+#       como maximo 0.044 el puntaje) y los fenomenos realmente peligrosos no
+#       pasan por aca sino por la capa categorica.
 _WX_SEVERITY = {
     # Hard blockers: siempre 1.0 (deben ser atrapados antes por hard_blockers.py)
     "TS"    : 1.00,

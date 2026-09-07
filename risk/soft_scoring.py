@@ -91,6 +91,23 @@ def _worst_verdict(a: str, b: str) -> str:
     return a if _VERDICT_RANK[a] >= _VERDICT_RANK[b] else b
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Parametro de la barrera no-compensatoria
+# ──────────────────────────────────────────────────────────────────────────────
+# Fraccion del limite de la aeronave a partir de la cual el factor impone piso
+# de CAUTION (por encima del limite el piso es NO GO).
+#
+# PROCEDENCIA: (J) JUICIO DECLARADO. No se deriva de norma ni de evidencia.
+# La regulacion no fija escalones intermedios de viento cruzado, y la
+# accidentologia disponible no distingue el cruzado subumbral. Expresa el
+# criterio de que la mitad del maximo demostrado del avion es el punto a partir
+# del cual la maniobra deja de ser rutinaria para un piloto de aviacion general.
+#
+# A diferencia de un peso, este valor es una FRONTERA DE DECISION: moverlo
+# cambia veredictos de manera discreta. Por eso su efecto se mide explicitamente
+# en risk/sensitivity.py, seccion [5], y no se lo da por robusto sin medirlo.
+CAUTION_FRACTION = 0.5
+
 def conjunctive_floor(
     xw_eff_kt   : float,           # cruzado efectivo (con rafaga si la hay)
     xw_limit_kt : float,           # limite de cruzado del avion (ya ajustado por minimos)
@@ -105,9 +122,9 @@ def conjunctive_floor(
 
     Reglas (relativas a los limites de CADA aeronave — escalable):
       - Cruzado efectivo >= limite del avion            -> NO GO
-      - Cruzado efectivo >= 50% del limite              -> CAUTION
+      - Cruzado efectivo >= CAUTION_FRACTION del limite  -> CAUTION
       - Delta de rafaga  >= gust_max del avion          -> NO GO
-      - Delta de rafaga  >= 50% del gust_max            -> CAUTION
+      - Delta de rafaga  >= CAUTION_FRACTION del gust_max -> CAUTION
       - Niebla probable (r_fog >= 0.9, spread bajo)     -> CAUTION
       - Deterioro pronosticado en TAF (r_taf >= 0.6)    -> CAUTION
     """
@@ -120,10 +137,11 @@ def conjunctive_floor(
             floor = _worst_verdict(floor, "NO GO")
             reasons.append(
                 f"viento cruzado {xw_eff_kt:.0f} kt supera el limite del avion ({xw_limit_kt:.0f} kt)")
-        elif xw_eff_kt >= 0.5 * xw_limit_kt:
+        elif xw_eff_kt >= CAUTION_FRACTION * xw_limit_kt:
             floor = _worst_verdict(floor, "CAUTION")
             reasons.append(
-                f"viento cruzado {xw_eff_kt:.0f} kt (>=50% del limite de {xw_limit_kt:.0f} kt)")
+                f"viento cruzado {xw_eff_kt:.0f} kt "
+                f"(>={CAUTION_FRACTION:.0%} del limite de {xw_limit_kt:.0f} kt)")
 
     # ── Rafagas (variabilidad del viento) ─────────────────────────────────────
     if gust_kt is not None and spd_kt is not None and gust_max_kt > 0:
@@ -131,9 +149,10 @@ def conjunctive_floor(
         if delta >= gust_max_kt:
             floor = _worst_verdict(floor, "NO GO")
             reasons.append(f"rafaga +{delta:.0f} kt supera el maximo del avion ({gust_max_kt:.0f} kt)")
-        elif delta >= 0.5 * gust_max_kt:
+        elif delta >= CAUTION_FRACTION * gust_max_kt:
             floor = _worst_verdict(floor, "CAUTION")
-            reasons.append(f"rafaga +{delta:.0f} kt (>=50% del maximo de {gust_max_kt:.0f} kt)")
+            reasons.append(f"rafaga +{delta:.0f} kt "
+                           f"(>={CAUTION_FRACTION:.0%} del maximo de {gust_max_kt:.0f} kt)")
 
     # ── Niebla probable (indicador adelantado: puede pasar a IMC rapido) ──────
     if r_fog >= 0.9:

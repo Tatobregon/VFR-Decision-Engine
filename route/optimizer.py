@@ -429,7 +429,9 @@ def _filter_restricted_edges(graph: "RouteGraph", airports: Dict) -> "RouteGraph
 
         new_edges[orig_code] = filtered
 
-    return RouteGraph(nodes=graph.nodes, edges=new_edges, r_map=graph.r_map, mode=graph.mode)
+    # max_gs_kt se propaga: la heuristica de A* lo necesita para ser admisible
+    return RouteGraph(nodes=graph.nodes, edges=new_edges, r_map=graph.r_map,
+                      mode=graph.mode, max_gs_kt=graph.max_gs_kt)
 
 
 # ────────────────────────────────────────────────────────────────────────────

@@ -53,11 +53,16 @@ class RouteGraph:
     edges   : {codigo_origen: [EdgeInfo, ...]}
     r_map   : {codigo: r_total} — riesgo meteorologico por aerodromo (modo safest)
     mode    : "shortest" | "fastest" | "safest"
+    max_gs_kt : cota SUPERIOR de la velocidad de tierra alcanzable en este grafo
+                (crucero de la aeronave + viento). La necesita la heuristica de
+                A* en modo "fastest" para ser admisible: el tiempo restante nunca
+                puede ser menor que distancia / max_gs_kt. Ver route/astar.py.
     """
     nodes  : Dict[str, AirportInfo]
     edges  : Dict[str, List[EdgeInfo]]
     r_map  : Dict[str, float]
     mode   : str
+    max_gs_kt : float = CRUISE_KT
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -147,12 +152,23 @@ def build_graph(
             edges[orig_code].append(EdgeInfo(
                 origin      = orig_code,
                 dest        = dest_code,
-                distance_km = round(dist, 2),
-                bearing_deg = round(brng, 1),
-                weight      = round(weight, 6),
+                distance_km = round(dist, 2),   # presentacion
+                bearing_deg = round(brng, 1),   # presentacion
+                # El peso NO se redondea: la admisibilidad de la heuristica de A*
+                # es una desigualdad entre el peso y la distancia directa, y
+                # redondear el peso hacia abajo la puede violar. El error es de
+                # ~1e-7 km, irrelevante en magnitud pero suficiente para romper
+                # la garantia formal de optimalidad.
+                weight      = weight,
             ))
 
-    return RouteGraph(nodes=nodes, edges=edges, r_map=r, mode=mode)
+    # Cota superior de velocidad de tierra: crucero mas el viento (caso de cola
+    # pura). La heuristica de A* divide por este valor para no sobrestimar nunca
+    # el tiempo restante. Sin esto la heuristica deja de ser admisible y A* puede
+    # devolver una ruta subóptima.
+    max_gs = cruise_kt + (wind_spd_kt or 0.0)
+
+    return RouteGraph(nodes=nodes, edges=edges, r_map=r, mode=mode, max_gs_kt=max_gs)
 
 
 def get_edge(graph: RouteGraph, origin: str, dest: str) -> Optional[EdgeInfo]:

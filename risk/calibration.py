@@ -212,6 +212,40 @@ if __name__ == "__main__":
         print("    (ninguno — concordancia total)")
 
     print("\n" + "=" * 84)
+    # ── Alcance de la calibracion: minimos personales ─────────────────────────
+    # Los umbrales se calibran SIN minimos personales, porque la etiqueta de
+    # referencia es normativa y los minimos son una preferencia del piloto. Pero
+    # el motor SI los aplica cuando el piloto declara su nivel, de modo que
+    # corresponde verificar hacia que lado se aparta el sistema y declarar para
+    # que configuracion vale la cifra de concordancia que se reporta arriba.
+    from risk.personal_minima import LEVELS, LEVEL_NAMES
+    from risk.scenarios import evaluate_battery as _bat, system_verdict as _sv
+
+    print("\n  ALCANCE DE LA CALIBRACION - concordancia por nivel de experiencia")
+    print(f"    {'nivel':<14}{'concordancia':>16}{'sub-avisos':>13}{'sobre-avisos':>15}")
+    print("    " + "-" * 58)
+    for nombre in ["(sin minimos)"] + LEVEL_NAMES:
+        pm = None if nombre.startswith("(") else LEVELS[nombre]
+        rows_pm = _bat(personal_minima=pm)
+        ok = sub = over = 0
+        for sc_pm, comp_pm, label_pm in rows_pm:
+            v = _sv(sc_pm, comp_pm, comp_pm.r_total, THRESHOLD_GO, THRESHOLD_CAUTION)
+            if v == label_pm:
+                ok += 1
+            elif _RANK[v] < _RANK[label_pm]:
+                sub += 1
+            else:
+                over += 1
+        n_pm = len(rows_pm)
+        cifra = f"{ok}/{n_pm} ({100*ok/n_pm:.0f}%)"
+        print(f"    {nombre:<14}{cifra:>16}{sub:>13}{over:>15}")
+
+    print("\n    La concordancia reportada arriba corresponde a la fila SIN MINIMOS.")
+    print("    Con minimos activados el sistema se aparta de la referencia normativa")
+    print("    A PROPOSITO y hacia el lado conservador: los sub-avisos no aumentan y")
+    print("    los sobre-avisos si. No es una degradacion del modelo sino el efecto")
+    print("    buscado de endurecer los minimos segun la experiencia del piloto.")
+
     print("  Nota: los umbrales son validez de CONSTRUCTO (reproducen la normativa),")
     print("  no validez empirica. La calibracion con juicio de pilotos sobre casos")
     print("  reales queda como trabajo futuro (ver documento).")

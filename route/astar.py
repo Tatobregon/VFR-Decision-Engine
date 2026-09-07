@@ -51,11 +51,26 @@ def _heuristic(node: str, goal: str, graph: RouteGraph) -> float:
     """
     Heuristica admisible para A*.
 
-    En todos los modos usa la distancia en linea recta al destino,
-    normalizada al mismo espacio que los pesos del grafo:
-      shortest : distancia_km (h <= costo real)
-      fastest  : distancia_km / cruise_kt (h <= tiempo real con cualquier viento)
-      safest   : distancia_km * 1.0 (h <= distancia * (1+r) con r>=0)
+    En todos los modos usa la distancia en linea recta al destino, normalizada al
+    mismo espacio que los pesos del grafo:
+
+      shortest : distancia_km               (h <= costo real: el peso ES la distancia)
+      safest   : distancia_km               (h <= distancia * (1+r), con r >= 0)
+      fastest  : distancia_km / max_gs_kt   (h <= tiempo real)
+
+    En "fastest" el peso de arista es distancia / velocidad_de_tierra, de modo que
+    la heuristica solo es admisible si divide por una COTA SUPERIOR de la velocidad
+    de tierra alcanzable. Esa cota la calcula el grafo como crucero + viento, y
+    depende por lo tanto de la aeronave seleccionada.
+
+    Este punto tuvo un defecto: la heuristica dividia por la constante de modulo
+    CRUISE_KT (97 kt, el Pipistrel Alpha Trainer) en lugar de por la velocidad de
+    la aeronave en uso. Para los perfiles mas rapidos —PA-28 108 kt, C172 110 kt,
+    DA40 130 kt— eso SOBRESTIMABA el costo restante, con lo que la heuristica
+    dejaba de ser admisible y A* podia devolver una ruta subóptima. Ademas ataba
+    la capa de ruta a una aeronave concreta, en contra de la regla de alcance del
+    proyecto. Tampoco acotaba el viento de cola, que puede llevar la velocidad de
+    tierra por encima del crucero incluso para el Alpha.
     """
     n_info = graph.nodes.get(node)
     g_info = graph.nodes.get(goal)
@@ -65,7 +80,8 @@ def _heuristic(node: str, goal: str, graph: RouteGraph) -> float:
     dist = haversine_km(n_info.lat, n_info.lon, g_info.lat, g_info.lon)
 
     if graph.mode == "fastest":
-        return dist / CRUISE_KT   # bound inferior (sin viento de cola maxima)
+        max_gs = getattr(graph, "max_gs_kt", None) or CRUISE_KT
+        return dist / max_gs      # cota inferior del tiempo restante
     else:
         return dist               # shortest y safest: h = distancia directa
 

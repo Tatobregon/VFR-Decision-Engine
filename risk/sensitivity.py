@@ -34,7 +34,12 @@ try:
         evaluate_battery, default_weights, WEIGHT_KEYS,
         recombine, system_verdict,
     )
-    from risk.weights import THRESHOLD_GO, THRESHOLD_CAUTION
+    from risk.weights import (
+        THRESHOLD_GO, THRESHOLD_CAUTION,
+        VIS_RISK_MAX_KM  as W_VIS_LO,
+        CEIL_RISK_MAX_FT as W_CEIL_LO,
+        FOG_RISK_MAX_C   as W_FOG_LO,
+    )
 except ImportError:
     import sys as _sys, os as _os
     _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
@@ -42,7 +47,12 @@ except ImportError:
         evaluate_battery, default_weights, WEIGHT_KEYS,
         recombine, system_verdict,
     )
-    from risk.weights import THRESHOLD_GO, THRESHOLD_CAUTION
+    from risk.weights import (
+        THRESHOLD_GO, THRESHOLD_CAUTION,
+        VIS_RISK_MAX_KM  as W_VIS_LO,
+        CEIL_RISK_MAX_FT as W_CEIL_LO,
+        FOG_RISK_MAX_C   as W_FOG_LO,
+    )
 
 
 _LABELS = {
@@ -166,6 +176,118 @@ def threshold_sensitivity(battery, base_w, base_v, delta=0.05):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# 4. Sensibilidad de los PARAMETROS DE FORMA de las funciones r_i
+# ──────────────────────────────────────────────────────────────────────────────
+# Por que existe esta seccion. Los apartados anteriores perturban los PESOS, que
+# es lo que el AHP deriva. Pero un modelo del tipo R = sum(w_i * r_i) tiene dos
+# familias de parametros: los pesos y la FORMA de cada r_i. Analizar solo los
+# primeros deja fuera la mitad del modelo, y —como muestra esta seccion— la
+# mitad mas influyente: mover un unico punto de quiebre cambia mas veredictos
+# que perturbar los siete pesos simultaneamente.
+#
+# El hallazgo no invalida el modelo: los limites de riesgo MAXIMO son fronteras
+# normativas (no hay eleccion que perturbar) y los de riesgo NULO son juicio
+# declarado, cuyo efecto queda acotado aqui. Lo que si invalida es cualquier
+# afirmacion de robustez basada unicamente en la sensibilidad de los pesos.
+
+def _ramp(lo: float, hi: float):
+    """Rampa lineal descendente: 1.0 en <=lo, 0.0 en >=hi."""
+    def f(x):
+        if x is None:
+            return 0.0
+        if x <= lo:
+            return 1.0
+        if x >= hi:
+            return 0.0
+        return 1.0 - (x - lo) / (hi - lo)
+    return f
+
+
+# Variantes a probar. Se perturba SOLO el extremo de riesgo nulo, que es el
+# parametro de juicio; el de riesgo maximo es la frontera IFR de la norma.
+#
+# La niebla se perturba sobre features/fog_risk.py y NO sobre weights.r_fog: la
+# rampa que el motor aplica es la de ese modulo (weights.r_fog no participa del
+# tiempo de ejecucion).
+_SHAPE_VARIANTS = [
+    ("visibility", "vis  8 -> 10 km  (margen 2.0x)",       10.0),
+    ("visibility", "vis  8 ->  6 km  (margen 1.2x)",        6.0),
+    ("ceiling",    "techo 2000 -> 3000 ft (margen 3x)",    3000),
+    ("ceiling",    "techo 2000 -> 1500 ft (margen 1.5x)",  1500),
+    ("fog",        "spread  5 ->  7 C",                     7.0),
+    ("fog",        "spread  5 ->  4 C",                     4.0),
+]
+
+
+def shape_analysis(battery, base_w, base_v):
+    """
+    Perturba un parametro de forma por vez y mide cambios de veredicto y de R.
+
+    Devuelve [{label, flips, mean_dr, max_dr}, ...].
+    """
+    import risk.soft_scoring as SS
+    import features.fog_risk as FR
+
+    orig_vis, orig_ceil = SS.r_visibility, SS.r_ceiling
+    orig_fog_hi = FR.SPREAD_LOW_RISK_C
+    out = []
+    try:
+        for criterio, label, hi in _SHAPE_VARIANTS:
+            if criterio == "visibility":
+                SS.r_visibility = _ramp(W_VIS_LO, hi)
+            elif criterio == "ceiling":
+                SS.r_ceiling = _ramp(W_CEIL_LO, hi)
+            else:
+                FR.SPREAD_LOW_RISK_C = hi
+
+            nueva_bat = evaluate_battery()
+            v = _verdicts(nueva_bat, base_w, THRESHOLD_GO, THRESHOLD_CAUTION)
+
+            SS.r_visibility, SS.r_ceiling = orig_vis, orig_ceil
+            FR.SPREAD_LOW_RISK_C = orig_fog_hi
+
+            flips = sum(1 for a, b in zip(v, base_v) if a != b)
+            drs = [abs(recombine(c_new, base_w) - recombine(c_old, base_w))
+                   for (_, c_new, _), (_, c_old, _) in zip(nueva_bat, battery)]
+            out.append({
+                "label":   label,
+                "flips":   flips,
+                "mean_dr": sum(drs) / len(drs) if drs else 0.0,
+                "max_dr":  max(drs) if drs else 0.0,
+            })
+    finally:
+        SS.r_visibility, SS.r_ceiling = orig_vis, orig_ceil
+        FR.SPREAD_LOW_RISK_C = orig_fog_hi
+    return out
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 5. Sensibilidad de la FRACCION DE CAUTION de la barrera no-compensatoria
+# ──────────────────────────────────────────────────────────────────────────────
+# El piso conjuntivo eleva a CAUTION cuando un factor alcanza CAUTION_FRACTION
+# del limite de la aeronave. Ese 0.5 es juicio declarado (ver soft_scoring.py) y,
+# a diferencia de un peso, es una FRONTERA DE DECISION: no desplaza el puntaje
+# de manera continua sino que cambia veredictos de golpe. Corresponde medirlo.
+
+def barrier_sensitivity(battery, base_w, base_v, fracciones=(0.35, 0.40, 0.60, 0.65)):
+    """Cambia CAUTION_FRACTION y mide cuantos veredictos se mueven."""
+    import risk.soft_scoring as SS
+
+    original = SS.CAUTION_FRACTION
+    out = []
+    try:
+        for f in fracciones:
+            SS.CAUTION_FRACTION = f
+            v = _verdicts(evaluate_battery(), base_w, THRESHOLD_GO, THRESHOLD_CAUTION)
+            SS.CAUTION_FRACTION = original
+            flips = sum(1 for a, b in zip(v, base_v) if a != b)
+            out.append({"frac": f, "flips": flips})
+    finally:
+        SS.CAUTION_FRACTION = original
+    return out
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Reporte
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -225,6 +347,31 @@ if __name__ == "__main__":
     for name, flips in threshold_sensitivity(battery, base_w, base_v):
         print(f"      {name:<16} -> {flips} cambios de veredicto sobre {n}")
 
+    # ── 4. Parametros de forma de las r_i ─────────────────────────────────────
+    print("\n  [4] PARAMETROS DE FORMA  (extremo de riesgo nulo de cada rampa)")
+    print(f"      {'variante':<38}{'flips':>8}{'|dR| medio':>13}{'|dR| max':>11}")
+    print(f"      {'-'*37:<38}{'-'*7:>8}{'-'*12:>13}{'-'*10:>11}")
+    sh = shape_analysis(battery, base_w, base_v)
+    for row in sh:
+        print(f"      {row['label']:<38}{row['flips']:>4}/{n:<3}"
+              f"{row['mean_dr']:>13.4f}{row['max_dr']:>11.4f}")
+    peor = max(sh, key=lambda r: r["flips"])
+    print(f"\n      Peor caso: {peor['flips']}/{n} = {100*peor['flips']/n:.1f}% de los "
+          f"escenarios cambian de veredicto")
+    print(f"      Comparacion: perturbar los 7 pesos a la vez (+/-20%, OAT) cambia "
+          f"{100*total_oat_flips/(14*n):.1f}%")
+    print("      -> los parametros de forma son MAS influyentes que los pesos.")
+    print("         Los extremos de riesgo maximo (3 km / 500 ft) no se perturban:")
+    print("         son la frontera IFR de la norma, no una eleccion del modelo.")
+
+    # ── 5. Fraccion de CAUTION de la barrera ──────────────────────────────────
+    print("\n  [5] BARRERA NO-COMPENSATORIA  (fraccion de CAUTION, base 0.50)")
+    print(f"      {'fraccion':<12}{'flips':>10}")
+    print(f"      {'-'*11:<12}{'-'*9:>10}")
+    for row in barrier_sensitivity(battery, base_w, base_v):
+        print(f"      {row['frac']:<12.2f}{row['flips']:>4}/{n:<5}")
+    print("      El 0.50 es juicio declarado; esta tabla acota cuanto depende de el.")
+
     # ── Conclusion cuantitativa ───────────────────────────────────────────────
     print("\n" + "-" * 82)
     print("  LECTURA:")
@@ -233,4 +380,16 @@ if __name__ == "__main__":
     print(f"  - Los flips se concentran en la zona gradual (visibilidad/techo), en escenarios\n"
           f"    cuyo R cae muy cerca de un umbral. El sistema es robusto: los pesos exactos\n"
           f"    del AHP no son criticos para el veredicto.")
+    print("  - Los PARAMETROS DE FORMA pesan mas que los pesos: mover un solo punto")
+    print("    de quiebre mueve mas veredictos que perturbar los siete pesos a la vez.")
+    print("    Es el resultado mas importante de este analisis: acota donde hay que")
+    print("    poner el esfuerzo de justificacion. Lo atenua que los quiebres de riesgo")
+    print("    MAXIMO sean frontera normativa y no eleccion del modelo; lo que queda")
+    print("    como juicio son los extremos de riesgo nulo, medidos arriba.")
+    print("  - La fraccion de CAUTION de la barrera (0.50) es robusta: moverla entre")
+    print("    0.35 y 0.65 cambia a lo sumo un veredicto de la bateria.")
+    print("  - ALCANCE: todo esto vale para la configuracion SIN minimos personales.")
+    print("    Con minimos activados el sistema se aparta a proposito de la referencia")
+    print("    normativa; risk/calibration.py reporta la concordancia de cada nivel y")
+    print("    verifica que en ninguno de ellos aparecen sub-avisos.")
     print("=" * 82)

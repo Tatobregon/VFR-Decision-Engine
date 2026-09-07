@@ -192,10 +192,19 @@ def normative_label(sc: Scenario) -> str:
 # Scoring y recombinacion con pesos/umbrales arbitrarios
 # ──────────────────────────────────────────────────────────────────────────────
 
-def score_components(sc: Scenario) -> SoftScoreResult:
-    """Corre el motor de scoring real y devuelve el desglose por componente."""
+def score_components(sc: Scenario, personal_minima=None) -> SoftScoreResult:
+    """
+    Corre el motor de scoring real y devuelve el desglose por componente.
+
+    `personal_minima` permite reproducir la bateria bajo los minimos personales
+    de cada nivel de experiencia. Por defecto None (sin ajuste), que es la
+    configuracion con la que se calibraron los umbrales: la etiqueta normativa
+    de referencia es la de la regulacion y los limites de la aeronave, no la de
+    un piloto concreto.
+    """
     prof = get_profile(sc.aircraft)
-    return compute_soft_score(build_weather(sc), sc.runway_heading, prof, taf_r_taf=sc.r_taf)
+    return compute_soft_score(build_weather(sc), sc.runway_heading, prof,
+                              taf_r_taf=sc.r_taf, personal_minima=personal_minima)
 
 
 def recombine(comp: SoftScoreResult, weights: Dict[str, float]) -> float:
@@ -401,11 +410,11 @@ REFERENCE_SCENARIOS: List[Scenario] = [
 # Utilidades de evaluacion de la bateria
 # ──────────────────────────────────────────────────────────────────────────────
 
-def evaluate_battery() -> List[Tuple[Scenario, SoftScoreResult, str]]:
+def evaluate_battery(personal_minima=None) -> List[Tuple[Scenario, SoftScoreResult, str]]:
     """Devuelve [(escenario, componentes, etiqueta_normativa), ...] para toda la bateria."""
     out = []
     for sc in REFERENCE_SCENARIOS:
-        comp = score_components(sc)
+        comp = score_components(sc, personal_minima=personal_minima)
         label = normative_label(sc)
         out.append((sc, comp, label))
     return out
