@@ -275,10 +275,21 @@ suma ponderada.
 
 Y es exactamente lo que hace la arquitectura descrita en el § 3.2.4: el viento cruzado se
 trata en la barrera no compensatoria, que impone un piso de veredicto cuando supera los
-límites de la aeronave. Su peso en el puntaje —0,099— carga únicamente su contribución
-residual dentro de la banda admisible; la barrera carga el resto. La justificación de esa
-capa, que en el diseño original era conceptual, queda así respaldada cuantitativamente
-por el propio procedimiento de ponderación.
+límites de la aeronave. Su peso en el puntaje —0,099— gobierna únicamente el tramo
+gradual por debajo de ese límite; la barrera carga el resto. La justificación de esa capa,
+que en el diseño original era conceptual, queda así respaldada cuantitativamente por el
+propio procedimiento de ponderación.
+
+Corresponde ser preciso sobre el alcance de esa cifra. El cociente de índices **ordena los
+grupos entre sí**; no cuantifica la contribución del factor dentro de la banda admisible,
+magnitud para la cual no existe evidencia disponible: la accidentología registra
+desenlaces, no incrementos marginales de riesgo en condiciones subumbrales. Que esa
+imprecisión no comprometa el resultado no es una suposición sino una medición. El análisis
+de sensibilidad (§ 5.1) muestra que el veredicto permanece estable ante perturbaciones de
+±20 % aplicadas simultáneamente a los siete pesos, y la validación convergente reportada
+en el § 3.1.4.1 muestra que una ponderación con el viento cruzado en 0,179 y otra con el
+mismo factor en 0,099 producen veredictos idénticos en la totalidad de la batería. El
+valor exacto del peso no es, demostrablemente, lo que decide.
 
 ### 3.1.4.3. Limitaciones declaradas de la evidencia utilizada
 
@@ -306,8 +317,20 @@ La tercera es de **alcance del índice**. El índice mide el daño agregado que 
 de peligros produce en la población de accidentes, no la capacidad discriminante del
 criterio en un vuelo concreto. Se adopta como operacionalización de la importancia
 relativa —es la que emplea la propia normativa de gestión de seguridad operacional— pero
-la equivalencia entre ambas magnitudes es un supuesto del modelo, no un hecho
-demostrado.
+la equivalencia entre ambas magnitudes es un supuesto del modelo, no un hecho demostrado.
+
+A ello se añade una **asimetría en la exposición** que conviene nombrar con precisión,
+porque afecta la interpretación de cualquier cociente construido sobre frecuencias
+observadas. La frecuencia de accidentes no es independiente de la mitigación que ya opera
+sobre cada factor: el viento fuerte es perceptible desde tierra y conduce con frecuencia a
+la cancelación previa, mientras que el deterioro del techo de nubes es insidioso y
+sorprende al piloto en vuelo. Las categorías comparadas no están, por lo tanto,
+igualmente expuestas, y las tasas resultantes no miden únicamente la peligrosidad
+intrínseca de cada factor sino también la eficacia de las barreras que hoy actúan sobre
+él. Un factor podría registrar pocas víctimas precisamente porque el sistema
+socio-técnico ya lo controla bien, y no porque sea inocuo. El índice hereda esa condición;
+se lo adopta con ella declarada y su efecto sobre el veredicto queda acotado por el
+análisis de sensibilidad.
 
 ### 3.1.5. Decisión bajo incertidumbre y costo asimétrico del error
 
@@ -713,7 +736,7 @@ la organización comitente, situado a 1138 metros, el anillo abarca elevaciones 
 1629 metros: casi novecientos metros de desnivel que la consulta a un único punto promedia
 y pierde.
 
-Tres precisiones delimitan el alcance del mecanismo, y las tres importan.
+Cuatro precisiones delimitan el alcance del mecanismo, y las cuatro importan.
 
 La primera es que **es un tratamiento de la incertidumbre, no una penalización**. No se
 suma un término correctivo al puntaje ni se castiga al aeródromo por estar en la sierra:
@@ -722,8 +745,8 @@ La distinción es sustantiva porque una versión anterior del sistema incluía e
 una penalización orográfica fija, que fue eliminada por estar atada a un único aeródromo
 y ser, por lo tanto, un parámetro arbitrario sin validez nacional.
 
-La segunda es que **el mecanismo es autorregulado por el terreno**. En llanura los siete
-puntos caen sobre la misma masa de aire, la peor condición coincide con la del punto
+La segunda es que **el mecanismo es autorregulado por el terreno**. En llanura los puntos
+del anillo caen sobre la misma masa de aire, la peor condición coincide con la del punto
 central y el resultado es idéntico al de la consulta simple: el muestreo no actúa donde no
 hace falta. Esto satisface la exigencia de que ninguna solución quede atada a un aeródromo
 particular, dado que la intensidad del efecto la determina el relieve y no el identificador
@@ -741,7 +764,35 @@ misma razón, las reglas de rechazo categórico del § 3.2.4 se evalúan únicam
 aeródromo: son la traducción de una norma que se refiere al aeródromo, y extenderla a un
 punto distante sería inventar una regla que la regulación no contiene.
 
-La tercera decisión relevante es la **regla de selección de fuente**: si el aeródromo
+La cuarta es que **del anillo se consideran únicamente los puntos situados a la elevación
+del aeródromo o por encima de ella**. La distinción es física y no admite parámetro que
+calibrar, dado que el corte lo fija la elevación del propio campo. Los fenómenos que
+degradan la visibilidad en un punto más bajo —niebla de radiación, encharcamiento de aire
+frío— se forman por drenaje hacia el fondo del valle, constituyen capas estables y no
+ascienden por la ladera: una niebla cuyo tope se sitúa en novecientos metros no afecta a
+un aeródromo emplazado a mil ciento treinta y ocho. La nubosidad que se apoya en un cordón
+por encima del campo, en cambio, sí es relevante, porque ocupa el aire que la aeronave
+atraviesa al despegar.
+
+La consecuencia de omitir esta restricción es concreta y se verificó: el fondo del valle
+de Punilla, cuatrocientos metros por debajo de la pista del aeródromo de la organización
+comitente, producía un veredicto negativo en jornadas despejadas en el campo. Una
+herramienta de seguridad que emite alarmas manifiestamente falsas deja de ser consultada,
+de modo que el error no es meramente estadístico sino que compromete la finalidad del
+instrumento.
+
+Conviene señalar lo que esta cuarta precisión implica sobre las tres anteriores: **el peor
+caso simétrico es incorrecto**. Tratar por igual lo que ocurre por encima y por debajo del
+aeródromo supone que la incertidumbre del modelo es isótropa, y no lo es. La física de la
+niebla de valle es direccional, y el muestreo debe serlo también. Si la capa fuera lo
+bastante profunda como para alcanzar al campo, el punto del aeródromo —que siempre
+integra el conjunto— ya la reportaría, de modo que no se pierde información; y si el
+aeródromo fuese el punto más alto de su entorno, no quedaría ningún punto del anillo y el
+comportamiento revertiría al de la consulta simple, que es lo correcto, porque allí la
+nubosidad orográfica se forma sobre el propio campo.
+
+La tercera decisión de diseño de esta capa —tras el contrato de datos único y el muestreo
+en anillo— es la **regla de selección de fuente**: si el aeródromo
 posee código OACI se intenta obtener observación y pronóstico de estación, y si no hay
 observación disponible se recurre al modelo numérico; si no posee código, se va
 directamente al modelo. Esta regla es la que hace operativa la cobertura nacional
