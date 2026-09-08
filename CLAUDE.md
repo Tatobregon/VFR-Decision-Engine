@@ -365,6 +365,33 @@ Bell Ville, 08/09 12:00 — medido contra la API
 > nubosidad del nivel alteraria veredictos de ruta y exigiria recalibrar: es una
 > decision pendiente, no un olvido.
 
+### El horizonte del pronostico sigue a la salida pedida, y se declara si no llega
+
+Bug real (septiembre 2026): `_evaluate_nwp` pedia siempre `NWP_HOURS_AHEAD` (12 h).
+Una salida planificada para dentro de 19 h quedaba FUERA de ese filtro, el motor caia
+en "la hora disponible mas cercana" y **no lo decia**:
+
+```
+pedido 15:00Z  ->  evaluaba 06:00Z   (6.3 C, llovizna)   <- 9 horas de desvio
+pedido 06:00Z  ->  evaluaba 06:00Z   (6.3 C, llovizna)
+```
+
+El piloto recibia condiciones de la madrugada como si fueran de su vuelo del mediodia.
+Los datos estaban disponibles (el fetcher trae 2 dias); los descartaba el filtro.
+
+- `_horizonte_necesario(departure_time, flight_duration_h)` deriva las horas de la
+  ventana pedida, con piso en `NWP_HOURS_AHEAD` y techo en `MAX_FORECAST_HOURS` (48).
+  Cubre hasta el ATERRIZAJE, no hasta el despegue.
+- Si aun asi la salida cae fuera, `DecisionResult.forecast_out_of_range` lo declara y
+  la interfaz lo muestra como advertencia. Devolver condiciones de otro momento como
+  si fueran las pedidas es peor que no responder: el piloto no tiene como notarlo.
+
+**Y la tarjeta ahora dice SIEMPRE para que momento son los datos**, en hora local y
+UTC. Sin eso, un pronostico de madrugada se lee como el estado actual. El campo de
+hora del formulario decia `"Hora local UTC"` —una contradiccion— y mostraba la
+equivalencia de ninguna: ahora dice `06:00 UTC = 03:00 hora local argentina` mientras
+se escribe.
+
 ### El veredicto sale del PEOR momento de la ventana, y hay que decirlo
 
 En el camino NWP el motor evalua **toda la ventana de vuelo** y se queda con el peor

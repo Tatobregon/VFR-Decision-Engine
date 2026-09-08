@@ -496,3 +496,56 @@ def test_los_nombres_de_variable_del_nivel_coinciden_entre_pedido_y_lectura():
         assert f'{var}_{{pressure_lvl}}hPa' in lectura, (
             f"_parse_response no lee {var} con la misma grafia con que se pide"
         )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Horizonte del pronostico: tiene que cubrir la salida que el piloto pidio
+# ══════════════════════════════════════════════════════════════════════════════
+# Bug real: el horizonte era la constante NWP_HOURS_AHEAD (12 h). Una salida
+# planificada para dentro de 19 h quedaba fuera del filtro, y el motor caia en
+# "la hora disponible mas cercana" SIN DECIRLO. El piloto pedia las 15:00 y
+# recibia las 06:00, con 8 C de diferencia, presentados como si fueran suyos.
+
+def test_el_horizonte_sigue_a_la_salida_pedida():
+    from config import NWP_HOURS_AHEAD
+    from decision.engine import MAX_FORECAST_HOURS, _horizonte_necesario
+
+    ahora = int(time.time())
+    # Una salida cercana no necesita mas que el minimo
+    assert _horizonte_necesario(ahora + 3600, 1.0) == NWP_HOURS_AHEAD
+    # Una lejana, si: el horizonte tiene que alcanzarla
+    for horas in (14, 19, 30):
+        h = _horizonte_necesario(ahora + horas * 3600, 1.0)
+        assert h > horas, f"con salida en {horas} h el horizonte fue {h}"
+    # Y no se pide mas de lo que la fuente entrega
+    assert _horizonte_necesario(ahora + 200 * 3600, 1.0) == MAX_FORECAST_HOURS
+
+
+def test_el_horizonte_cubre_tambien_la_duracion_del_vuelo():
+    """La ventana termina al ATERRIZAR, no al despegar."""
+    from decision.engine import _horizonte_necesario
+
+    ahora = int(time.time())
+    corto = _horizonte_necesario(ahora + 10 * 3600, 1.0)
+    largo = _horizonte_necesario(ahora + 10 * 3600, 8.0)
+    assert largo > corto
+
+
+def test_una_salida_fuera_del_horizonte_se_declara():
+    """
+    Devolver condiciones de otro momento como si fueran las pedidas es peor que
+    no responder: el piloto no tiene como notarlo.
+    """
+    from decision.engine import DecisionResult
+    assert "forecast_out_of_range" in DecisionResult.__dataclass_fields__
+    assert DecisionResult.__dataclass_fields__["forecast_out_of_range"].default is False
+
+
+def test_el_resultado_dice_de_que_muestra_salio_el_veredicto():
+    """
+    En el camino NWP el veredicto sale del PEOR caso de la ventana, que rara vez
+    es la hora que se muestra. Sin `worst_obs_time` el piloto lee "Xwind 1.1 kt"
+    junto a un cartel que dice "viento cruzado 10 kt" y no puede reconciliarlos.
+    """
+    from decision.engine import DecisionResult
+    assert "worst_obs_time" in DecisionResult.__dataclass_fields__

@@ -29,6 +29,8 @@ Uso tipico
 """
 
 import logging
+import math
+import time
 from dataclasses import dataclass, replace
 from typing import Optional
 
@@ -77,6 +79,28 @@ logger = logging.getLogger(__name__)
 # Modelo de salida
 # ──────────────────────────────────────────────────────────────────────────────
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Horizonte de pronostico necesario
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Tope de horas que tiene sentido pedir. La fuente entrega dos dias desde la
+# medianoche local, asi que desde "ahora" quedan entre 24 y 48 h disponibles.
+MAX_FORECAST_HOURS = 48
+
+
+def _horizonte_necesario(departure_time: int, flight_duration_h: float) -> int:
+    """
+    Cuantas horas de pronostico hacen falta para cubrir la ventana pedida.
+
+    Pedir una constante fija hace que toda salida planificada mas alla de ese
+    horizonte caiga fuera del filtro, y el motor termine evaluando otra hora sin
+    avisarlo. El horizonte tiene que seguir a lo que el piloto pidio.
+    """
+    fin = departure_time + int(flight_duration_h * 3600)
+    faltan = (fin - int(time.time())) / 3600.0
+    return max(NWP_HOURS_AHEAD, min(int(math.ceil(faltan)) + 1, MAX_FORECAST_HOURS))
+
+
 @dataclass
 class DecisionResult:
     """
@@ -112,6 +136,11 @@ class DecisionResult:
     # muestra en pantalla (`obs_time`). Sin este dato el piloto ve "Xwind 1.1 kt"
     # junto a un cartel que dice "viento cruzado 10 kt" y no puede reconciliarlos.
     worst_obs_time  : Optional[int] = None
+
+    # True cuando la hora de salida pedida cae FUERA del horizonte del pronostico
+    # y hubo que evaluar la hora disponible mas cercana. Sin esto el sistema
+    # devolvia condiciones de otro momento como si fueran las pedidas.
+    forecast_out_of_range : bool = False
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -215,11 +244,16 @@ class DecisionEngine:
         # Motivo: la grilla del modelo global suaviza la orografia, de modo que un
         # unico punto entrega el promedio de la celda y no describe ni el valle ni
         # la ladera. Ver data/fetcher_openmeteo.get_forecast_ring.
+        # Horizonte DERIVADO de la ventana pedida, no una constante. Con las 12 h
+        # fijas de NWP_HOURS_AHEAD, una salida planificada para dentro de 19 h
+        # quedaba fuera del filtro y el motor caia en "la hora disponible mas
+        # cercana" SIN DECIRLO: el piloto pedia las 15:00 y recibia las 06:00.
+        horizonte = _horizonte_necesario(departure_time, flight_duration_h)
         ring = self._nwp_fetch.get_forecast_ring(
             lat         = cfg["lat"],
             lon         = cfg["lon"],
             elevation_m = cfg["elev_m"],
-            hours_ahead = NWP_HOURS_AHEAD,
+            hours_ahead = horizonte,
         )
         if not ring:
             return self._no_data(sid, "nwp")
@@ -232,9 +266,19 @@ class DecisionEngine:
         window_end = departure_time + int(flight_duration_h * 3600)
         window_wx  = [w for w in all_wx
                       if departure_time <= w.obs_time <= window_end]
+        fuera_de_rango = False
         if not window_wx:
-            # No hay hora exacta en la ventana: usar la mas cercana al despegue
+            # La salida pedida cae fuera del horizonte del pronostico. Se evalua
+            # la hora disponible mas cercana, pero se DECLARA: devolver
+            # condiciones de otro momento como si fueran las pedidas es peor que
+            # no responder, porque el piloto no tiene como notarlo.
             window_wx = [min(all_wx, key=lambda w: abs(w.obs_time - departure_time))]
+            fuera_de_rango = True
+            desvio_h = abs(window_wx[0].obs_time - departure_time) / 3600.0
+            logger.warning(
+                f"NWP {sid}: la salida pedida esta fuera del horizonte del "
+                f"pronostico; se evalua la hora mas cercana ({desvio_h:.1f} h de desvio)"
+            )
 
         # Pista a usar (favorable si fue auto), segun el viento representativo.
         ref_wx = min(window_wx, key=lambda w: abs(w.obs_time - departure_time))
@@ -260,6 +304,8 @@ class DecisionEngine:
                     fetch_ok        = True,
                     error_message   = "",
                     runway_heading  = rwy,
+                    worst_obs_time  = wx.obs_time,
+                    forecast_out_of_range = fuera_de_rango,
                 )
 
         # ── Tendencia: los aerodromos sin METAR tampoco tienen TAF, asi que el
@@ -357,6 +403,7 @@ class DecisionEngine:
             density_altitude = self._compute_da(sid, ref_wx),
             runway_heading   = rwy,
             worst_obs_time   = peor_wx.obs_time,
+            forecast_out_of_range = fuera_de_rango,
         )
 
     # ── Path METAR (SACO, SAVY, etc.) ─────────────────────────────────────────

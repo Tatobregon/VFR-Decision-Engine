@@ -139,6 +139,9 @@ class WeatherCard(BaseModel):
     # que muestra la tarjeta (`obs_time`): sin esto el piloto lee "Xwind 1.1 kt"
     # y un cartel que dice "viento cruzado 10 kt", y no puede reconciliarlos.
     worst_obs_time: Optional[int] = None
+    # True si la hora de salida pedida cae fuera del horizonte del pronostico y
+    # hubo que evaluar la mas cercana disponible.
+    forecast_out_of_range: bool = False
     next_go_from: Optional[int] = None
     # Luz diurna (bloqueo nocturno)
     is_night: bool = False
@@ -392,6 +395,7 @@ def _to_card(result, runway_heading: int, ap: AirportInfo, notams: list = None) 
         dominant_factor = sb.dominant_factor   if sb else None,
         guardrail_reason= sb.guardrail_reason  if sb else "",
         worst_obs_time  = getattr(result, 'worst_obs_time', None),
+        forecast_out_of_range = getattr(result, 'forecast_out_of_range', False),
         next_go_from    = result.next_go_from,
         fetch_ok        = result.fetch_ok,
         error_message   = result.error_message,

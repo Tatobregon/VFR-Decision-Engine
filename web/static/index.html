@@ -568,7 +568,10 @@
       <div>
         <label class="av-label">Hora de salida (UTC)</label>
         <input class="av-input" type="time" x-model="form.departure_time"/>
-        <div class="mt-1 text-xs text-muted">Hora local UTC · dejar vacío = ahora + 1h</div>
+        <div class="mt-1 text-xs" :class="form.departure_time ? 'text-accent' : 'text-muted'">
+          <span x-show="!form.departure_time">Hora <strong>UTC (Zulu)</strong> · vacío = ahora + 1h</span>
+          <span x-show="form.departure_time" x-text="horaSalidaLocal()"></span>
+        </div>
       </div>
       <div>
         <label class="av-label">Reglas de vuelo</label>
@@ -808,6 +811,29 @@
                 </div>
               </template>
             </div>
+          </div>
+
+          <!-- Momento al que corresponden los datos. Sin esto, un pronostico de
+               madrugada se lee como si fuera el estado actual: el piloto ve 6 °C
+               un dia de 17 y cree que el sistema esta roto. -->
+          <div x-show="card.obs_time" class="text-[11px] mb-3 flex items-start gap-1.5"
+               :class="card.forecast_out_of_range ? 'text-caution' : 'text-muted'">
+            <span x-text="card.forecast_out_of_range ? '⚠️' : '🕓'"></span>
+            <span>
+              <template x-if="!card.forecast_out_of_range">
+                <span>Condiciones pronosticadas para las
+                  <span class="font-semibold text-[#e6edf3]" x-text="horaLocalDe(card.obs_time)"></span>
+                  <span class="text-muted" x-text="'(' + formatEta(card.obs_time) + ')'"></span>
+                </span>
+              </template>
+              <template x-if="card.forecast_out_of_range">
+                <span>La hora de salida pedida está <strong>fuera del alcance del pronóstico</strong>.
+                  Se evaluaron las condiciones de las
+                  <span class="font-semibold" x-text="horaLocalDe(card.obs_time)"></span>
+                  <span x-text="'(' + formatEta(card.obs_time) + ')'"></span>, que es lo más cercano disponible.
+                </span>
+              </template>
+            </span>
           </div>
 
           <!-- Hard blocker warning -->
@@ -2916,6 +2942,23 @@ function app() {
     },
 
     // Hora ETA en formato HH:MMZ
+    // El formulario trabaja en UTC (es lo correcto en aviacion) pero el piloto
+    // piensa en hora local. Mostrar las dos evita el error de tres horas.
+    horaLocalDe(ts) {
+      if (!ts) return '';
+      const d = new Date((ts - 3 * 3600) * 1000);   // Argentina UTC-3, sin DST
+      return `${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')} local`;
+    },
+
+    horaSalidaLocal() {
+      const v = this.form.departure_time;
+      if (!v) return '';
+      const [h, m] = v.split(':').map(Number);
+      if (!Number.isFinite(h) || !Number.isFinite(m)) return '';
+      const local = ((h - 3) % 24 + 24) % 24;
+      return `${v} UTC = ${String(local).padStart(2,'0')}:${String(m).padStart(2,'0')} hora local argentina`;
+    },
+
     formatEta(ts) {
       if (!ts) return '';
       const d = new Date(ts * 1000);
