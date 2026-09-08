@@ -1238,10 +1238,26 @@
         <div class="flex items-center gap-3 text-[10px] font-mono flex-wrap">
           <span class="flex items-center gap-1"><span style="width:14px;height:7px;background:#5a4632;display:inline-block;border-radius:1px"></span>Terreno</span>
           <span class="flex items-center gap-1"><span style="width:14px;height:0;border-top:2px dashed #f0883e;display:inline-block"></span>Mín. segura</span>
-          <span class="flex items-center gap-1"><span style="width:14px;height:0;border-top:2px dashed #a371f7;display:inline-block"></span>Techo de servicio</span>
+          <span class="flex items-center gap-1"><span style="width:14px;height:0;border-top:2px dashed #58a6ff;display:inline-block"></span>Crucero</span>
           <span class="text-muted">· informativo</span>
         </div>
       </div>
+
+      <!-- El techo de servicio se informa como texto y NO se dibuja: en un
+           avion liviano queda tan por encima del terreno que, llevado al eje,
+           aplasta el relieve que el grafico viene a mostrar. -->
+      <template x-if="selectedAc">
+        <div class="text-[11px] text-muted mb-3 flex items-center gap-1.5">
+          <span>✈</span>
+          <span>Techo de servicio del <span class="text-[#e6edf3]" x-text="selectedAc.name"></span>:
+            <span class="font-mono font-semibold text-[#e6edf3]"
+                  x-text="(selectedAc.service_ceiling_ft||0).toLocaleString('es-AR') + ' ft'"></span>
+            <template x-if="profCruiseAlt() && selectedAc.service_ceiling_ft && profCruiseAlt() > selectedAc.service_ceiling_ft">
+              <span class="text-caution"> · la altitud de crucero lo supera</span>
+            </template>
+          </span>
+        </div>
+      </template>
 
       <div x-show="profileLoading" class="text-xs text-muted font-mono py-6 text-center">Calculando perfil de terreno…</div>
 
@@ -1954,7 +1970,7 @@ function app() {
       // servicio, + 15 % de margen. El perfil es INFORMATIVO: muestra el
       // relieve y las dos referencias que acotan donde se puede volar, sin
       // dibujar la altitud planificada ni emitir juicio sobre ella.
-      let maxAlt = this.profServiceCeiling() || 0;
+      let maxAlt = this.profCruiseAlt() || 0;
       for (const pt of p.profile) {
         if (pt.terrain_ft > maxAlt) maxAlt = pt.terrain_ft;
         if (pt.safe_alt_ft && pt.safe_alt_ft > maxAlt) maxAlt = pt.safe_alt_ft;
@@ -1965,9 +1981,21 @@ function app() {
       return { W, H, ml, mr, mt, mb, plotW, plotH, total, maxAlt, X, Y };
     },
 
-    // Techo de servicio de la aeronave elegida, para el perfil.
+    // Techo de servicio de la aeronave elegida. Se informa como texto, no se
+    // dibuja: ver el comentario del aviso en el perfil.
     profServiceCeiling() {
       return this.selectedAc?.service_ceiling_ft || null;
+    },
+
+    // Altitud de crucero a dibujar en el perfil.
+    // Manda la que el piloto cargo a mano arriba de la pagina; si la dejo
+    // vacia, la que derivo el sistema (semicirculos en VFR, MEA en IFR).
+    profCruiseAlt() {
+      const elegida = this.form.cruise_alt_ft;
+      if (this.form.flight_rules === 'VFR' && Number.isFinite(elegida) && elegida > 0) {
+        return elegida;
+      }
+      return this.profile?.cruise_alt_ft || null;
     },
 
     // ── SIN USO ACTUAL ────────────────────────────────────────────────────
@@ -2009,12 +2037,12 @@ function app() {
       p.profile.forEach((pt, i) => { dS += (i ? ' L ' : 'M ') + g.X(pt.dist_km) + ' ' + g.Y(pt.safe_alt_ft); });
       s += `<path d="${dS}" fill="none" stroke="#f0883e" stroke-width="1.5" stroke-dasharray="3 3" stroke-opacity="0.9"/>`;
 
-      // Techo de servicio de la aeronave: lo mas alto que puede volar.
-      const ceil = this.profServiceCeiling();
-      if (ceil) {
-        const ky = g.Y(ceil);
-        s += `<line x1="${g.ml}" y1="${ky}" x2="${g.W-g.mr}" y2="${ky}" stroke="#a371f7" stroke-width="2" stroke-dasharray="7 4" stroke-opacity="0.9"/>`;
-        s += `<text x="${g.W-g.mr-3}" y="${ky-5}" text-anchor="end" font-size="10" font-family="monospace" fill="#a371f7">Techo de servicio ${ceil.toLocaleString()} ft</text>`;
+      // Altitud de crucero: la que el piloto eligio arriba de la pagina.
+      const cruise = this.profCruiseAlt();
+      if (cruise) {
+        const cy = g.Y(cruise);
+        s += `<line x1="${g.ml}" y1="${cy}" x2="${g.W-g.mr}" y2="${cy}" stroke="#58a6ff" stroke-width="2" stroke-dasharray="7 4"/>`;
+        s += `<text x="${g.W-g.mr-3}" y="${cy-5}" text-anchor="end" font-size="10" font-family="monospace" fill="#58a6ff">Crucero ${cruise.toLocaleString()} ft</text>`;
       }
 
       // Aeropuertos: línea vertical + punto a su elevación + código + elevación
