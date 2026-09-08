@@ -211,9 +211,66 @@ _CUYO = [
 ]
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# 9. atmosfera_en_punto
+# ──────────────────────────────────────────────────────────────────────────────
+# El estado del AIRE sobre un punto, a una altitud. Es la pregunta que se hace
+# quien evalua desviarse por algun lado. No produce veredicto: la distincion
+# entre esto y evaluar_meteo es justamente lo que el clasificador tiene que
+# aprender, y la matriz de confusion es donde se ve si lo logro.
+
+_ALTURA = [
+    EvalCase("como esta el aire sobre Junin a 7500 pies?",
+             "atmosfera_en_punto", "SAAJ", "PAMPA"),
+    EvalCase("si paso por arriba de Pergamino a 6500 ft, como esta?",
+             "atmosfera_en_punto", "SAAN", "PAMPA"),
+    EvalCase("como esta la meteorologia en altura sobre Venado Tuerto?",
+             "atmosfera_en_punto", "VNO", "PAMPA"),
+    EvalCase("condiciones atmosfericas sobre Chilecito a 10000 pies",
+             "atmosfera_en_punto", "SANO", "CUYO"),
+    EvalCase("voy IFR, como esta el aire sobre Catamarca?",
+             "atmosfera_en_punto", "SANC", "NOA"),
+    EvalCase("me conviene pasar por arriba de Apostoles a 8000 ft?",
+             "atmosfera_en_punto", "APO", "LITORAL"),
+    EvalCase("que viento hay a 9000 pies sobre Piedra del Aguila?",
+             "atmosfera_en_punto", "SAVA", "PATAGONIA"),
+    EvalCase("como esta el aire en ruta sobre Chamical a 8500 ft?",
+             "atmosfera_en_punto", "SACT", "CUYO"),
+    EvalCase("temperatura y viento a 7000 pies sobre Puerto Deseado",
+             "atmosfera_en_punto", "SAWD", "PATAGONIA"),
+    EvalCase("como esta la atmosfera sobre Andalgala a 12000 pies?",
+             "atmosfera_en_punto", "AND", "NOA"),
+]
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 10. mejor_hora_para_salir
+# ──────────────────────────────────────────────────────────────────────────────
+# Vecina de evaluar_meteo: las dos hablan del veredicto de un aerodromo, pero
+# una pregunta por UN momento y la otra por la evolucion del dia.
+
+_HORARIO = [
+    EvalCase("a que hora me conviene salir de La Cumbre?",
+             "mejor_hora_para_salir", "SACC", "PAMPA"),
+    EvalCase("cuando mejora el tiempo en Cruz Alta?",
+             "mejor_hora_para_salir", "ALT", "PAMPA"),
+    EvalCase("a que hora del dia esta mejor Apostoles?",
+             "mejor_hora_para_salir", "APO", "LITORAL"),
+    EvalCase("mostrame como evoluciona la meteo de Puerto Deseado en el dia",
+             "mejor_hora_para_salir", "SAWD", "PATAGONIA"),
+    EvalCase("hasta que hora puedo salir de Andalgala hoy?",
+             "mejor_hora_para_salir", "AND", "NOA"),
+    EvalCase("cuando se pone feo en Chilecito?",
+             "mejor_hora_para_salir", "SANO", "CUYO"),
+    EvalCase("en las proximas 6 horas, cuando conviene despegar de Zarate?",
+             "mejor_hora_para_salir", "ATE", "PAMPA"),
+    EvalCase("como viene el dia en Piedra del Aguila?",
+             "mejor_hora_para_salir", "SAVA", "PATAGONIA"),
+]
+
+
 CASES: Tuple[EvalCase, ...] = tuple(
     _BUSCAR + _CONTACTO + _SERVICIOS + _COMBUSTIBLE + _METEO + _FUERA
-    + _LIMITE + _CUYO
+    + _LIMITE + _CUYO + _ALTURA + _HORARIO
 )
 
 

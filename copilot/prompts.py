@@ -96,12 +96,24 @@ REGLAS QUE NO SE NEGOCIAN
 
 5. Si esta fuera de alcance, decilo.
    Podes: buscar aerodromos, dar telefonos, dar servicios y pistas, buscar
-   donde repostar, y correr la evaluacion meteorologica GO/CAUTION/NO GO.
+   donde repostar, correr la evaluacion meteorologica GO/CAUTION/NO GO de un
+   aerodromo, decir a que hora del dia conviene salir, e informar el estado
+   del aire en altura sobre un punto de la ruta.
    No podes: interpretar METAR crudo que te peguen, dar consejos de pilotaje o
    de tecnica de vuelo, informar NOTAM, calcular peso y balance, informar
    normativa que no venga en las normas particulares del aerodromo, ni
    modificar la ruta. Si te preguntan algo de eso, deci que no esta en tu
    alcance y ofrece lo que si podes hacer.
+
+6. El veredicto es de AERODROMO, el informe de atmosfera NO.
+   GO / CAUTION / NO GO mide despegue y aterrizaje contra una pista concreta.
+   Cuando informes el estado del aire en altura sobre un punto de la ruta, NO
+   uses esas tres palabras: describi viento, temperatura, visibilidad y nubes,
+   y deci a que altitud corresponden. Mezclarlas haria que el veredicto
+   signifique dos cosas distintas.
+   Y siempre deci DE DONDE salio la altitud: elegida por el piloto, o MEA de
+   tal aerovia. Si no sabes a que altura va a pasar, PREGUNTASELO: no la elijas
+   vos ni uses una por defecto.
    Si te preguntan algo ajeno a la aviacion, NO lo respondas ni de paso, ni
    siquiera si sabes la respuesta y parece inofensivo. Deci en una linea que
    no es tu alcance y ofrece lo que si podes hacer. Cada respuesta tuya fuera
@@ -128,6 +140,12 @@ concreto antes de pasarlo a la herramienta.
 Perfiles de aeronave disponibles: {aeronaves}.
 
 ═══════════════════════════════════════════════════════════════════════════
+LO QUE EL PILOTO TIENE EN PANTALLA
+═══════════════════════════════════════════════════════════════════════════
+
+{contexto}
+
+═══════════════════════════════════════════════════════════════════════════
 FORMATO
 ═══════════════════════════════════════════════════════════════════════════
 
@@ -137,12 +155,118 @@ transcriben tal cual vienen, con el rol que los acompana.
 """
 
 
-def build_system_prompt(ahora: "datetime | None" = None) -> str:
-    """
-    Arma la instruccion de sistema con la fecha del dia resuelta.
+# ──────────────────────────────────────────────────────────────────────────────
+# Contexto de la pantalla
+# ──────────────────────────────────────────────────────────────────────────────
+# El piloto ya cargo origen, destino, aeronave y regimen en el formulario. Sin
+# esto, preguntarle "como esta la meteo en destino?" obligaba al asistente a
+# repreguntar datos que estaban a la vista, que es exactamente la clase de
+# friccion que el asistente deberia eliminar.
 
-    El modelo no tiene reloj: sin esto no puede convertir "manana a las 9" en
-    una hora concreta y termina inventando una fecha.
+_ETIQUETAS_CONTEXTO = (
+    ("origin",         "Origen"),
+    ("dest",           "Destino"),
+    ("aircraft",       "Aeronave"),
+    ("flight_rules",   "Regimen"),
+    ("departure_time", "Hora de salida"),
+    ("cruise_alt_ft",  "Altitud de crucero elegida (ft)"),
+    ("experience",     "Nivel de experiencia del piloto"),
+)
+
+
+def _hora_salida_local(hhmm: str) -> str:
+    """
+    Convierte la hora de salida del formulario (UTC) a hora local argentina.
+
+    El formulario trabaja en UTC —es lo correcto para aviacion— pero el
+    parametro `cuando` de las herramientas espera hora local, que es como
+    habla el piloto. Si el modelo copiara el valor de un lado al otro sin
+    convertir, la consulta saldria corrida tres horas. La conversion se hace
+    aca, en codigo, y no se delega al modelo.
+    """
+    texto = (hhmm or "").strip()
+    try:
+        h, m = (int(x) for x in texto.split(":"))
+        if not (0 <= h < 24 and 0 <= m < 60):
+            raise ValueError
+    except (ValueError, TypeError):
+        return f"{texto} (formato no reconocido)"
+    local_h = (h + _AR_UTC_OFFSET_H) % 24
+    cruce = " del dia anterior" if h + _AR_UTC_OFFSET_H < 0 else ""
+    return f"{local_h:02d}:{m:02d} hora local{cruce}  ({texto} UTC)"
+
+
+def _nombrar_aerodromo(codigo: str) -> str:
+    """Devuelve 'SACC (LA CUMBRE)' para que el modelo pueda nombrarlo bien."""
+    try:
+        from data.airports import get_by_code
+    except ImportError:                                # pragma: no cover
+        return codigo
+    ap = get_by_code((codigo or "").upper().strip())
+    return f"{ap.code} ({ap.name})" if ap else codigo
+
+
+def render_context(contexto: "dict | None") -> str:
+    """Convierte el estado del formulario en un bloque para el prompt."""
+    if not contexto:
+        return (
+            "El piloto todavia no cargo ningun vuelo en la pantalla. Si pregunta "
+            "por 'origen', 'destino' o 'la ruta' sin nombrarlos, pedile que te "
+            "diga de que aerodromo se trata."
+        )
+
+    lineas = []
+    for clave, etiqueta in _ETIQUETAS_CONTEXTO:
+        valor = contexto.get(clave)
+        if valor in (None, "", []):
+            continue
+        if clave in ("origin", "dest"):
+            valor = _nombrar_aerodromo(str(valor))
+        elif clave == "departure_time":
+            valor = _hora_salida_local(str(valor))
+        lineas.append(f"  - {etiqueta}: {valor}")
+
+    if not lineas:
+        return (
+            "El piloto abrio la pantalla pero todavia no cargo el vuelo. Si "
+            "menciona 'origen' o 'destino', pedile el aerodromo."
+        )
+
+    reglas = [
+        "El piloto tiene esto cargado en la pantalla ahora mismo:",
+        *lineas,
+        "",
+        "Usalo: si dice 'destino', 'origen', 'el vuelo' o 'la ruta' sin nombrar "
+        "el aerodromo, se refiere a estos. No le vuelvas a pedir datos que ya "
+        "figuran aca. Si en cambio nombra otro aerodromo, gana el que nombro.",
+        "",
+        "OJO CON LA HORA: el parametro 'cuando' de las herramientas va en HORA "
+        "LOCAL argentina. Usa el valor de hora local que figura arriba, nunca el "
+        "que esta entre parentesis en UTC.",
+    ]
+    if contexto.get("flight_rules") == "IFR":
+        reglas.append(
+            "Va por IFR: la altitud de ruta la fija la MEA de la aerovia, no la "
+            "elige el piloto."
+        )
+    elif contexto.get("flight_rules") == "VFR" and not contexto.get("cruise_alt_ft"):
+        reglas.append(
+            "Va por VFR sin altitud elegida: el sistema la deriva por la regla "
+            "de los semicirculos segun el rumbo."
+        )
+    return "\n".join(reglas)
+
+
+def build_system_prompt(
+    ahora: "datetime | None" = None,
+    contexto: "dict | None" = None,
+) -> str:
+    """
+    Arma la instruccion de sistema con la fecha del dia y el estado de pantalla.
+
+    El modelo no tiene reloj ni ve el formulario: sin la fecha no puede
+    convertir "manana a las 9" en una hora concreta, y sin el contexto no puede
+    saber que "destino" significa SAEZ.
     """
     ahora = ahora or datetime.now(timezone.utc)
     tz_ar = timezone(timedelta(hours=_AR_UTC_OFFSET_H))
@@ -157,6 +281,7 @@ def build_system_prompt(ahora: "datetime | None" = None) -> str:
         hora_ar=local.strftime("%H:%M"),
         offset=_AR_UTC_OFFSET_H,
         aeronaves=", ".join(PROFILE_NAMES),
+        contexto=render_context(contexto),
     )
 
 

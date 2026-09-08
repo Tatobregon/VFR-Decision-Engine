@@ -83,9 +83,9 @@ automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a
 | `risk/ahp_weights.py` | **COMPLETO** | Derivacion AHP de los pesos. Los juicios de a pares NO son a ojo: se derivan de accidentologia con la operacion explicita `a_ij = redondeo_Saaty(I_i/I_j)`, con `I = prob x severidad` (Doc 9859 OACI). Cada entrada declara su procedencia (E evidencia / N norma / D derivada / J juicio). CR=0.069. |
 | `risk/weights.py` | **COMPLETO** | Pesos AHP W_VIS=0.357 W_CEIL=0.357 W_XWIND=0.099 W_FOG=0.071 W_GUST=0.050 W_WX=0.044 W_TAF=0.022. Funciones r_i. Thresholds **calibrados**: t_go=0.22, t_caution=0.59. Los **parametros de forma** de las rampas son constantes nombradas con procedencia declarada (N norma / J juicio): los quiebres de riesgo MAXIMO son la frontera IFR de la norma; los de riesgo NULO son juicio. `r_fog` de este modulo NO corre en runtime (la rampa real esta en `features/fog_risk.py`). |
 | `risk/hard_blockers.py` | **COMPLETO** | Tokens TS/TSRA/TSGR/GR/FC/VA/FZRA/FZDZ + vis<1.5km + ceil<500ft → NO GO inmediato. |
-| `risk/soft_scoring.py` | **COMPLETO** | `compute_soft_score(...)` → `SoftScoreResult`. Score compensatorio + **barrera no-compensatoria** (`conjunctive_floor`): `decision = worst(umbral(R), piso)`. Expone `guardrail_floor`/`guardrail_reason`. `CAUTION_FRACTION=0.5` es constante nombrada con procedencia (J juicio) y su efecto esta medido en sensitivity [5]: robusta entre 0.35 y 0.65. |
-| `risk/scenarios.py` | **COMPLETO** | Bateria de 38 escenarios de referencia con etiqueta normativa ANAC/OACI (`normative_label`). Fuente compartida por calibracion y sensibilidad. |
-| `risk/calibration.py` | **COMPLETO** | Calibracion de umbrales por anclaje normativo (grid search + costo asimetrico). Resultado: t_go=0.22, t_caution=0.59 (97% concordancia, 0 sub-avisos). Reporta ademas la concordancia **por nivel de minimos personales** (sin minimos 97%, Avanzado 97%, PPL 89%, Alumno 67%) y verifica que en ninguno hay sub-avisos: el desvio es siempre por sobre-aviso. Validez de constructo, no empirica. |
+| `risk/soft_scoring.py` | **COMPLETO** | `compute_soft_score(...)` → `SoftScoreResult`. Score compensatorio + **barrera no-compensatoria** (`conjunctive_floor`): `decision = worst(umbral(R), piso)`. Expone `guardrail_floor`/`guardrail_reason`. Las fronteras del piso son constantes nombradas con procedencia declarada: `XWIND_CAUTION_FRACTION=0.5` (J), `GUST_CAUTION_FRACTION=0.85` (J, revisado por piloto) y `GUST_NOGO_FACTOR=1.5` (J). **Cruzado y rafaga NO comparten escala** a proposito. Efecto medido en sensitivity [5]: <=1/38 flips ante +/-30% en cualquiera de las tres. |
+| `risk/scenarios.py` | **COMPLETO** | Bateria de 38 escenarios de referencia con etiqueta normativa ANAC/OACI (`normative_label`). Fuente compartida por calibracion y sensibilidad. **Declara en su encabezado el ALCANCE de la independencia de la referencia**: vale para vis/techo/wx/TAF, NO para cruzado ni rafaga, donde la etiqueta replica los cortes del motor y la concordancia es por construccion. |
+| `risk/calibration.py` | **COMPLETO** | Calibracion de umbrales por anclaje normativo (grid search + costo asimetrico). Resultado: t_go=0.22, t_caution=0.59 (37/38 = 97% concordancia, 0 sub-avisos). Reporta ademas la concordancia **por nivel de minimos personales** (sin minimos 97%, Avanzado 97%, PPL 89%, Alumno 68%) y verifica que en ninguno hay sub-avisos: el desvio es siempre por sobre-aviso. Validez de constructo, no empirica. |
 | `risk/sensitivity.py` | **COMPLETO** | Sensibilidad en 5 ejes: [1] OAT ±20% por peso, [2] Monte Carlo 7 pesos, [3] umbrales, [4] **parametros de forma de las r_i**, [5] **fraccion de CAUTION de la barrera**. Estabilidad del veredicto 99%; 35/36 escenarios nunca cambian. **Hallazgo clave**: los parametros de forma pesan MAS que los pesos (5.6% de flips contra 0.8%). |
 
 ### INTEGRACION
@@ -93,6 +93,7 @@ automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a
 | Archivo | Estado | Descripcion |
 |---|---|---|
 | `config.py` | **COMPLETO** | Constantes globales: `NWP_STATIONS` (derivado de los 561 aerodromos de `AIRPORTS`), `METAR_STATIONS` (vacio, vestigio v1.0), `NWP_HOURS_AHEAD`. |
+| `decision/enroute.py` | **COMPLETO** | `evaluate_nwp_at_coord()` y `nwp_series_at_coord()`: meteo en coordenadas arbitrarias a altitud de crucero. **Extraidas de `web/app.py`** (septiembre 2026) porque el copiloto tambien las necesita y que la capa de lenguaje importara de `web/` invertiria las dependencias. En crucero **anulan el viento cruzado** (el piloto crabea; el cruzado es concepto de pista) y aplican el minimo VFR de 8 km sobre FL100. |
 | `decision/engine.py` | **COMPLETO** | `DecisionEngine.evaluate()` → `DecisionResult`. Pipeline: fetch→parse→hard_blockers→soft_score+taf_window→decision. **Regla de fuente**: con codigo ICAO intenta METAR+TAF y cae a NWP si no hay METAR; sin ICAO va directo a NWP. El camino NWP usa **muestreo en anillo** (peor caso en tiempo Y espacio). |
 | `output/briefing.py` | **COMPLETO** | `generate_briefing(...)` → briefing meteorologico multi-linea para el piloto (origen, destino, ruta, NOTAMs). 100% reglas, sin IA. |
 | `output/flight_plan.py` | **COMPLETO** | `build_flight_plan(...)` → plan de vuelo OACI (casillas 7-19 + mensaje FPL). **No radica** el plan: lo presenta el piloto. |
@@ -103,10 +104,10 @@ automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a
 | Archivo | Estado | Descripcion |
 |---|---|---|
 | `copilot/client.py` | **COMPLETO** | Cliente Gemini por **REST plano, sin SDK** (`requirements.txt` sigue en 4 paquetes). `LLMClient` es un Protocol: el resto del paquete no depende de Gemini. **Cadena de reserva** entre modelos ante los 503 del nivel gratuito. `ScriptedClient` para tests sin red. |
-| `copilot/tools.py` | **COMPLETO** | Las 5 herramientas deterministas + su esquema de function calling. Envoltorios finos sobre `data/airports.py`, `route/performance.py` y `decision/engine.py`. **No agregan ninguna fuente de datos.** `resolve_airport()` con ranking (codigo > nombre exacto > prefijo > provincia). |
+| `copilot/tools.py` | **COMPLETO** | Las **7 herramientas** deterministas + su esquema de function calling. Envoltorios finos sobre `data/airports.py`, `route/performance.py`, `decision/engine.py`, `decision/enroute.py` y `route/airway_router.py`. **No agregan ninguna fuente de datos.** `resolve_airport()` con ranking (codigo > nombre exacto > prefijo > provincia). |
 | `copilot/prompts.py` | **COMPLETO** | Instruccion de sistema con las 5 reglas duras + `verdict_fallback()`, la plantilla determinista de veredicto. |
 | `copilot/agent.py` | **COMPLETO** | Bucle pregunta→herramienta→datos→redaccion (tope 3 vueltas) y las **dos garantias que se hacen cumplir en codigo**: `_enforce_verdict()` y `_enforce_codes()`. `trim_history()` recorta en limites de turno. |
-| `copilot/eval_set.py` | **COMPLETO** | 71 casos etiquetados, 6 intenciones, **las 5 regiones**. Incluye 11 casos cuyo dato NO existe, con patron de deteccion objetiva. |
+| `copilot/eval_set.py` | **COMPLETO** | **89 casos** etiquetados, **8 intenciones**, **las 5 regiones**. Incluye 11 casos cuyo dato NO existe, con patron de deteccion objetiva. Un test exige >=5 casos por intencion: agregar una herramienta sin sus casos rompe la suite. |
 | `copilot/evaluate.py` | **COMPLETO** | Matriz de confusion, P/R/F1, resolucion de entidad, **tasa de invencion**, integridad de veredicto, latencia, desagregado por region. Cachea en `eval_results.json`. |
 
 ### ROUTE LAYER
@@ -296,8 +297,8 @@ pasar showstoppers de bajo peso (un cruzado SOBRE el limite del avion aportaria
 solo 0.099 y daria GO). La barrera impone un PISO por factor y
 `decision = worst(umbral(R), piso)`:
 ```
-cruzado efectivo >= limite avion   → NO GO      cruzado >= 50% limite → CAUTION
-delta rafaga >= gust_max avion     → NO GO      delta >= 50% gust_max → CAUTION
+cruzado efectivo >= limite avion       → NO GO   cruzado >= 50%  del limite  → CAUTION
+delta rafaga >= 1.5 x gust_max avion   → NO GO   delta   >= 85%  del gust_max → CAUTION
 niebla probable (r_fog >= 0.9)     → CAUTION     deterioro TAF (r_taf >= 0.6) → CAUTION
 ```
 Cubre los factores de bajo peso que el score diluye; vis/techo (peso alto, deterioro
@@ -360,9 +361,49 @@ Las herramientas nunca devuelven `""`: devuelven `{"publicado": false, "nota": .
 Decir "no tiene combustible" donde el registro solo no lo publica es un piloto que se
 queda sin nafta en el aire.
 
-**La 6a intencion, `fuera_de_alcance`, es de diseno**: sin una clase explicita para
-"no puedo contestar esto", el clasificador queda obligado a elegir una de las cinco
-herramientas y el modelo inventa para encajar.
+**La intencion `fuera_de_alcance` es de diseno**: sin una clase explicita para
+"no puedo contestar esto", el clasificador queda obligado a elegir una herramienta y
+el modelo inventa para encajar.
+
+**Las 7 herramientas** (8 intenciones con `fuera_de_alcance`): `buscar_aerodromo`,
+`contacto_aerodromo`, `servicios_aerodromo`, `combustible_cercano`, `evaluar_meteo`,
+`atmosfera_en_punto` y `mejor_hora_para_salir`.
+
+> ### El veredicto es de AERODROMO; el informe en altura NO lleva veredicto
+>
+> `atmosfera_en_punto` responde "como esta el aire sobre tal lugar, a tal altura, para
+> pasar por ahi". **Deliberadamente NO devuelve GO / CAUTION / NO GO**, y hay un test
+> que lo verifica leyendo el codigo fuente de la funcion.
+>
+> El motivo es de fondo: el veredicto mide despegue y aterrizaje contra una PISTA
+> concreta. Si una consulta sobre el aire a 7500 ft devolviera tambien un veredicto,
+> la etiqueta pasaria a significar dos cosas distintas y dejaria de ser el objeto
+> unico y bien definido sobre el que se apoya todo el motor.
+>
+> **De donde sale la altitud** (y la respuesta siempre lo declara, para que el piloto
+> pueda verificar que no se la inventaron):
+> - La eligio el piloto -> se respeta, acotada a `service_ceiling_ft`.
+> - IFR sin altitud -> **MEA real del tramo de aerovia mas cercano**
+>   (`route.airway_router.nearest_airway_segment()`, que lee el `mea` del grafo del AIP).
+> - VFR sin altitud -> **la herramienta la PIDE**. No se elige una por defecto: el aire
+>   a 3000 ft y a 12000 ft sobre el mismo punto no se parecen en nada, y elegirla seria
+>   inventar la premisa de la respuesta.
+>
+> Incluye margen contra el terreno (grilla SRTM 3x3 a 10 km, UNA peticion) y degrada
+> sin el si Open-Topo-Data falla: el informe de atmosfera se entrega igual.
+
+**Contexto de pantalla.** El endpoint recibe el estado del formulario (origen, destino,
+aeronave, regimen, altitud, experiencia) y se inyecta en la instruccion de sistema, de
+modo que "como esta el destino?" no obligue a repreguntar lo que el piloto ya cargo.
+El frontend lo lee con `Alpine.$data()` **sin tocar el componente `app()`**.
+⚠️ El formulario trabaja en **UTC** y el parametro `cuando` de las herramientas en
+**hora local**: la conversion la hace `prompts._hora_salida_local()` en codigo, no el
+modelo (copiarlo sin convertir corria la consulta tres horas).
+
+**La barrera R2 se relaja cuando hay una serie horaria.** Con `mejor_hora_para_salir`
+en el mismo turno, el texto menciona varios veredictos legitimamente ("ahora CAUTION,
+desde las 15 GO"). Ahi se exige que el veredicto del motor ESTE presente, no que sea el
+unico; exigir exclusividad producia una correccion falsa.
 
 **Hallazgos operativos** (medidos contra la API real, documentados en `client.py`):
 `gemini-2.5-flash` esta retirado (404 para cuentas nuevas) · el nivel gratuito tiene
@@ -370,31 +411,42 @@ herramientas y el modelo inventa para encajar.
 de reserva) · `gemini-flash-lite-latest` rechaza `thinkingBudget=0` con 400 ·
 hay que reenviar el `content` del modelo TAL CUAL porque lleva `thoughtSignature`.
 
-**Resultados medidos** sobre los 71 casos de `copilot/eval_set.py`
+**Resultados medidos** sobre los 89 casos de `copilot/eval_set.py`
 (modelo `gemini-flash-lite-latest`, que resuelve a `gemini-3.5-flash-lite`):
 
 | Metrica | Valor |
 |---|---|
-| Exactitud de clasificacion de intencion | **68/71 = 95.8 %** |
-| F1 macro-promedio (6 intenciones) | **0.958** |
-| Exactitud de resolucion de aerodromo | **54/55 = 98.2 %** |
+| Exactitud de clasificacion de intencion | **86/89 = 96.6 %** |
+| F1 macro-promedio (8 intenciones) | **0.969** |
+| Exactitud de resolucion de aerodromo | **72/73 = 98.6 %** |
 | **Tasa de invencion sobre datos ausentes** | **0 %** (0 de 9 con deteccion objetiva) |
 | Reconocimiento explicito de la ausencia | 10/11 = 90.9 % |
 | Veredictos que hubo que forzar | **0 de 10** |
 | Codigos fabricados que hubo que corregir | **0** |
-| Latencia (media / mediana / p95) | 3.90 s / 3.14 s / 7.61 s |
+| Latencia (media / mediana / p95) | 4.80 s / 3.62 s / 12.20 s |
 
-Por region: CUYO 8/8, LITORAL 8/8, PATAGONIA 14/14, PAMPA 20/21, NOA 7/8 — el
+F1 = **1.000** en `evaluar_meteo`, `atmosfera_en_punto` y `mejor_hora_para_salir`: las
+tres intenciones meteorologicas, que son las vecinas mas confundibles entre si, se
+separan perfectamente. Lo consiguio contrastar las descripciones de las herramientas
+(que evaluar_meteo es de SUPERFICIE contra una pista y atmosfera_en_punto es del AIRE
+sobre un punto de paso), no un cambio de modelo.
+
+**Comparacion con la version anterior**, que tenia 5 herramientas y 71 casos:
+intencion 95.8 % -> **96.6 %** y F1 macro 0.958 -> **0.969**. Agregar dos intenciones
+no degrado la clasificacion: la mejoro, porque cada herramienta nueva le saca ambiguedad
+a las que ya estaban.
+
+Por region: CUYO 11/11, LITORAL 10/10, PATAGONIA 18/18, PAMPA 26/27, NOA 10/11 — el
 comportamiento no depende de la region (regla de alcance).
 
 **Los 3 desaciertos, analizados uno por uno** (seccion [8] del reporte; la matriz de
 confusion NO se retoca, se informa el analisis por separado):
-1. *"a quien llamo en Cordoba?"* → **pidio desambiguacion** en vez de adivinar. Es la
+1. *"a quien llamo en Cordoba?"* -> **pidio desambiguacion** en vez de adivinar. Es la
    conducta que pide R4; la metrica la penaliza porque no invoco herramienta.
-2. *"hay nafta en Andalgala?"* → uso `combustible_cercano` en vez de
+2. *"hay nafta en Andalgala?"* -> uso `combustible_cercano` en vez de
    `servicios_aerodromo`. Confusion real entre dos intenciones vecinas; la respuesta
    igual fue correcta y declaro la ausencia del dato.
-3. *"que pista tiene el aeropuerto de Wakanda?"* → uso `buscar_aerodromo`, razonable
+3. *"que pista tiene el aeropuerto de Wakanda?"* -> uso `buscar_aerodromo`, razonable
    para un nombre desconocido, y reporto correctamente que no existe.
 
 Ninguno de los tres produjo una respuesta incorrecta o peligrosa.

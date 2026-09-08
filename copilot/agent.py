@@ -247,8 +247,16 @@ class CopilotAgent:
         pregunta : str,
         history  : Optional[List[Dict[str, Any]]] = None,
         ahora    : Optional[Any] = None,
+        context  : Optional[Dict[str, Any]] = None,
     ) -> CopilotAnswer:
-        """Responde una consulta del piloto."""
+        """
+        Responde una consulta del piloto.
+
+        `context` es el estado del formulario de la pantalla (origen, destino,
+        aeronave, regimen, altitud). Se inyecta en la instruccion de sistema
+        para que "como esta el destino?" no obligue a repreguntar datos que el
+        piloto ya cargo.
+        """
         t0 = time.time()
 
         pregunta = (pregunta or "").strip()[:MAX_QUESTION_CHARS]
@@ -259,7 +267,7 @@ class CopilotAgent:
                 intent=T.INTENT_OUT_OF_SCOPE,
             )
 
-        system = build_system_prompt(ahora)
+        system = build_system_prompt(ahora, context)
         declaraciones = T.tool_declarations()
 
         contents: List[Dict[str, Any]] = trim_history(history)
@@ -317,7 +325,8 @@ class CopilotAgent:
             )
 
         # ── Garantias duras: R2 (veredicto) y R4 (codigo) ─────────────────────
-        texto, forzado = self._enforce_verdict(texto, resultados_meteo)
+        hay_serie = any(i.name == "mejor_hora_para_salir" for i in invocaciones)
+        texto, forzado = self._enforce_verdict(texto, resultados_meteo, hay_serie)
         texto, corregido = self._enforce_codes(texto, resultados_todos)
 
         intent = invocaciones[-1].name if invocaciones else T.INTENT_OUT_OF_SCOPE
@@ -343,6 +352,7 @@ class CopilotAgent:
     def _enforce_verdict(
         texto: str,
         resultados_meteo: List[Dict[str, Any]],
+        hay_serie_de_veredictos: bool = False,
     ) -> Tuple[str, bool]:
         """
         Verifica que el texto transcriba el veredicto del motor.
@@ -350,6 +360,14 @@ class CopilotAgent:
         Se descarta el texto generado y se reemplaza por la plantilla
         determinista si el veredicto correcto no aparece, o si aparece
         cualquier otro. Devuelve (texto_final, se_forzo).
+
+        `hay_serie_de_veredictos` relaja la exclusividad. Cuando en el mismo
+        turno corrio una herramienta que devuelve un veredicto POR HORA (la de
+        mejor hora para salir), el texto va a mencionar legitimamente varios:
+        "ahora da CAUTION, desde las 15 pasa a GO". Exigir que aparezca uno
+        solo produciria una correccion falsa. En ese caso se exige unicamente
+        que el veredicto del motor ESTE presente, que es lo que la regla R2
+        protege de verdad: que no se lo omita ni se lo reemplace.
         """
         if not resultados_meteo:
             return texto, False
@@ -360,7 +378,10 @@ class CopilotAgent:
             return texto, False
 
         mencionados = verdicts_mentioned(texto)
-        if mencionados == {canonico}:
+        if hay_serie_de_veredictos:
+            if canonico in mencionados:
+                return texto, False
+        elif mencionados == {canonico}:
             return texto, False
 
         logger.warning(

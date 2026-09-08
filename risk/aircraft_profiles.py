@@ -50,6 +50,8 @@ class AircraftProfile:
     vs0_kt             : float  # Velocidad de perdida, flaps extendidos
     cruise_kt          : float  # Velocidad de crucero tipica (75% potencia)
     cruise_alt_ft      : int    # Altitud tipica de crucero en ft MSL (para fetch NWP en ruta)
+    service_ceiling_ft : int    # Techo de servicio del POH. Es un TOPE, no un crucero:
+                                # acota la altitud que el piloto puede elegir a mano en VFR.
 
     # Performance de combustible
     fuel_flow_lph      : float  # Consumo de combustible en crucero (litros/hora)
@@ -94,6 +96,7 @@ ALPHA_TRAINER = AircraftProfile(
     vs0_kt           = 44.0,
     cruise_kt        = 97.0,
     cruise_alt_ft    = 6000,   # VFR bajo espacio controlado, planicie pampeana
+    service_ceiling_ft = 18000,
     fuel_flow_lph    = 14.0,   # ~3.7 gal/hr (Rotax 912)
     fuel_capacity_l  = 50.0,   # 2 tanques x 25L
     fuel_reserve_min = 30,
@@ -110,6 +113,7 @@ CESSNA_172 = AircraftProfile(
     vs0_kt           = 40.0,
     cruise_kt        = 110.0,
     cruise_alt_ft    = 10000,
+    service_ceiling_ft = 14000,
     fuel_flow_lph    = 32.0,   # ~8.5 gal/hr (Lycoming O-360, 75% potencia)
     fuel_capacity_l  = 212.0,  # 56 gal (tanques estandar)
     fuel_reserve_min = 45,     # VFR diurno ANAC: 45 min de reserva
@@ -126,6 +130,7 @@ PIPER_PA28 = AircraftProfile(
     vs0_kt           = 44.0,
     cruise_kt        = 108.0,
     cruise_alt_ft    = 7500,
+    service_ceiling_ft = 14500,
     fuel_flow_lph    = 30.0,   # ~8.0 gal/hr (Lycoming O-360, 75% potencia)
     fuel_capacity_l  = 189.0,  # 50 gal (PA-28-181 Archer)
     fuel_reserve_min = 45,
@@ -142,6 +147,7 @@ CESSNA_152 = AircraftProfile(
     vs0_kt           = 35.0,
     cruise_kt        = 90.0,
     cruise_alt_ft    = 5500,
+    service_ceiling_ft = 14000,
     fuel_flow_lph    = 19.0,   # ~5.0 gal/hr (Lycoming O-235, 75% potencia)
     fuel_capacity_l  = 98.0,   # 26 gal (tanques estandar)
     fuel_reserve_min = 45,
@@ -158,6 +164,7 @@ DIAMOND_DA40 = AircraftProfile(
     vs0_kt           = 48.0,
     cruise_kt        = 130.0,
     cruise_alt_ft    = 16500,
+    service_ceiling_ft = 16500,
     fuel_flow_lph    = 20.0,   # ~5.3 gal/hr (Lycoming IO-360, 75% potencia)
     fuel_capacity_l  = 148.0,  # 39.1 gal (DA40-180)
     fuel_reserve_min = 45,

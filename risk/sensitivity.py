@@ -262,28 +262,46 @@ def shape_analysis(battery, base_w, base_v):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 5. Sensibilidad de la FRACCION DE CAUTION de la barrera no-compensatoria
+# 5. Sensibilidad de las FRONTERAS de la barrera no-compensatoria
 # ──────────────────────────────────────────────────────────────────────────────
-# El piso conjuntivo eleva a CAUTION cuando un factor alcanza CAUTION_FRACTION
-# del limite de la aeronave. Ese 0.5 es juicio declarado (ver soft_scoring.py) y,
-# a diferencia de un peso, es una FRONTERA DE DECISION: no desplaza el puntaje
-# de manera continua sino que cambia veredictos de golpe. Corresponde medirlo.
+# El piso conjuntivo eleva el veredicto cuando un factor alcanza cierta fraccion
+# del limite de la aeronave. Esas fracciones son juicio o derivacion declarada
+# (ver el bloque de constantes de soft_scoring.py) y, a diferencia de un peso,
+# son FRONTERAS DE DECISION: no desplazan el puntaje de manera continua sino que
+# cambian veredictos de golpe. Corresponde medirlas.
+#
+# Se barren POR SEPARADO porque cruzado y rafaga ya no comparten escala: el
+# cruzado se ancla en un maximo demostrado en certificacion y la rafaga en una
+# referencia de operacion normal. Barrerlas juntas ocultaria cual de las dos
+# manda en cada escenario.
 
-def barrier_sensitivity(battery, base_w, base_v, fracciones=(0.35, 0.40, 0.60, 0.65)):
-    """Cambia CAUTION_FRACTION y mide cuantos veredictos se mueven."""
+# Cada frontera se perturba -30%, -20%, +20% y +30% respecto de SU base, para
+# que las tres sean comparables entre si aunque partan de valores distintos.
+_BARRERAS = (
+    ("XWIND_CAUTION_FRACTION", (0.35, 0.40, 0.60, 0.65)),   # base 0.50
+    ("GUST_CAUTION_FRACTION",  (0.60, 0.68, 1.02, 1.11)),   # base 0.85
+    ("GUST_NOGO_FACTOR",       (1.05, 1.20, 1.80, 1.95)),   # base 1.50
+)
+
+
+def barrier_sensitivity(battery, base_w, base_v, barreras=_BARRERAS):
+    """Perturba cada frontera de la barrera y mide cuantos veredictos se mueven."""
     import risk.soft_scoring as SS
 
-    original = SS.CAUTION_FRACTION
     out = []
-    try:
-        for f in fracciones:
-            SS.CAUTION_FRACTION = f
-            v = _verdicts(evaluate_battery(), base_w, THRESHOLD_GO, THRESHOLD_CAUTION)
-            SS.CAUTION_FRACTION = original
-            flips = sum(1 for a, b in zip(v, base_v) if a != b)
-            out.append({"frac": f, "flips": flips})
-    finally:
-        SS.CAUTION_FRACTION = original
+    for nombre, valores in barreras:
+        original = getattr(SS, nombre)
+        try:
+            for v_ in valores:
+                setattr(SS, nombre, v_)
+                verdicts = _verdicts(evaluate_battery(), base_w,
+                                     THRESHOLD_GO, THRESHOLD_CAUTION)
+                setattr(SS, nombre, original)
+                flips = sum(1 for a, b in zip(verdicts, base_v) if a != b)
+                out.append({"parametro": nombre, "base": original,
+                            "valor": v_, "flips": flips})
+        finally:
+            setattr(SS, nombre, original)
     return out
 
 
@@ -365,12 +383,16 @@ if __name__ == "__main__":
     print("         son la frontera IFR de la norma, no una eleccion del modelo.")
 
     # ── 5. Fraccion de CAUTION de la barrera ──────────────────────────────────
-    print("\n  [5] BARRERA NO-COMPENSATORIA  (fraccion de CAUTION, base 0.50)")
-    print(f"      {'fraccion':<12}{'flips':>10}")
-    print(f"      {'-'*11:<12}{'-'*9:>10}")
+    print("\n  [5] BARRERA NO-COMPENSATORIA  (fronteras de piso, una por una)")
+    print(f"      {'parametro':<26}{'base':>7}{'valor':>8}{'flips':>10}")
+    print(f"      {'-'*25:<26}{'-'*6:>7}{'-'*7:>8}{'-'*9:>10}")
+    _prev = None
     for row in barrier_sensitivity(battery, base_w, base_v):
-        print(f"      {row['frac']:<12.2f}{row['flips']:>4}/{n:<5}")
-    print("      El 0.50 es juicio declarado; esta tabla acota cuanto depende de el.")
+        etiqueta = row["parametro"] if row["parametro"] != _prev else ""
+        _prev = row["parametro"]
+        print(f"      {etiqueta:<26}{row['base']:>7.2f}{row['valor']:>8.2f}"
+              f"{row['flips']:>4}/{n:<5}")
+    print("      Cruzado y rafaga se barren por separado: no comparten escala.")
 
     # ── Conclusion cuantitativa ───────────────────────────────────────────────
     print("\n" + "-" * 82)

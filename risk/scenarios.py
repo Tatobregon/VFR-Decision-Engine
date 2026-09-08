@@ -37,6 +37,27 @@ IMPORTANTE: el score R depende de funciones r_i cuyas rampas (vis 3-8 km,
 techo 500-2000 ft) NO coinciden con los cortes normativos (vis 5, techo 1000).
 Por eso la etiqueta y el score son independientes y la concordancia entre ambos
 es una medida real, no una tautologia.
+
+ALCANCE DE ESA INDEPENDENCIA — leer antes de citar la concordancia
+------------------------------------------------------------------
+La afirmacion anterior vale PARA VISIBILIDAD Y TECHO, donde la etiqueta usa los
+cortes de la categoria ANAC/OACI (5 km, 1000 ft) y el motor usa rampas que no
+coinciden con ellos. Vale tambien para fenomenos wx y tendencia TAF.
+
+NO vale para VIENTO CRUZADO ni para RAFAGAS. En esos dos factores la etiqueta
+aplica las MISMAS fracciones del limite de la aeronave que la barrera
+no-compensatoria de risk/soft_scoring.py. La coincidencia entre etiqueta y
+motor en esos factores es POR CONSTRUCCION y no constituye evidencia
+independiente: es la misma decision de diseno enunciada dos veces.
+
+Se declara aca porque no hay forma de arreglarlo con mas trabajo: no existe
+norma ANAC ni OACI que fije un factor de rafaga admisible para aviacion general,
+de modo que no hay arbitro externo contra el cual contrastar. Lo unico que se
+puede hacer es no presentarlo como validacion, y eso es lo que hace esta nota.
+
+La concordancia global reportada por risk/calibration.py debe leerse con esta
+salvedad: los escenarios cuyo veredicto de referencia esta determinado por
+cruzado o rafaga miden consistencia interna, no acuerdo con una fuente externa.
 """
 
 import math
@@ -168,12 +189,19 @@ def normative_label(sc: Scenario) -> str:
     vote_xw = "NO GO" if xw_ratio >= 1.0 else "CAUTION" if xw_ratio >= 0.5 else "GO"
 
     # 3. Rafagas (delta rafaga - sostenida) relativo al gust_max
+    #
+    # ⚠ ESTE VOTO NO ES INDEPENDIENTE DEL MOTOR. Los cortes replican los de
+    # risk/soft_scoring.py (GUST_CAUTION_FRACTION, GUST_NOGO_FACTOR). Se dejan
+    # escritos como literales, y no importados, para que quien lea vea la
+    # duplicacion en vez de que un import la disimule; un test verifica que no
+    # se desincronicen (test_risk.py). Ver la nota de alcance al final del
+    # encabezado de este modulo.
     if sc.wind_gust_kt is not None and sc.wind_spd_kt is not None:
         delta = sc.wind_gust_kt - sc.wind_spd_kt
     else:
         delta = 0.0
     g_ratio = delta / prof.gust_max_kt if prof.gust_max_kt > 0 else 0.0
-    vote_gust = "NO GO" if g_ratio >= 1.0 else "CAUTION" if g_ratio >= 0.5 else "GO"
+    vote_gust = "NO GO" if g_ratio >= 1.5 else "CAUTION" if g_ratio >= 0.85 else "GO"
 
     # 4. Niebla por spread termico
     vote_fog = "CAUTION" if (sc.spread_c is not None and sc.spread_c <= 2.0) else "GO"
@@ -344,15 +372,26 @@ REFERENCE_SCENARIOS: List[Scenario] = [
              vis_km=10.0, wind_dir=90, wind_spd_kt=10.0, spread_c=9.0),
 
     # ── GRUPO E · Rafagas ────────────────────────────────────────────────────
+    # Los cortes de este grupo son 0.85 x gust_max (CAUTION) y 1.5 x (NO GO).
+    # E1 y E2 quedan por debajo del primero: son dias ventosos normales, no
+    # anomalias. E4 y E5 existen para que la bateria siga ejercitando los dos
+    # pisos de la barrera despues de que el criterio se elevo (antes bastaba E2,
+    # que con el corte anterior de 0.50 caia en la banda de CAUTION).
     Scenario("E1", "Rafagas", "Frente 10 kt con rafaga 18 (delta 8, 40% C152) -> GO",
              aircraft="Cessna 152", runway_heading=360,
              vis_km=10.0, wind_dir=360, wind_spd_kt=10.0, wind_gust_kt=18.0, spread_c=8.0),
-    Scenario("E2", "Rafagas", "Frente 12 kt con rafaga 24 (delta 12, 60% C152) -> CAUTION",
+    Scenario("E2", "Rafagas", "Frente 12 kt con rafaga 24 (delta 12, 60% C152) -> GO",
              aircraft="Cessna 152", runway_heading=360,
              vis_km=10.0, wind_dir=360, wind_spd_kt=12.0, wind_gust_kt=24.0, spread_c=8.0),
     Scenario("E3", "Rafagas", "Cruzado 8 kt racheado a 16 en Alpha -> CAUTION/NO GO",
              aircraft="Pipistrel Alpha Trainer", runway_heading=360,
              vis_km=10.0, wind_dir=90, wind_spd_kt=8.0, wind_gust_kt=16.0, spread_c=8.0),
+    Scenario("E4", "Rafagas", "Frente 12 kt con rafaga 30 (delta 18, 90% C152) -> CAUTION",
+             aircraft="Cessna 152", runway_heading=360,
+             vis_km=10.0, wind_dir=360, wind_spd_kt=12.0, wind_gust_kt=30.0, spread_c=8.0),
+    Scenario("E5", "Rafagas", "Frente 15 kt con rafaga 47 (delta 32, 160% C152) -> NO GO",
+             aircraft="Cessna 152", runway_heading=360,
+             vis_km=10.0, wind_dir=360, wind_spd_kt=15.0, wind_gust_kt=47.0, spread_c=8.0),
 
     # ── GRUPO F · Niebla / spread bajo ───────────────────────────────────────
     Scenario("F1", "Niebla", "Vis 6, spread 1.5 + BR, viento frente -> CAUTION",

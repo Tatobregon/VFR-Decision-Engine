@@ -38,20 +38,21 @@ Herramientas
 
 import inspect
 import logging
+import math
 import unicodedata
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 try:
     from data.airports import AIRPORTS, AirportInfo, get_by_code, search_airports
-    from route.performance import haversine_km
+    from route.performance import bearing_deg, haversine_km
     from risk.aircraft_profiles import PROFILE_NAMES, get_profile
 except ImportError:                                    # ejecucion como script
     import os
     import sys
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from data.airports import AIRPORTS, AirportInfo, get_by_code, search_airports
-    from route.performance import haversine_km
+    from route.performance import bearing_deg, haversine_km
     from risk.aircraft_profiles import PROFILE_NAMES, get_profile
 
 logger = logging.getLogger(__name__)
@@ -503,10 +504,42 @@ def evaluar_meteo(
     desglose = None
     if resultado.score_breakdown is not None:
         sb = resultado.score_breakdown
+        # Contribucion ponderada de cada criterio: w_i * r_i. Es lo que permite
+        # responder "por que da CAUTION?" con el desglose real del motor en vez
+        # de una explicacion inventada. Se ordena de mayor a menor para que el
+        # modelo pueda nombrar los que mandan sin tener que decidir el orden.
+        from risk.weights import (
+            W_CEIL, W_FOG, W_GUST, W_TAF, W_VIS, W_WX, W_XWIND,
+        )
+        criterios = [
+            ("visibilidad",     sb.r_vis,   W_VIS),
+            ("techo de nubes",  sb.r_ceil,  W_CEIL),
+            ("viento cruzado",  sb.r_xwind, W_XWIND),
+            ("riesgo de niebla", sb.r_fog,  W_FOG),
+            ("rafagas",         sb.r_gust,  W_GUST),
+            ("fenomenos",       sb.r_wx,    W_WX),
+            ("tendencia",       sb.r_taf,   W_TAF),
+        ]
+        componentes = sorted(
+            ({"criterio": nombre,
+              "riesgo_0_a_1": round(r, 3),
+              "peso": round(w, 3),
+              "aporte_al_puntaje": round(r * w, 4)}
+             for nombre, r, w in criterios),
+            key=lambda c: -c["aporte_al_puntaje"],
+        )
         desglose = {
             "factor_dominante": getattr(sb, "dominant_factor", None),
             "barrera_activada": getattr(sb, "guardrail_floor", None),
             "motivo_barrera": getattr(sb, "guardrail_reason", None) or None,
+            "componentes": componentes,
+            "como_leerlo": (
+                "El puntaje R es la suma de los aportes. Un criterio con riesgo "
+                "alto pero peso bajo aporta poco; por eso existe ademas la "
+                "barrera no-compensatoria, que impone un piso al veredicto sin "
+                "promediar. Si 'barrera_activada' no es GO, el veredicto lo fijo "
+                "esa barrera y no el puntaje."
+            ),
         }
 
     return {
@@ -537,6 +570,342 @@ def evaluar_meteo(
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Herramienta 6: atmosfera_en_punto
+# ──────────────────────────────────────────────────────────────────────────────
+# Responde "como esta el aire sobre tal lugar, a tal altura, para pasar por ahi".
+#
+# NO DEVUELVE VEREDICTO, y eso es deliberado. GO / CAUTION / NO GO es un concepto
+# de AERODROMO: mide despegue y aterrizaje contra una pista concreta. Si una
+# consulta sobre el aire a 7500 ft devolviera tambien un veredicto, la etiqueta
+# pasaria a significar dos cosas distintas y dejaria de ser el objeto unico y
+# bien definido sobre el que se apoya todo el motor. Para un veredicto esta
+# `evaluar_meteo` sobre un aerodromo.
+
+_TERRENO_RADIO_KM = 10.0     # semiancho de la grilla de terreno alrededor del punto
+_TERRENO_LADO     = 3        # grilla 3x3 -> 9 puntos en UNA sola peticion
+
+
+def _terreno_alrededor(lat: float, lon: float) -> Optional[Dict[str, Any]]:
+    """
+    Elevacion maxima del terreno en una grilla alrededor del punto.
+
+    Una sola peticion a Open-Topo-Data. Si falla devuelve None: el informe de
+    atmosfera se entrega igual, sin la parte de terreno, en lugar de fallar
+    entero por un dato accesorio.
+    """
+    try:
+        from data.terrain import M_TO_FT, get_elevations_m
+    except ImportError:                                    # pragma: no cover
+        return None
+
+    grados_lat = _TERRENO_RADIO_KM / 111.0
+    grados_lon = _TERRENO_RADIO_KM / (111.0 * max(0.2, math.cos(math.radians(lat))))
+    pasos = [-1, 0, 1] if _TERRENO_LADO == 3 else [0]
+    puntos = [(lat + i * grados_lat, lon + j * grados_lon)
+              for i in pasos for j in pasos]
+    try:
+        elevaciones = [e for e in get_elevations_m(puntos) if e is not None]
+    except Exception as e:                                 # pragma: no cover
+        logger.warning(f"Copiloto: no se pudo consultar el terreno: {e}")
+        return None
+    if not elevaciones:
+        return None
+    return {
+        "elevacion_maxima_ft": int(max(elevaciones) * M_TO_FT),
+        "radio_km": _TERRENO_RADIO_KM,
+    }
+
+
+def _altitud_para_el_punto(
+    ap: AirportInfo,
+    altura_ft: Optional[int],
+    perfil,
+    regimen: Optional[str],
+) -> Dict[str, Any]:
+    """
+    Decide a que altitud se evalua el aire, y de donde salio esa altitud.
+
+    Que la respuesta DIGA su procedencia no es adorno: es lo que le permite al
+    piloto verificar que el asistente no se la invento.
+    """
+    # 1. La eligio el piloto: manda la suya, acotada al techo de servicio.
+    if altura_ft is not None:
+        try:
+            pedida = int(altura_ft)
+        except (TypeError, ValueError):
+            pedida = 0
+        if pedida > 0:
+            techo = getattr(perfil, "service_ceiling_ft", 0) or 0
+            usada = max(1000, min(pedida, techo) if techo else pedida)
+            origen = "elegida por el piloto"
+            if techo and pedida > techo:
+                origen = (f"elegida por el piloto ({pedida} ft) pero acotada al "
+                          f"techo de servicio del {perfil.name} ({techo} ft)")
+            return {"altitud_ft": usada, "origen": origen}
+
+    # 2. IFR: la fija la MEA de la aerovia, no el piloto.
+    if (regimen or "").upper() == "IFR":
+        try:
+            from route.airway_router import nearest_airway_segment
+            seg = nearest_airway_segment(ap.lat, ap.lon)
+        except Exception:                                  # pragma: no cover
+            seg = None
+        if seg and seg.get("mea_ft"):
+            return {
+                "altitud_ft": int(seg["mea_ft"]),
+                "origen": (f"MEA de la aerovia {seg['ruta']} en el tramo "
+                           f"{seg['desde']}-{seg['hasta']}, a {seg['dist_km']} km "
+                           f"del punto"),
+                "aerovia": seg,
+            }
+        return {
+            "altitud_ft": None,
+            "origen": None,
+            "sin_aerovia": True,
+        }
+
+    # 3. VFR sin altitud: no se inventa un rumbo para aplicar semicirculos.
+    return {"altitud_ft": None, "origen": None}
+
+
+def atmosfera_en_punto(
+    lugar: str,
+    altura_ft: Optional[int] = None,
+    cuando: Optional[str] = None,
+    aeronave: Optional[str] = None,
+    regimen: Optional[str] = None,
+    rumbo_grados: Optional[int] = None,
+    provincia: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Informe del estado de la atmosfera sobre un lugar, a una altitud dada.
+
+    Sirve para decidir si conviene pasar por ahi. No es un veredicto de vuelo.
+    """
+    ap, error = _resolver_o_error(lugar, provincia)
+    if error:
+        return error
+
+    perfil = None
+    if aeronave:
+        for nombre in PROFILE_NAMES:
+            if _norm(aeronave) in _norm(nombre):
+                perfil = get_profile(nombre)
+                break
+    if perfil is None:
+        perfil = get_profile(PROFILE_NAMES[0])
+
+    alt = _altitud_para_el_punto(ap, altura_ft, perfil, regimen)
+
+    # Sin altitud no hay informe posible: se pregunta, no se supone.
+    if alt["altitud_ft"] is None:
+        sugerencias = [perfil.cruise_alt_ft]
+        try:
+            from route.airway_router import nearest_airway_segment
+            seg = nearest_airway_segment(ap.lat, ap.lon)
+            if seg and seg.get("mea_ft"):
+                sugerencias.append(int(seg["mea_ft"]))
+        except Exception:                                  # pragma: no cover
+            seg = None
+        return {
+            "ok": False,
+            "motivo": "falta_altitud",
+            "lugar": _ficha_breve(ap),
+            "mensaje": (
+                "Para informar el estado del aire hace falta saber A QUE ALTURA "
+                "va a pasar. PREGUNTASELO al piloto antes de volver a llamar a "
+                "esta herramienta. No elijas vos una altitud."
+                + (" No hay aerovia cerca de ese punto, asi que en IFR tampoco "
+                   "hay MEA de la cual tomarla." if alt.get("sin_aerovia") else "")
+            ),
+            "sugerencias_ft": sorted(set(sugerencias)),
+            "techo_de_servicio_ft": perfil.service_ceiling_ft,
+        }
+
+    dep_ts, etiqueta = _parse_cuando(cuando)
+    track = int(rumbo_grados) if rumbo_grados is not None else 0
+
+    try:
+        from decision.enroute import evaluate_nwp_at_coord
+        _, _, wx, _ = evaluate_nwp_at_coord(
+            lat=ap.lat, lon=ap.lon, elev_m=ap.elev_ft * 0.3048,
+            dep_time=dep_ts, duration_hours=1.0,
+            aircraft=perfil, mock=False,
+            cruise_alt_ft=alt["altitud_ft"],
+            track_bearing=track,
+            flight_rules=(regimen or "VFR").upper(),
+        )
+    except Exception as e:                                 # pragma: no cover
+        logger.warning(f"Copiloto: fallo el informe de atmosfera en {ap.code}: {e}")
+        wx = None
+
+    if wx is None:
+        return {
+            "ok": False,
+            "motivo": "sin_datos_meteorologicos",
+            "lugar": _ficha_breve(ap),
+            "mensaje": "No hay pronostico disponible para ese punto y esa hora. "
+                       "No lo estimes vos.",
+        }
+
+    delta_rafaga = None
+    if wx.wind_gust_kt is not None and wx.wind_spd_kt is not None:
+        delta_rafaga = round(wx.wind_gust_kt - wx.wind_spd_kt, 1)
+
+    informe: Dict[str, Any] = {
+        "ok": True,
+        "lugar": _ficha_breve(ap),
+        "altitud_ft": alt["altitud_ft"],
+        "origen_de_la_altitud": alt["origen"],
+        "momento_evaluado": etiqueta,
+        "aeronave_de_referencia": perfil.name,
+        "regimen": (regimen or "VFR").upper(),
+        "atmosfera": {
+            "viento_direccion_grados": wx.wind_dir,
+            "viento_kt": wx.wind_spd_kt,
+            "rafaga_kt": wx.wind_gust_kt,
+            "delta_rafaga_kt": delta_rafaga,
+            "temperatura_c": wx.temp_c,
+            "visibilidad_km": wx.visibility_km,
+            "techo_ft": wx.ceiling_ft,
+            "capas_de_nubes": list(wx.sky_layers or []),
+            "fenomenos": list(wx.wx_codes or []),
+        },
+        "fuente": "pronostico numerico NWP en el nivel de presion de esa altitud "
+                  "(no es una observacion directa)",
+        "instruccion": (
+            "Esto es un INFORME DE ATMOSFERA en un punto, no un veredicto de "
+            "vuelo. NO digas GO, CAUTION ni NO GO al responder esto: esas "
+            "etiquetas son de aerodromo y salen de evaluar_meteo. Describi las "
+            "condiciones y deci a que altitud corresponden y de donde salio esa "
+            "altitud."
+        ),
+    }
+    if "aerovia" in alt:
+        informe["aerovia"] = alt["aerovia"]
+
+    terreno = _terreno_alrededor(ap.lat, ap.lon)
+    if terreno:
+        margen = alt["altitud_ft"] - terreno["elevacion_maxima_ft"]
+        terreno["margen_ft"] = margen
+        if margen < 1000:
+            terreno["advertencia"] = (
+                f"la altitud consultada deja solo {margen} ft sobre el terreno "
+                f"mas alto del entorno; avisale al piloto"
+            )
+        informe["terreno"] = terreno
+
+    return informe
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Herramienta 7: mejor_hora_para_salir
+# ──────────────────────────────────────────────────────────────────────────────
+
+_MAX_HORAS_TIMELINE = 24
+
+
+def mejor_hora_para_salir(
+    query: str,
+    horas: int = 12,
+    aeronave: Optional[str] = None,
+    provincia: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Serie horaria del veredicto de un aerodromo, para elegir a que hora salir.
+
+    Es el mismo veredicto de superficie que produce `evaluar_meteo`, calculado
+    hora por hora. Se evalua cada EJE de pista del aerodromo y se toma el mejor:
+    la componente de cruzado de una pista y su reciproca es la misma, asi que
+    alcanza con un rumbo por eje.
+    """
+    ap, error = _resolver_o_error(query, provincia)
+    if error:
+        return error
+
+    perfil = None
+    if aeronave:
+        for nombre in PROFILE_NAMES:
+            if _norm(aeronave) in _norm(nombre):
+                perfil = get_profile(nombre)
+                break
+    if perfil is None:
+        perfil = get_profile(PROFILE_NAMES[0])
+
+    try:
+        ventana = max(3, min(int(horas or 12), _MAX_HORAS_TIMELINE))
+    except (TypeError, ValueError):
+        ventana = 12
+
+    ejes = sorted({r.heading % 180 for r in ap.runways}) or [0]
+    inicio = ((int(datetime.now(timezone.utc).timestamp()) // 3600) + 1) * 3600
+
+    try:
+        from decision.enroute import nwp_series_at_coord
+        por_eje = [
+            nwp_series_at_coord(
+                lat=ap.lat, lon=ap.lon, elev_m=ap.elev_ft * 0.3048,
+                runway_heading=eje, aircraft=perfil, mock=False,
+                start_utc=inicio, hours=ventana,
+            )
+            for eje in ejes
+        ]
+    except Exception as e:                                 # pragma: no cover
+        logger.warning(f"Copiloto: fallo la serie horaria de {ap.code}: {e}")
+        por_eje = []
+
+    series = [s for s in por_eje if s]
+    if not series:
+        return {
+            "ok": False,
+            "motivo": "sin_datos_meteorologicos",
+            "aerodromo": _ficha_breve(ap),
+            "mensaje": "No hay pronostico horario para ese aerodromo. No lo "
+                       "estimes vos.",
+        }
+
+    # Mejor pista por hora: el piloto elige cabecera, no se queda con la peor.
+    mejor_por_hora: Dict[int, Dict[str, Any]] = {}
+    for serie in series:
+        for punto in serie:
+            actual = mejor_por_hora.get(punto["t"])
+            if actual is None or punto["r"] < actual["r"]:
+                mejor_por_hora[punto["t"]] = punto
+
+    tz_ar = timezone(timedelta(hours=_AR_UTC_OFFSET_H))
+    horas_ordenadas = sorted(mejor_por_hora.values(), key=lambda p: p["t"])
+
+    def _local(ts: int) -> str:
+        return datetime.fromtimestamp(ts, tz_ar).strftime("%d/%m %H:%M")
+
+    detalle = [
+        {"hora_local": _local(p["t"]), "veredicto": p["dec"], "r": p["r"]}
+        for p in horas_ordenadas
+    ]
+    primeras_go = [p for p in horas_ordenadas if p["dec"] == "GO"]
+    mejor = min(horas_ordenadas, key=lambda p: p["r"])
+
+    return {
+        "ok": True,
+        "aerodromo": _ficha_breve(ap),
+        "aeronave": perfil.name,
+        "horas_analizadas": len(detalle),
+        "ejes_de_pista_evaluados": ejes,
+        "primera_hora_go": _local(primeras_go[0]["t"]) if primeras_go else None,
+        "horas_go": len(primeras_go),
+        "mejor_hora": {"hora_local": _local(mejor["t"]), "r": mejor["r"],
+                       "veredicto": mejor["dec"]},
+        "serie": detalle,
+        "instruccion": (
+            "Es la MISMA escala GO / CAUTION / NO GO de la evaluacion de "
+            "aerodromo, hora por hora. Transcribi los veredictos tal cual. "
+            "Resumí: deci desde cuando mejora y cuando conviene salir, sin "
+            "recitar las 12 horas una por una."
+        ),
+    }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Registro de herramientas
 # ──────────────────────────────────────────────────────────────────────────────
 # El nombre de cada entrada es la intencion medible en la matriz de confusion.
@@ -547,6 +916,8 @@ REGISTRY: Dict[str, Callable[..., Dict[str, Any]]] = {
     "servicios_aerodromo": servicios_aerodromo,
     "combustible_cercano": combustible_cercano,
     "evaluar_meteo": evaluar_meteo,
+    "atmosfera_en_punto": atmosfera_en_punto,
+    "mejor_hora_para_salir": mejor_hora_para_salir,
 }
 
 # Intencion adicional que no ejecuta nada. Existe para que el clasificador
@@ -621,10 +992,12 @@ def tool_declarations() -> List[Dict[str, Any]]:
         {
             "name": "evaluar_meteo",
             "description": (
-                "Corre el motor de decision VFR y devuelve el veredicto "
-                "GO / CAUTION / NO GO para volar desde un aerodromo. Usala "
-                "para cualquier pregunta sobre si se puede volar, como esta el "
-                "tiempo o si las condiciones son aptas."
+                "Veredicto GO / CAUTION / NO GO para DESPEGAR O ATERRIZAR en un "
+                "aerodromo. Mide condiciones de SUPERFICIE contra una pista: "
+                "viento cruzado, visibilidad y techo. Usala cuando la pregunta "
+                "es si se puede volar DESDE o HACIA un aerodromo, o si esta "
+                "apto para operar. NO la uses si la pregunta es por el aire EN "
+                "ALTURA sobre un punto de paso: para eso esta atmosfera_en_punto."
             ),
             "parameters": {"type": "object", "properties": {
                 "query": _P_QUERY,
@@ -639,6 +1012,58 @@ def tool_declarations() -> List[Dict[str, Any]]:
                 },
                 "duracion_h": {"type": "number",
                                "description": "Duracion estimada del vuelo en horas."},
+                "aeronave": {"type": "string",
+                             "description": f"Una de: {', '.join(PROFILE_NAMES)}."},
+                "provincia": _P_PROV,
+            }, "required": ["query"]},
+        },
+        {
+            "name": "atmosfera_en_punto",
+            "description": (
+                "Estado del AIRE sobre un lugar, a altitud de crucero. Es para "
+                "decidir si conviene PASAR POR ARRIBA de algun punto: desviarse "
+                "por ahi, sobrevolarlo, meterse en esa zona. Señales de que va "
+                "esta y no evaluar_meteo: 'por arriba de', 'si paso por', 'me "
+                "desvio por', 'en altura', 'en ruta', 'a X pies', 'sobre'. "
+                "Devuelve viento, temperatura, visibilidad y nubes en el nivel, "
+                "SIN veredicto GO/CAUTION/NO GO, porque el veredicto es de "
+                "aerodromo y esto no lo es. Si no sabes la altitud, llamala "
+                "igual sin ella: te va a pedir que se la preguntes al piloto."
+            ),
+            "parameters": {"type": "object", "properties": {
+                "lugar": {"type": "string",
+                          "description": "Ciudad, aerodromo o punto por el que se "
+                                         "quiere pasar."},
+                "altura_ft": {"type": "integer",
+                              "description": "Altitud en pies MSL. Omitila si el "
+                                             "piloto no la dijo."},
+                "cuando": {"type": "string",
+                           "description": "Hora local argentina, 'YYYY-MM-DD HH:MM' "
+                                          "o 'HH:MM'."},
+                "aeronave": {"type": "string",
+                             "description": f"Una de: {', '.join(PROFILE_NAMES)}."},
+                "regimen": {"type": "string",
+                            "description": "VFR o IFR. En IFR la altitud sale de la "
+                                           "MEA de la aerovia si no se especifica."},
+                "rumbo_grados": {"type": "integer",
+                                 "description": "Rumbo de la derrota al pasar por el "
+                                                "punto, si se conoce."},
+                "provincia": _P_PROV,
+            }, "required": ["lugar"]},
+        },
+        {
+            "name": "mejor_hora_para_salir",
+            "description": (
+                "Serie horaria del veredicto de un aerodromo para las proximas "
+                "horas. Usala cuando el piloto pregunta A QUE HORA conviene "
+                "salir, cuando mejora o cuando empeora. Devuelve la misma escala "
+                "GO/CAUTION/NO GO pero hora por hora."
+            ),
+            "parameters": {"type": "object", "properties": {
+                "query": _P_QUERY,
+                "horas": {"type": "integer",
+                          "description": "Cuantas horas mirar hacia adelante "
+                                         "(3 a 24, por defecto 12)."},
                 "aeronave": {"type": "string",
                              "description": f"Una de: {', '.join(PROFILE_NAMES)}."},
                 "provincia": _P_PROV,

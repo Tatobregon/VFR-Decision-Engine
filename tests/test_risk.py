@@ -229,3 +229,111 @@ def test_la_fuente_del_dato_no_cambia_el_score(weather):
     metar = compute_soft_score(weather(nwp_estimated=False, source="metar"), 360)
     nwp   = compute_soft_score(weather(nwp_estimated=True, source="nwp"), 360)
     assert metar.r_total == pytest.approx(nwp.r_total)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Barrera de rafagas: escala propia, distinta de la del cruzado
+# ══════════════════════════════════════════════════════════════════════════════
+# La rafaga y el cruzado dejaron de compartir umbral (septiembre 2026). El
+# motivo esta en el estatus de cada parametro: crosswind_max_kt es un maximo
+# DEMOSTRADO en certificacion, gust_max_kt es una referencia de operacion
+# normal. Estos tests fijan esa separacion para que no se revierta sin querer.
+
+from risk.soft_scoring import (
+    GUST_CAUTION_FRACTION,
+    GUST_NOGO_FACTOR,
+    XWIND_CAUTION_FRACTION,
+)
+
+
+def _piso_por_rafaga(delta_kt, gust_max_kt=20.0):
+    """Piso conjuntivo con SOLO rafaga activa (cruzado y demas neutralizados)."""
+    piso, _ = conjunctive_floor(
+        xw_eff_kt=0.0, xw_limit_kt=12.0,
+        gust_kt=10.0 + delta_kt, spd_kt=10.0,
+        gust_max_kt=gust_max_kt, r_fog=0.0, r_taf=0.0,
+    )
+    return piso
+
+
+def test_la_rafaga_usa_una_escala_mas_permisiva_que_el_cruzado():
+    assert GUST_CAUTION_FRACTION > XWIND_CAUTION_FRACTION
+
+
+@pytest.mark.parametrize("fraccion,esperado", [
+    (0.50, "GO"),        # dia ventoso normal: ya no dispara CAUTION
+    (0.70, "GO"),
+    (0.84, "GO"),
+    (0.85, "CAUTION"),   # justo en la referencia de operacion normal
+    (1.00, "CAUTION"),
+    (1.49, "CAUTION"),
+    (1.50, "NO GO"),     # la supera con margen
+    (2.00, "NO GO"),
+])
+def test_la_escalera_de_rafagas(fraccion, esperado):
+    assert _piso_por_rafaga(20.0 * fraccion) == esperado
+
+
+def test_el_caso_operativo_que_motivo_el_cambio_da_go():
+    """
+    Caso real observado en SACC: viento 318/6.8 kt con rafaga 20.8 sobre la
+    pista 320 (cruzado efectivo 0.2 kt) en un Alpha Trainer. Un delta de
+    rafaga de 14 kt sobre una referencia de 20 es un dia ventoso, no una
+    condicion que amerite advertencia.
+    """
+    perfil = get_profile("Pipistrel Alpha Trainer")
+    piso, _ = conjunctive_floor(
+        xw_eff_kt=0.2, xw_limit_kt=perfil.crosswind_max_kt,
+        gust_kt=20.8, spd_kt=6.8, gust_max_kt=perfil.gust_max_kt,
+        r_fog=0.0, r_taf=0.0,
+    )
+    assert piso == "GO"
+
+
+def test_la_escala_de_rafaga_es_relativa_a_cada_aeronave():
+    """
+    Regla de alcance: el mismo delta pesa distinto segun el avion.
+
+    Con 20 kt de delta, el Alpha (referencia 20 kt) queda al 100% y el DA40
+    (referencia 30 kt) al 67%. El umbral nunca es un valor absoluto en kt.
+    """
+    delta = 20.0
+    alpha = get_profile("Pipistrel Alpha Trainer").gust_max_kt   # 20 kt
+    da40  = get_profile("Diamond DA40").gust_max_kt              # 30 kt
+    assert _piso_por_rafaga(delta, alpha) == "CAUTION"           # 100%
+    assert _piso_por_rafaga(delta, da40)  == "GO"                # 67%
+
+
+def test_la_referencia_normativa_no_se_desincroniza_del_motor():
+    """
+    El voto de rafaga de risk/scenarios.py DUPLICA los cortes del motor.
+    Esa duplicacion es deliberada y esta declarada en el encabezado de ese
+    modulo (la concordancia de este factor es por construccion, no evidencia
+    independiente), pero si los dos valores se separan sin querer, la bateria
+    empieza a medir contra una regla que el sistema ya no aplica.
+    """
+    import inspect
+
+    from risk import scenarios
+
+    fuente = inspect.getsource(scenarios.normative_label)
+    assert f'>= {GUST_NOGO_FACTOR}' in fuente, (
+        "el corte de NO GO por rafaga de scenarios.py no coincide con "
+        f"GUST_NOGO_FACTOR={GUST_NOGO_FACTOR}"
+    )
+    assert f'>= {GUST_CAUTION_FRACTION}' in fuente, (
+        "el corte de CAUTION por rafaga de scenarios.py no coincide con "
+        f"GUST_CAUTION_FRACTION={GUST_CAUTION_FRACTION}"
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Techo de servicio
+# ══════════════════════════════════════════════════════════════════════════════
+
+def test_todo_perfil_declara_techo_de_servicio_por_encima_de_su_crucero():
+    """Acota la altitud que el piloto puede elegir a mano en VFR."""
+    for nombre in PROFILE_NAMES:
+        p = get_profile(nombre)
+        assert p.service_ceiling_ft > 0, nombre
+        assert p.service_ceiling_ft >= p.cruise_alt_ft, nombre

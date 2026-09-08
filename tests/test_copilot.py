@@ -395,8 +395,16 @@ def test_el_prompt_declara_las_reglas_criticas():
 # Conjunto de evaluacion
 # ══════════════════════════════════════════════════════════════════════════════
 
-def test_el_conjunto_de_evaluacion_cubre_las_seis_intenciones():
+def test_el_conjunto_de_evaluacion_cubre_todas_las_intenciones():
+    """Si se agrega una herramienta y no sus casos, la metrica deja de medirla."""
     assert {c.intent for c in CASES} == set(T.INTENTS)
+
+
+def test_cada_intencion_tiene_suficientes_casos_para_medir():
+    """Con menos de cinco casos, la precision por intencion no dice nada."""
+    from collections import Counter
+    for intent, n in Counter(c.intent for c in CASES).items():
+        assert n >= 5, f"{intent} solo tiene {n} casos"
 
 
 def test_el_conjunto_cubre_las_cinco_regiones():
@@ -416,3 +424,103 @@ def test_hay_casos_con_dato_ausente_y_deteccion_objetiva():
     sin_dato = [c for c in CASES if c.sin_dato]
     assert len(sin_dato) >= 8
     assert sum(1 for c in sin_dato if c.prohibido) >= 6
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Informe de atmosfera en altura
+# ══════════════════════════════════════════════════════════════════════════════
+# Estos tests no salen a la red: cubren la decision de ALTITUD y el contrato de
+# la respuesta, que es donde estan las reglas. El fetch meteorologico en si ya
+# esta cubierto por los tests del motor.
+
+def test_sin_altitud_el_informe_la_pide_en_vez_de_elegirla():
+    """
+    Elegir una altitud por el piloto seria inventar la premisa de la respuesta:
+    el aire a 3000 ft y a 12000 ft sobre el mismo punto no se parecen en nada.
+    """
+    r = T.atmosfera_en_punto("Junin")
+    assert r["ok"] is False
+    assert r["motivo"] == "falta_altitud"
+    assert "PREGUNTASELO" in r["mensaje"]
+    assert r["sugerencias_ft"]
+    assert r["techo_de_servicio_ft"] > 0
+
+
+def test_en_ifr_la_altitud_sale_de_la_mea_de_la_aerovia():
+    """En IFR el piloto no elige altitud: la fija la MEA publicada del tramo."""
+    from risk.aircraft_profiles import get_profile
+
+    ap = AIRPORTS["SAAJ"]                       # Junin, sobre la aerovia W9
+    alt = T._altitud_para_el_punto(ap, None, get_profile("Cessna 172 Skyhawk"), "IFR")
+    assert alt["altitud_ft"] and alt["altitud_ft"] > 0
+    assert "MEA de la aerovia" in alt["origen"]
+    assert alt["aerovia"]["mea_ft"] == alt["altitud_ft"]
+
+
+def test_la_altitud_elegida_se_acota_al_techo_de_servicio():
+    from risk.aircraft_profiles import get_profile
+
+    perfil = get_profile("Cessna 152")          # techo 14000 ft
+    ap = AIRPORTS["SAAJ"]
+    alt = T._altitud_para_el_punto(ap, 30000, perfil, "VFR")
+    assert alt["altitud_ft"] == perfil.service_ceiling_ft
+    assert "techo de servicio" in alt["origen"]
+
+
+def test_la_altitud_elegida_por_el_piloto_se_respeta():
+    from risk.aircraft_profiles import get_profile
+
+    ap = AIRPORTS["SAAJ"]
+    alt = T._altitud_para_el_punto(ap, 7500, get_profile("Cessna 152"), "VFR")
+    assert alt["altitud_ft"] == 7500
+    assert alt["origen"] == "elegida por el piloto"
+
+
+def test_el_informe_de_atmosfera_no_declara_ningun_veredicto():
+    """
+    GO / CAUTION / NO GO es un concepto de aerodromo, medido contra una pista.
+    Si el informe de altura tambien devolviera un veredicto, la etiqueta
+    significaria dos cosas distintas y dejaria de ser el objeto unico sobre el
+    que se apoya el motor.
+    """
+    import inspect
+    fuente = inspect.getsource(T.atmosfera_en_punto)
+    assert '"veredicto"' not in fuente
+    assert '"decision"' not in fuente
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# La barrera R2 convive con una serie de veredictos por hora
+# ══════════════════════════════════════════════════════════════════════════════
+
+def test_una_serie_horaria_no_dispara_una_correccion_falsa():
+    """
+    Al preguntar "puedo salir y a que hora conviene?", la respuesta menciona
+    legitimamente varios veredictos: "ahora CAUTION, desde las 15 GO". Exigir
+    exclusividad ahi produciria una correccion equivocada, y una correccion
+    equivocada destruye la confianza en el mecanismo.
+    """
+    texto = "Ahora da CAUTION, pero desde las 15:00 pasa a GO."
+    _, forzado = CopilotAgent._enforce_verdict(
+        texto, [dict(_METEO_NOGO, veredicto="CAUTION")],
+        hay_serie_de_veredictos=True,
+    )
+    assert forzado is False
+
+
+def test_pero_omitir_el_veredicto_se_corrige_igual_con_serie():
+    """La relajacion afloja la exclusividad, no la presencia."""
+    texto, forzado = CopilotAgent._enforce_verdict(
+        "Fijate que mas tarde mejora.", [_METEO_NOGO],
+        hay_serie_de_veredictos=True,
+    )
+    assert forzado is True
+    assert "NO GO" in texto
+
+
+def test_sin_serie_la_exclusividad_sigue_siendo_estricta():
+    _, forzado = CopilotAgent._enforce_verdict(
+        "No es GO exactamente, es NO GO.", [_METEO_NOGO],
+        hay_serie_de_veredictos=False,
+    )
+    assert forzado is True

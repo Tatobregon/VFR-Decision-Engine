@@ -583,6 +583,19 @@
         <div class="mt-1 text-xs text-muted"
              x-text="form.flight_rules==='VFR' ? 'Línea directa · regla de semicírculos' : 'Aerovías · MEA del tramo'"></div>
       </div>
+
+      <!-- Altitud de crucero: solo VFR. En IFR la fija la MEA de la aerovía. -->
+      <div x-show="form.flight_rules==='VFR'" x-cloak>
+        <label class="av-label">Altitud de crucero</label>
+        <input class="av-input" type="number" step="500" min="1000"
+               :max="selectedAc?.service_ceiling_ft || 14000"
+               :placeholder="'Auto · ' + (selectedAc?.cruise_alt_ft || 6000) + ' ft'"
+               x-model.number="form.cruise_alt_ft"
+               @change="clampCruiseAlt()"/>
+        <div class="mt-1 text-xs"
+             :class="cruiseAltCapped ? 'text-caution' : 'text-muted'"
+             x-text="cruiseAltHint()"></div>
+      </div>
     </div>
 
     <!-- Toggles + Evaluar -->
@@ -1486,6 +1499,10 @@ function app() {
       avoid_airspace: true,
       flight_rules:   'VFR',
       experience:     'PPL',
+      // Altitud de crucero VFR elegida por el piloto (ft MSL). null = que la
+      // derive el sistema por la regla de los semicírculos. En IFR se ignora:
+      // ahí manda la MEA de la aerovía.
+      cruise_alt_ft:  null,
     },
 
     // ── Autocomplete
@@ -1608,6 +1625,40 @@ function app() {
       return this.aircraftList.find(a => a.name === this.form.aircraft) || null;
     },
 
+    // ── Altitud de crucero VFR elegida a mano
+    cruiseAltCapped: false,
+
+    clampCruiseAlt() {
+      const techo = this.selectedAc?.service_ceiling_ft;
+      const v = this.form.cruise_alt_ft;
+      this.cruiseAltCapped = false;
+      if (v === null || v === '' || !Number.isFinite(v)) {
+        this.form.cruise_alt_ft = null;
+        return;
+      }
+      // El techo de servicio es un límite físico del avión, no una preferencia:
+      // se acota en silencio y se le avisa al piloto por qué.
+      if (techo && v > techo) {
+        this.form.cruise_alt_ft = techo;
+        this.cruiseAltCapped = true;
+      } else if (v < 1000) {
+        this.form.cruise_alt_ft = 1000;
+      }
+    },
+
+    cruiseAltHint() {
+      const ac = this.selectedAc;
+      if (this.cruiseAltCapped && ac) {
+        return 'Ajustada al techo de servicio del ' + ac.name + ' (' +
+               ac.service_ceiling_ft.toLocaleString('es-AR') + ' ft)';
+      }
+      if (this.form.cruise_alt_ft === null) {
+        return 'Vacío = regla de los semicírculos según el rumbo';
+      }
+      return ac ? ('Techo de servicio: ' +
+                   ac.service_ceiling_ft.toLocaleString('es-AR') + ' ft') : '';
+    },
+
     // ── Autocomplete origen
     onOriginInput() {
       clearTimeout(this._originTimer);
@@ -1687,6 +1738,9 @@ function app() {
           avoid_airspace: this.form.avoid_airspace,
           flight_rules:   this.form.flight_rules,
           experience:     this.form.experience,
+          // solo VFR: en IFR la altitud la fija la MEA de la aerovía
+          cruise_alt_ft:  this.form.flight_rules === 'VFR'
+                          ? this.form.cruise_alt_ft : null,
         };
 
         const res = await fetch('/api/evaluate', {
@@ -3043,11 +3097,22 @@ function copilot() {
     draft: '',
     loading: false,
     error: '',
-    suggestions: [
-      '¿A quién llamo en Cruz Alta?',
-      '¿Dónde puedo cargar combustible cerca de La Cumbre?',
-      '¿Puedo volar mañana a las 9 desde La Cumbre?',
-    ],
+    get suggestions() {
+      // Si ya hay un vuelo cargado, las sugerencias hablan de ESE vuelo.
+      const c = this.pageContext();
+      if (c && c.origin && c.dest) {
+        return [
+          '¿Cómo está la meteorología en destino?',
+          '¿A quién llamo en ' + c.dest + '?',
+          '¿Dónde puedo cargar combustible en la ruta?',
+        ];
+      }
+      return [
+        '¿A quién llamo en Cruz Alta?',
+        '¿Dónde puedo cargar combustible cerca de La Cumbre?',
+        '¿Puedo volar mañana a las 9 desde La Cumbre?',
+      ];
+    },
 
     async init() {
       try {
@@ -3073,6 +3138,30 @@ function copilot() {
       this.draft = '';
     },
 
+    // Lee el estado del formulario principal SIN tocar el componente app().
+    // Alpine.$data() es API publica de Alpine 3; asi el panel se mantiene
+    // desacoplado y no puede romper el flujo de evaluacion.
+    pageContext() {
+      try {
+        const el = document.querySelector('[x-data="app()"]');
+        if (!el || !window.Alpine || !window.Alpine.$data) return null;
+        const f = window.Alpine.$data(el)?.form;
+        if (!f || (!f.origin && !f.dest)) return null;
+        return {
+          origin:         f.origin || null,
+          dest:           f.dest || null,
+          aircraft:       f.aircraft || null,
+          flight_rules:   f.flight_rules || null,
+          departure_time: f.departure_time || null,
+          // en IFR la altitud la fija la MEA: no tiene sentido informarla
+          cruise_alt_ft:  f.flight_rules === 'VFR' ? (f.cruise_alt_ft || null) : null,
+          experience:     f.experience || null,
+        };
+      } catch (e) {
+        return null;
+      }
+    },
+
     async send(texto) {
       const mensaje = (texto || this.draft || '').trim();
       if (!mensaje || this.loading) return;
@@ -3087,7 +3176,11 @@ function copilot() {
         const r = await fetch('/api/copilot', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: mensaje, history: this.history }),
+          body: JSON.stringify({
+            message: mensaje,
+            history: this.history,
+            context: this.pageContext(),
+          }),
         });
 
         if (r.status === 429) {

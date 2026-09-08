@@ -34,6 +34,7 @@ from data.fetcher_aviationweather import AviationWeatherFetcher
 from data.fetcher_openmeteo import OpenMeteoFetcher
 from parsers.openmeteo_adapter import OpenMeteoAdapter
 from decision.engine import DecisionEngine
+from decision.enroute import evaluate_nwp_at_coord, nwp_series_at_coord
 from route.optimizer import optimize
 from route.airway_router import find_airways_for_leg, find_airways_for_route_legs
 from route.vfr_corridors import corridor_path_for_leg
@@ -75,6 +76,10 @@ class EvaluateRequest(BaseModel):
     avoid_airspace: bool = True    # si True, la ruta evita zonas R/P/D
     flight_rules: str = "VFR"      # "VFR" (default) | "IFR" — define routing/altitud
     experience: str = "PPL"        # "Alumno" | "PPL" | "Avanzado" — mínimos personales
+    # Altitud de crucero VFR elegida por el piloto (ft MSL). Solo aplica en VFR:
+    # en IFR la altitud la fija la MEA de la aerovía y este valor se ignora.
+    # None = el sistema la deriva por la regla de los semicírculos.
+    cruise_alt_ft: Optional[int] = None
     # NOTA: la duración del vuelo NO es un parámetro de entrada. Se deriva de la
     # ruta calculada (distancia / velocidad de crucero de la aeronave), porque
     # una duración declarada por el usuario que no coincida con la ruta real
@@ -249,6 +254,30 @@ def _parse_dep_time(s: str) -> int:
         return int(dep.timestamp())
     except Exception:
         return int(time.time()) + 3600
+
+
+def _clamp_vfr_alt(alt_ft, aircraft: AircraftProfile) -> Optional[int]:
+    """
+    Valida la altitud de crucero VFR elegida por el piloto.
+
+    La altitud es una decisión del piloto, no del sistema: se respeta el valor
+    pedido y solo se lo acota al TECHO DE SERVICIO de la aeronave, que es un
+    límite físico y no una preferencia. Por debajo se exige un piso simbólico de
+    1000 ft para descartar entradas absurdas; el margen real contra el terreno
+    lo verifica el perfil vertical, que conoce el relieve del tramo.
+
+    Devuelve None si no se pidió altitud (el sistema la deriva por la regla de
+    los semicírculos) o si el valor no es interpretable.
+    """
+    if alt_ft is None:
+        return None
+    try:
+        alt = int(alt_ft)
+    except (TypeError, ValueError):
+        return None
+    if alt <= 0:
+        return None
+    return max(1000, min(alt, aircraft.service_ceiling_ft))
 
 
 def _to_card(result, runway_heading: int, ap: AirportInfo, notams: list = None) -> WeatherCard:
@@ -430,123 +459,14 @@ def _find_diversions(
     return result
 
 
-# ── Helper: evaluar NWP en coordenadas arbitrarias (waypoints intermedios) ────
-
-def _evaluate_nwp_at_coord(
-    lat: float,
-    lon: float,
-    elev_m: float,
-    dep_time: int,
-    duration_hours: float,
-    aircraft: AircraftProfile,
-    mock: bool,
-    cruise_alt_ft: int = 7500,
-    track_bearing: int = 0,
-    flight_rules: str = "VFR",
-) -> tuple:
-    """
-    Evalúa riesgo NWP en coordenadas arbitrarias (no airport code).
-    Usa altitud de crucero para obtener viento en el nivel de presión correcto.
-    Devuelve (r_total, decision, ref_wx_or_None).
-    """
-    try:
-        fetcher = OpenMeteoFetcher(mock=mock)
-        adapter = OpenMeteoAdapter()
-        raw_nwp = fetcher.get_forecast(
-            lat=lat, lon=lon, elevation_m=elev_m,
-            hours_ahead=NWP_HOURS_AHEAD,
-            cruise_alt_ft=cruise_alt_ft,
-        )
-        if raw_nwp is None:
-            return 0.0, "GO", None, None
-
-        chk_id = f"CHK_{abs(lat):.1f}_{abs(lon):.1f}"
-        all_wx = adapter.adapt_all(raw_nwp, station_id=chk_id)
-        if not all_wx:
-            return 0.0, "GO", None, None
-
-        window_end = dep_time + int(duration_hours * 3600)
-        window_wx = [w for w in all_wx if dep_time <= w.obs_time <= window_end]
-        if not window_wx:
-            window_wx = [min(all_wx, key=lambda w: abs(w.obs_time - dep_time))]
-
-        ref_wx = min(window_wx, key=lambda w: abs(w.obs_time - dep_time))
-
-        for wx in window_wx:
-            blocker = check_hard_blockers_from_weather(wx)
-            if blocker.is_blocked:
-                return 1.0, "NO GO", ref_wx, None
-
-        # En vuelo crucero el viento cruzado no es peligroso (el piloto crabea).
-        # Se zeroa el crosswind alineando wind_dir con el track; r_gust sigue
-        # capturando turbulencia por ráfagas.
-        def _inflight_wx(w):
-            wx2 = copy.copy(w)
-            wx2.wind_dir = track_bearing
-            wx2.wind_variable = False
-            return wx2
-
-        scores = [compute_soft_score(_inflight_wx(w), track_bearing, aircraft) for w in window_wx]
-        worst = max(scores, key=lambda s: s.r_total)
-        decision = worst.decision
-
-        # Regla de visibilidad VFR a altitud: a FL100 (10.000 ft) o más, el
-        # mínimo VFR es 8 km, no 5. Si en ruta, a esa altitud, la visibilidad
-        # cae por debajo de 8 km, la operación VFR queda marginal → CAUTION.
-        # (Solo VFR: en IFR no se requiere VMC.)
-        if flight_rules == "VFR" and cruise_alt_ft >= 10000 and decision == "GO" \
-                and ref_wx is not None and ref_wx.visibility_km is not None \
-                and ref_wx.visibility_km < 8.0:
-            decision = "CAUTION"
-
-        return worst.r_total, decision, ref_wx, worst
-    except Exception as e:
-        logger.warning(f"Error evaluando NWP en coord ({lat:.2f},{lon:.2f}): {e}")
-        return 0.0, "GO", None, None
-
-
-# ── Helper: serie horaria de R para un punto (timeline meteorológica) ─────────
-
-def _nwp_series_at_coord(
-    lat: float,
-    lon: float,
-    elev_m: float,
-    runway_heading: int,
-    aircraft: AircraftProfile,
-    mock: bool,
-    start_utc: int,
-    hours: int = 24,
-) -> List[dict]:
-    """
-    Devuelve la serie horaria de R_total para un punto, evaluando cada hora del
-    pronóstico NWP como un despegue/aterrizaje (superficie, con crosswind real).
-    Reutiliza un único fetch (el NWP ya trae todas las horas).
-    Retorna: [{'t': unix_utc, 'r': float, 'dec': str}, ...] ordenada por hora.
-    """
-    try:
-        fetcher = OpenMeteoFetcher(mock=mock)
-        adapter = OpenMeteoAdapter()
-        raw_nwp = fetcher.get_forecast(
-            lat=lat, lon=lon, elevation_m=elev_m, hours_ahead=NWP_HOURS_AHEAD,
-        )
-        if raw_nwp is None:
-            return []
-        all_wx = adapter.adapt_all(raw_nwp, station_id=f"TL_{abs(lat):.1f}_{abs(lon):.1f}")
-        end_utc = start_utc + hours * 3600
-        series: List[dict] = []
-        for w in sorted(all_wx, key=lambda x: x.obs_time):
-            if not (start_utc <= w.obs_time <= end_utc):
-                continue
-            blocker = check_hard_blockers_from_weather(w)
-            if blocker.is_blocked:
-                series.append({'t': w.obs_time, 'r': 1.0, 'dec': "NO GO"})
-                continue
-            s = compute_soft_score(w, runway_heading, aircraft)
-            series.append({'t': w.obs_time, 'r': round(s.r_total, 3), 'dec': s.decision})
-        return series
-    except Exception as e:
-        logger.warning(f"Error serie NWP en coord ({lat:.2f},{lon:.2f}): {e}")
-        return []
+# ── Meteo en ruta: extraida a decision/enroute.py ─────────────────────────────
+# Estas dos funciones vivian aca como helpers privados. Se movieron a
+# `decision/enroute.py` porque el copiloto tambien las necesita, y que la capa
+# de lenguaje natural importara de `web/` invertiria la direccion de
+# dependencias del proyecto. Se reexportan con los nombres viejos para no tocar
+# el resto de este archivo.
+_evaluate_nwp_at_coord = evaluate_nwp_at_coord
+_nwp_series_at_coord   = nwp_series_at_coord
 
 
 # ── Helper: aeródromo alternativo más cercano a un checkpoint NO GO ────────────
@@ -588,6 +508,7 @@ def _generate_route_waypoints(
     step_km: float = 230.0,
     airway_map: Optional[dict] = None,
     flight_rules: str = "VFR",
+    vfr_cruise_alt_ft: Optional[int] = None,
 ) -> List[RouteWaypoint]:
     """
     Construye la lista completa de waypoints de la ruta.
@@ -672,9 +593,16 @@ def _generate_route_waypoints(
             # supera esta altitud, el perfil vertical lo marca como conflicto y
             # sugiere recalcular en IFR (no se sube por encima del crucero del
             # avión: un VFR no puede trepar arbitrariamente a librar la cordillera).
-            mid_lat = (ap.lat + next_ap.lat) / 2.0
-            mid_lon = (ap.lon + next_ap.lon) / 2.0
-            cruise_alt = hemispheric_vfr_altitude(track, mid_lat, mid_lon, aircraft.cruise_alt_ft)
+            # Si el piloto eligió una altitud a mano, manda la suya: es una
+            # decisión operativa y él sabe a qué altura quiere volar. El sistema
+            # solo la acota al techo de servicio del avión (ver _clamp_vfr_alt).
+            if vfr_cruise_alt_ft is not None:
+                cruise_alt = vfr_cruise_alt_ft
+            else:
+                mid_lat = (ap.lat + next_ap.lat) / 2.0
+                mid_lon = (ap.lon + next_ap.lon) / 2.0
+                cruise_alt = hemispheric_vfr_altitude(track, mid_lat, mid_lon,
+                                                      aircraft.cruise_alt_ft)
         else:
             # IFR sin aerovía disponible: altitud segura del tramo (terreno + buffer),
             # aproximada con la elevación de los aeródromos del tramo.
@@ -1052,6 +980,10 @@ async def list_aircraft():
             "cruise_kt":         p.cruise_kt,
             "crosswind_max_kt":  p.crosswind_max_kt,
             "range_km":          round(p.range_km),
+            # El frontend los usa para el selector de altitud VFR manual:
+            # cruise_alt_ft es la sugerencia inicial, service_ceiling_ft el tope.
+            "cruise_alt_ft":     p.cruise_alt_ft,
+            "service_ceiling_ft": p.service_ceiling_ft,
         })
     return out
 
@@ -1327,10 +1259,15 @@ async def profile(req: ProfileRequest):
     if len(pts) < 2:
         return {"profile": [], "airports": [], "total_km": 0.0}
 
-    # Altitud de crucero: la característica del avión (la que determina qué
-    # aerovías puede usar), no la del segmento. Fallback al valor del request.
+    # Altitud de crucero del perfil vertical.
+    #
+    # En IFR es la característica del avión —la que determina qué aerovías puede
+    # usar—, no la del segmento. En VFR, en cambio, la altitud la elige el piloto
+    # (o se deriva por semicírculos) y viaja en el request desde los waypoints ya
+    # calculados: pisarla con el crucero del perfil dibujaría el terreno contra
+    # una altura que el vuelo no va a volar.
     cruise_alt = req.cruise_alt_ft
-    if req.aircraft:
+    if req.aircraft and req.flight_rules != "VFR":
         try:
             cruise_alt = get_profile(req.aircraft).cruise_alt_ft
         except KeyError:
@@ -1594,6 +1531,8 @@ async def evaluate(req: EvaluateRequest):
         mock=False,
         airway_map=airway_map,
         flight_rules=flight_rules,
+        vfr_cruise_alt_ft=_clamp_vfr_alt(req.cruise_alt_ft, aircraft)
+                          if flight_rules == "VFR" else None,
     )
 
     # Aeródromos de desvío por waypoint (sin requests HTTP)
@@ -1654,6 +1593,10 @@ async def evaluate(req: EvaluateRequest):
 class CopilotRequest(BaseModel):
     message: str = Field(..., max_length=600)
     history: Optional[List[Dict]] = None
+    # Estado del formulario de la pantalla (origen, destino, aeronave, regimen,
+    # altitud elegida). Permite que "como esta el destino?" no obligue al
+    # asistente a repreguntar lo que el piloto ya cargo.
+    context: Optional[Dict] = None
 
 
 class CopilotResponse(BaseModel):
@@ -1728,7 +1671,7 @@ def copilot(req: CopilotRequest):
                                  "Esperá un minuto e intentá de nuevo.")
     _copilot_hits.append(ahora)
 
-    ans = agente.ask(req.message, history=req.history)
+    ans = agente.ask(req.message, history=req.history, context=req.context)
 
     return CopilotResponse(
         text             = ans.text,

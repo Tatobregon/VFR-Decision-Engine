@@ -296,3 +296,45 @@ def find_airways_for_route_legs(
         wps.sort(key=_progress)
 
     return airway_map
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Tramo de aerovia mas cercano a un punto
+# ──────────────────────────────────────────────────────────────────────────────
+
+def nearest_airway_segment(lat: float, lon: float, max_km: float = 60.0) -> Optional[dict]:
+    """
+    Devuelve el tramo de aerovia mas cercano a un punto, con su MEA.
+
+    Sirve para responder "a que altura se pasa por aca en IFR": la altitud no
+    la elige el piloto sino que la fija la altitud minima en ruta publicada
+    para el tramo (MEA del AIP, ENR-3.1).
+
+    Returns
+    -------
+    dict con `ruta` (designador, ej. "W44"), `mea_ft`, `desde`, `hasta` y
+    `dist_km` (distancia del punto al eje del tramo), o None si no hay ninguna
+    aerovia dentro de `max_km`.
+    """
+    mejor = None
+    for origen, aristas in AIRWAY_GRAPH.items():
+        n_o = AIRWAY_NODES.get(origen)
+        if not n_o:
+            continue
+        for arista in aristas:
+            n_d = AIRWAY_NODES.get(arista.get("to"))
+            if not n_d:
+                continue
+            d = _dist_point_to_segment_km(
+                lat, lon, n_o["lat"], n_o["lon"], n_d["lat"], n_d["lon"])
+            if d > max_km:
+                continue
+            if mejor is None or d < mejor["dist_km"]:
+                mejor = {
+                    "ruta":    arista.get("ruta"),
+                    "mea_ft":  arista.get("mea"),
+                    "desde":   origen,
+                    "hasta":   arista.get("to"),
+                    "dist_km": round(d, 1),
+                }
+    return mejor
