@@ -44,7 +44,7 @@ automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a
 | Archivo | Estado | Descripcion |
 |---|---|---|
 | `data/fetcher_aviationweather.py` | **COMPLETO** | METAR + TAF de aviationweather.gov. Produce `RawMetar`, `RawTaf`, `RawTafPeriod`. Mock de SACO incluido. |
-| `data/fetcher_openmeteo.py` | **COMPLETO** | Pronostico NWP de Open-Meteo. Produce `RawNWP` + `RawNWPHour`. Soporta viento en nivel de presion segun `cruise_alt_ft`. **`get_forecast_ring()`**: consulta el aerodromo + 6 puntos a 10 km en UNA peticion, para muestrear la incertidumbre orografica. Mock incluido. |
+| `data/fetcher_openmeteo.py` | **COMPLETO** | Pronostico NWP de Open-Meteo. Produce `RawNWP` + `RawNWPHour`. Con `cruise_alt_ft` pide **todas** las variables del nivel de presion (temperatura, rocio, humedad, nubosidad, viento y altura geopotencial), no solo el viento, y las deja en los campos `level_*` SIN pisar los de superficie. **`get_upper_air()`**: consulta dedicada de aire en altura, con tipos propios (`UpperAir`/`UpperAirHour`). **`get_forecast_ring()`**: consulta el aerodromo + 6 puntos a 10 km en UNA peticion, para muestrear la incertidumbre orografica. Mock incluido. |
 | `data/airports.py` | **COMPLETO** | Registro canonico de aerodromos. `AirportInfo`, `RunwayInfo` dataclasses. `AIRPORTS`, `AIRPORTS_PUBLIC`. Fuente unica de verdad para coords, elevacion y cabeceras. |
 | `data/airspace.py` | **COMPLETO** | Zonas CTR/TMA/R/P/D. Fuente `ar-airspace.json` (OpenAIP); fallback Cordoba si falta el cache. `zones_along_route()`, `route_intersects_zone()`. |
 | `data/airways.py` | **COMPLETO** | Grafo bidireccional de aerovias inferiores del AIP (ENR-3.1) desde `aerovias_argentinas.json`. `AIRWAY_NODES`, `AIRWAY_GRAPH`. |
@@ -93,7 +93,7 @@ automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a
 | Archivo | Estado | Descripcion |
 |---|---|---|
 | `config.py` | **COMPLETO** | Constantes globales: `NWP_STATIONS` (derivado de los 561 aerodromos de `AIRPORTS`), `METAR_STATIONS` (vacio, vestigio v1.0), `NWP_HOURS_AHEAD`. |
-| `decision/enroute.py` | **COMPLETO** | `evaluate_nwp_at_coord()` y `nwp_series_at_coord()`: meteo en coordenadas arbitrarias a altitud de crucero. **Extraidas de `web/app.py`** (septiembre 2026) porque el copiloto tambien las necesita y que la capa de lenguaje importara de `web/` invertiria las dependencias. En crucero **anulan el viento cruzado** (el piloto crabea; el cruzado es concepto de pista) y aplican el minimo VFR de 8 km sobre FL100. |
+| `decision/enroute.py` | **COMPLETO** | `evaluate_nwp_at_coord()` devuelve **cinco** valores: `(r_total, decision, ref_wx, score, level_hour)`. `ref_wx` es superficie; `level_hour` trae las condiciones DEL NIVEL. Se entregan separados a proposito. Ademas `nwp_series_at_coord()`. **Extraidas de `web/app.py`** (septiembre 2026) porque el copiloto tambien las necesita y que la capa de lenguaje importara de `web/` invertiria las dependencias. En crucero **anulan el viento cruzado** (el piloto crabea; el cruzado es concepto de pista) y aplican el minimo VFR de 8 km sobre FL100. |
 | `decision/engine.py` | **COMPLETO** | `DecisionEngine.evaluate()` → `DecisionResult`. Pipeline: fetch→parse→hard_blockers→soft_score+taf_window→decision. **Regla de fuente**: con codigo ICAO intenta METAR+TAF y cae a NWP si no hay METAR; sin ICAO va directo a NWP. El camino NWP usa **muestreo en anillo** (peor caso en tiempo Y espacio). |
 | `output/briefing.py` | **COMPLETO** | `generate_briefing(...)` → briefing meteorologico multi-linea para el piloto (origen, destino, ruta, NOTAMs). 100% reglas, sin IA. |
 | `output/flight_plan.py` | **COMPLETO** | `build_flight_plan(...)` → plan de vuelo OACI (casillas 7-19 + mensaje FPL). **No radica** el plan: lo presenta el piloto. |
@@ -321,6 +321,49 @@ Es validez de CONSTRUCTO (reproduce la regulacion), no empirica. Concordancia fi
 > siendo 35/36 con 0 sub-avisos, con el mismo unico desacuerdo (G2, sobre-aviso).
 > Dos derivaciones independientes de los pesos producen el mismo comportamiento
 > decisional: el veredicto no depende de la ponderacion exacta.
+
+### Superficie y altura son datos distintos y no se mezclan
+
+> **Un punto de ruta tiene dos realidades a la vez**: el suelo que queda debajo y el
+> aire por el que el avion efectivamente lo cruza. Describir el segundo con datos del
+> primero produce errores de decenas de grados.
+
+Bug real (septiembre 2026), encontrado por el piloto usando el asistente: el informe
+en altura daba 19.1 C tanto a 6.000 como a 15.000 ft. La causa era que
+`get_forecast(cruise_alt_ft=...)` pedia del nivel de presion **solo el viento**:
+
+```
+Bell Ville, 08/09 12:00 — medido contra la API
+    superficie           15.5 C
+    800 hPa (6.581 ft)    5.2 C
+    600 hPa (14.154 ft)  -8.1 C
+```
+
+**Como quedo resuelto:**
+- El fetcher pide **todas** las variables del nivel en la MISMA peticion (no cuesta
+  una llamada extra) y las deja en campos `level_*` que NO pisan los de superficie.
+- `ParsedWeather` sigue siendo un contrato de **superficie**. Forzar ahi los datos de
+  un nivel obligaria a rellenar campos que en altura no significan nada (techo AGL,
+  spread para niebla) — que es exactamente como nacio el bug. Por eso `get_upper_air()`
+  tiene tipos propios y `evaluate_nwp_at_coord()` devuelve el nivel por separado.
+- La interfaz **etiqueta cada dato**: "EN EL NIVEL DE RUTA" contra "EN SUPERFICIE,
+  DEBAJO DEL PUNTO", y declara la **altura geopotencial real** del nivel (600 hPa
+  estuvo a 14.091 ft el dia de la prueba, no a los 15.000 pedidos).
+- **La visibilidad NO se informa en altura**: Open-Meteo no la publica por nivel de
+  presion (verificado contra la API). Se dice que no esta, en vez de sustituirla por
+  la de superficie.
+- Los nombres de variable tienen que coincidir entre pedido y lectura: Open-Meteo
+  acepta `windspeed` y `wind_speed` pero devuelve **la grafia que se pidio**, y leer
+  la otra hace que el viento caiga EN SILENCIO al de superficie. Hay un test que lo fija.
+- **El mock simula el nivel** con gradiente ISA. Sin eso, un test escrito sobre el mock
+  pasaria con el bug puesto, que es lo peor que puede hacer una red de seguridad.
+
+> **Limitacion que SIGUE en pie, declarada.** El PUNTAJE de un checkpoint en ruta
+> (`r_vis`, `r_ceil`) se calcula con la visibilidad y el techo de SUPERFICIE, porque
+> no existe visibilidad por nivel de presion en la fuente. La informacion que se
+> MUESTRA ya es correcta y esta etiquetada; el scoring no cambio. Moverlo a la
+> nubosidad del nivel alteraria veredictos de ruta y exigiria recalibrar: es una
+> decision pendiente, no un olvido.
 
 ### Copiloto en lenguaje natural — arquitectura neurosimbolica
 

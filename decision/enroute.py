@@ -70,8 +70,18 @@ def evaluate_nwp_at_coord(
 ) -> tuple:
     """
     Evalúa riesgo NWP en coordenadas arbitrarias (no airport code).
-    Usa altitud de crucero para obtener viento en el nivel de presión correcto.
-    Devuelve (r_total, decision, ref_wx_or_None, score_or_None).
+
+    Devuelve (r_total, decision, ref_wx, score, level_hour).
+
+    `ref_wx` es un ParsedWeather de SUPERFICIE (con el viento ya sustituido por
+    el del nivel). `level_hour` es el RawNWPHour de esa misma hora, que ademas
+    trae temperatura, rocio, humedad y nubosidad EN EL NIVEL de presion.
+
+    Los dos se devuelven por separado a proposito. Un punto de ruta tiene dos
+    realidades simultaneas —el suelo debajo y el aire por el que se lo cruza— y
+    mezclarlas en una sola estructura fue un bug real: la temperatura de
+    superficie terminaba mostrandose como si fuera la de crucero, con decenas
+    de grados de error.
     """
     try:
         fetcher = OpenMeteoFetcher(mock=mock)
@@ -82,12 +92,16 @@ def evaluate_nwp_at_coord(
             cruise_alt_ft=cruise_alt_ft,
         )
         if raw_nwp is None:
-            return 0.0, "GO", None, None
+            return 0.0, "GO", None, None, None
 
         chk_id = f"CHK_{abs(lat):.1f}_{abs(lon):.1f}"
         all_wx = adapter.adapt_all(raw_nwp, station_id=chk_id)
         if not all_wx:
-            return 0.0, "GO", None, None
+            return 0.0, "GO", None, None, None
+
+        # Hora cruda por timestamp, para poder devolver las condiciones DEL
+        # NIVEL junto con las de superficie.
+        crudas = {h.valid_time_utc: h for h in raw_nwp.hours}
 
         window_end = dep_time + int(duration_hours * 3600)
         window_wx = [w for w in all_wx if dep_time <= w.obs_time <= window_end]
@@ -95,11 +109,12 @@ def evaluate_nwp_at_coord(
             window_wx = [min(all_wx, key=lambda w: abs(w.obs_time - dep_time))]
 
         ref_wx = min(window_wx, key=lambda w: abs(w.obs_time - dep_time))
+        level_hour = crudas.get(ref_wx.obs_time)
 
         for wx in window_wx:
             blocker = check_hard_blockers_from_weather(wx)
             if blocker.is_blocked:
-                return 1.0, "NO GO", ref_wx, None
+                return 1.0, "NO GO", ref_wx, None, level_hour
 
         # En vuelo crucero el viento cruzado no es peligroso (el piloto crabea).
         # Se zeroa el crosswind alineando wind_dir con el track; r_gust sigue
@@ -124,10 +139,10 @@ def evaluate_nwp_at_coord(
                 and ref_wx.visibility_km < 8.0:
             decision = "CAUTION"
 
-        return worst.r_total, decision, ref_wx, worst
+        return worst.r_total, decision, ref_wx, worst, level_hour
     except Exception as e:
         logger.warning(f"Error evaluando NWP en coord ({lat:.2f},{lon:.2f}): {e}")
-        return 0.0, "GO", None, None
+        return 0.0, "GO", None, None, None
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -193,16 +208,25 @@ if __name__ == "__main__":
     ahora = int(time.time()) + 3600
 
     # Junin (SAAJ), a 7500 ft, rumbo este
-    r, dec, wx, score = evaluate_nwp_at_coord(
+    r, dec, wx, score, lvl = evaluate_nwp_at_coord(
         lat=-34.5459, lon=-60.9306, elev_m=81.0,
         dep_time=ahora, duration_hours=1.0, aircraft=ac, mock=False,
         cruise_alt_ft=7500, track_bearing=90, flight_rules="VFR",
     )
     print(f"\n  Junin a 7500 ft : R={r:.3f}  ({dec})")
     if wx is not None:
-        print(f"    viento    : {wx.wind_dir}/{wx.wind_spd_kt} kt")
+        print("    -- superficie --")
         print(f"    visibilidad: {wx.visibility_km} km   techo: {wx.ceiling_ft} ft")
         print(f"    temperatura: {wx.temp_c} C")
+    if lvl is not None:
+        print("    -- en el nivel de crucero --")
+        print(f"    altura real: {lvl.level_altitude_ft} ft")
+        print(f"    viento     : {lvl.winddirection_10m}/{lvl.windspeed_10m_kt} kt")
+        print(f"    temperatura: {lvl.level_temp_c} C   rocio: {lvl.level_dewpoint_c} C")
+        print(f"    nubosidad  : {lvl.level_cloud_pct} %   HR: {lvl.level_rh_pct} %")
+        if lvl.level_temp_c is not None and wx is not None and wx.temp_c is not None:
+            print(f"    diferencia con superficie: "
+                  f"{abs(lvl.level_temp_c - wx.temp_c):.1f} C")
 
     serie = nwp_series_at_coord(
         lat=-34.5459, lon=-60.9306, elev_m=81.0, runway_heading=180,

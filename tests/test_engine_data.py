@@ -413,3 +413,86 @@ def test_el_motor_es_seguro_entre_hilos():
     assert len(resultados) == 160
     assert len(set(resultados)) == 1, (
         f"la misma entrada dio resultados distintos entre hilos: {set(resultados)}")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Checkpoints de ruta: el nivel de crucero no es la superficie
+# ══════════════════════════════════════════════════════════════════════════════
+# Un punto de ruta tiene dos realidades a la vez: el suelo que queda debajo y
+# el aire por el que el avion lo cruza. Describir el segundo con datos del
+# primero da errores de decenas de grados, y fue un bug real.
+
+def test_el_pronostico_con_altitud_trae_condiciones_del_nivel():
+    from data.fetcher_openmeteo import OpenMeteoFetcher
+
+    f = OpenMeteoFetcher(mock=True)
+    con_alt = f.get_forecast(-31.0, -64.0, 500.0, hours_ahead=3, cruise_alt_ft=15000)
+    h = con_alt.hours[0]
+    assert h.level_temp_c is not None
+    assert h.level_altitude_ft is not None
+    assert h.level_temp_c != h.temperature_2m_c, (
+        "la temperatura del nivel no puede ser la de superficie"
+    )
+
+
+def test_sin_altitud_no_se_inventan_datos_de_nivel():
+    """Pedir superficie tiene que devolver superficie, sin rellenar el nivel."""
+    from data.fetcher_openmeteo import OpenMeteoFetcher
+
+    h = OpenMeteoFetcher(mock=True).get_forecast(
+        -31.0, -64.0, 500.0, hours_ahead=3).hours[0]
+    assert h.level_temp_c is None
+    assert h.level_altitude_ft is None
+
+
+def test_a_mayor_altitud_de_crucero_menor_temperatura_en_el_nivel():
+    from data.fetcher_openmeteo import OpenMeteoFetcher
+
+    f = OpenMeteoFetcher(mock=True)
+    temps = [
+        f.get_forecast(-31.0, -64.0, 500.0, hours_ahead=2,
+                       cruise_alt_ft=alt).hours[0].level_temp_c
+        for alt in (3000, 8000, 15000)
+    ]
+    assert temps[0] > temps[1] > temps[2], temps
+
+
+def test_la_evaluacion_en_ruta_devuelve_superficie_y_nivel_por_separado():
+    """
+    `evaluate_nwp_at_coord` devuelve cinco valores, y el quinto son las
+    condiciones DEL NIVEL. Se entregan aparte del ParsedWeather —que es un
+    contrato de superficie— para que nadie las confunda de nuevo.
+    """
+    import time
+
+    from decision.enroute import evaluate_nwp_at_coord
+
+    r, dec, ref_wx, worst, lvl = evaluate_nwp_at_coord(
+        lat=-31.0, lon=-64.0, elev_m=500.0,
+        dep_time=int(time.time()) + 3600, duration_hours=1.0,
+        aircraft=get_profile("Cessna 172 Skyhawk"), mock=True,
+        cruise_alt_ft=15000, track_bearing=90, flight_rules="VFR",
+    )
+    assert ref_wx is not None and lvl is not None
+    assert lvl.level_temp_c is not None
+    assert lvl.level_temp_c != ref_wx.temp_c
+
+
+def test_los_nombres_de_variable_del_nivel_coinciden_entre_pedido_y_lectura():
+    """
+    Open-Meteo acepta "windspeed" y "wind_speed" pero devuelve la grafia que se
+    pidio. Si el pedido y la lectura usan grafias distintas, no se encuentra
+    nada y el viento cae EN SILENCIO al de superficie. Paso una vez.
+    """
+    import inspect
+
+    from data import fetcher_openmeteo as fo
+
+    pedido = inspect.getsource(fo.OpenMeteoFetcher.get_forecast)
+    lectura = inspect.getsource(fo.OpenMeteoFetcher._parse_response)
+    assert "_UPPER_AIR_VARS" in pedido
+    for var in ("wind_speed", "wind_direction"):
+        assert var in fo._UPPER_AIR_VARS
+        assert f'{var}_{{pressure_lvl}}hPa' in lectura, (
+            f"_parse_response no lee {var} con la misma grafia con que se pide"
+        )

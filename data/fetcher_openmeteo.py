@@ -114,6 +114,17 @@ class RawNWPHour:
     dewpoint_2m_c       : Optional[float]   # punto de rocio a 2m en Celsius
     weathercode         : Optional[int]     # codigo WMO (0=despejado, 95=tormenta, etc.)
 
+    # ── Condiciones EN EL NIVEL DE PRESION ────────────────────────────────────
+    # Solo se pueblan cuando se pidio el pronostico con `cruise_alt_ft`. Van
+    # aparte de los campos de superficie y NO los pisan: un punto de ruta tiene
+    # las dos cosas a la vez, el suelo debajo y el aire por el que se lo cruza,
+    # y confundirlas fue un bug real (ver get_upper_air).
+    level_temp_c        : Optional[float] = None   # temperatura en el nivel
+    level_dewpoint_c    : Optional[float] = None   # punto de rocio en el nivel
+    level_rh_pct        : Optional[int]   = None   # humedad relativa en el nivel
+    level_cloud_pct     : Optional[int]   = None   # nubosidad EN el nivel
+    level_altitude_ft   : Optional[int]   = None   # altura geopotencial real
+
 
 @dataclass
 class RawNWP:
@@ -449,10 +460,29 @@ class OpenMeteoFetcher:
                 arr = hourly.get(key, [])
                 return arr[_i] if _i < len(arr) else None
 
+            def _lvl_float(nombre, _i=i):
+                if not pressure_lvl:
+                    return None
+                return _to_float(_val(f"{nombre}_{pressure_lvl}hPa", _i))
+
+            def _lvl_int(nombre, _i=i):
+                if not pressure_lvl:
+                    return None
+                return _to_int(_val(f"{nombre}_{pressure_lvl}hPa", _i))
+
+            def _lvl_alt_ft(_i=i):
+                m = _lvl_float("geopotential_height", _i)
+                return int(m * 3.28084) if m is not None else None
+
             # Viento: preferir nivel de presion si se solicito
             if pressure_lvl:
-                spd_key = f"windspeed_{pressure_lvl}hPa"
-                dir_key = f"winddirection_{pressure_lvl}hPa"
+                # Los nombres tienen que coincidir EXACTAMENTE con los que se
+                # piden en get_forecast (_UPPER_AIR_VARS). Open-Meteo acepta
+                # las dos grafias ("windspeed" y "wind_speed") pero devuelve la
+                # que se pidio: si aca se lee la otra, no se encuentra nada y el
+                # viento cae en silencio al de superficie.
+                spd_key = f"wind_speed_{pressure_lvl}hPa"
+                dir_key = f"wind_direction_{pressure_lvl}hPa"
                 alt_spd = _to_float(_val(spd_key))
                 alt_dir = _to_int(_val(dir_key))
                 wind_spd  = alt_spd  if alt_spd  is not None else _to_float(_val("windspeed_10m"))
@@ -477,6 +507,12 @@ class OpenMeteoFetcher:
                 temperature_2m_c    = _to_float(_val("temperature_2m")),
                 dewpoint_2m_c       = _to_float(_val("dewpoint_2m")),
                 weathercode         = _to_int(_val("weathercode")),
+                # Condiciones del nivel, si se pidio alguno
+                level_temp_c        = _lvl_float("temperature"),
+                level_dewpoint_c    = _lvl_float("dew_point"),
+                level_rh_pct        = _lvl_int("relative_humidity"),
+                level_cloud_pct     = _lvl_int("cloud_cover"),
+                level_altitude_ft   = _lvl_alt_ft(),
             ))
 
         fetch_time = now_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -528,11 +564,25 @@ class OpenMeteoFetcher:
 
         if self.mock:
             raw_data = _mock_nwp_sacc(hours_ahead)
-            return self._parse_response(raw_data, hours_ahead, pressure_lvl=None)
+            simulado = self._parse_response(raw_data, hours_ahead, pressure_lvl=None)
+            if pressure_lvl and simulado is not None:
+                # El mock tiene que simular TAMBIEN el nivel de presion. Si
+                # devolviera siempre superficie, un test escrito con mock
+                # pasaria con el bug de "datos de suelo presentados como de
+                # altura" puesto, que es justo lo que hay que impedir. Se usa
+                # el gradiente ISA (2 C por cada 1.000 ft) para que la
+                # temperatura del nivel no pueda coincidir con la del suelo.
+                simulado = _simular_nivel_en_mock(simulado, cruise_alt_ft or 0)
+            return simulado
 
         hourly_vars = HOURLY_VARIABLES
         if pressure_lvl:
-            hourly_vars += f",windspeed_{pressure_lvl}hPa,winddirection_{pressure_lvl}hPa"
+            # Se piden TODAS las del nivel, no solo el viento: van en la misma
+            # peticion, asi que no cuestan una llamada extra, y sin ellas un
+            # punto de ruta a altitud de crucero se describiria con la
+            # temperatura y la nubosidad del suelo.
+            hourly_vars += "," + ",".join(
+                f"{v}_{pressure_lvl}hPa" for v in _UPPER_AIR_VARS)
 
         # Clave de cache: el punto (redondeado a ~100 m) y el nivel de presion.
         # Los checkpoints de una ruta y las evaluaciones sucesivas del mismo
@@ -814,6 +864,28 @@ _UPPER_AIR_VARS = (
     "wind_direction",
     "geopotential_height",
 )
+
+
+def _simular_nivel_en_mock(nwp: "RawNWP", alt_ft: int) -> "RawNWP":
+    """
+    Rellena los campos de nivel de un RawNWP simulado con gradiente ISA.
+
+    Existe para que el modo mock no oculte el error que separa superficie de
+    altura: sin esto, `get_forecast(mock=True, cruise_alt_ft=15000)` devolvia
+    la temperatura del suelo y cualquier test escrito sobre el mock habria
+    validado el comportamiento equivocado.
+    """
+    for h in nwp.hours:
+        base = h.temperature_2m_c if h.temperature_2m_c is not None else 20.0
+        h.level_temp_c      = round(base - (alt_ft / 1000.0) * 2.0, 1)
+        h.level_dewpoint_c  = round(h.level_temp_c - 8.0, 1)
+        h.level_rh_pct      = 40
+        h.level_cloud_pct   = h.cloudcover_mid_pct or 0
+        h.level_altitude_ft = alt_ft
+        # El viento en altura tampoco es el de superficie.
+        if h.windspeed_10m_kt is not None:
+            h.windspeed_10m_kt = round(h.windspeed_10m_kt + alt_ft / 1000.0, 1)
+    return nwp
 
 
 @dataclass

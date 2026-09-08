@@ -2253,15 +2253,22 @@ function app() {
 
           const meteoBlock = cw ? `
             <div style="border-top:1px solid #30363d;margin-top:5px;padding-top:4px">
-              <div style="font-size:10px;color:#8b949e;margin-bottom:3px">NWP A ALTITUD DE RUTA${wp.is_airway_waypoint && wp.airway_mea_ft ? ' (MEA '+wp.airway_mea_ft.toLocaleString()+' ft)' : (wp.cruise_alt_ft ? ' ('+wp.cruise_alt_ft.toLocaleString()+' ft)' : '')}</div>
+              <div style="font-size:10px;color:#8b949e;margin-bottom:3px">EN EL NIVEL DE RUTA${wp.is_airway_waypoint && wp.airway_mea_ft ? ' (MEA '+wp.airway_mea_ft.toLocaleString()+' ft)' : (wp.cruise_alt_ft ? ' ('+wp.cruise_alt_ft.toLocaleString()+' ft)' : '')}${cw.level_altitude_ft ? ' · nivel real '+cw.level_altitude_ft.toLocaleString()+' ft' : ''}</div>
               <div style="font-size:10px;color:#e6edf3;margin-bottom:2px">
                 Viento: ${cw.wind_variable ? 'VRB' : (cw.wind_dir != null ? String(cw.wind_dir).padStart(3,'0')+'°' : '---')} / ${cw.wind_spd_kt != null ? cw.wind_spd_kt+' kt' : '--'}${cw.wind_gust_kt ? ' G'+cw.wind_gust_kt+' kt' : ''}
               </div>
-              <div style="font-size:10px;color:#e6edf3;margin-bottom:2px">
+              ${cw.level_temp_c != null ? `
+                <div style="font-size:10px;color:#e6edf3;margin-bottom:2px">
+                  Temp en el nivel: <span style="font-weight:700;color:${cw.level_below_zero ? '#58a6ff' : '#e6edf3'}">${cw.level_temp_c}°C</span>${cw.level_below_zero ? ' <span style="color:#58a6ff">· bajo cero</span>' : ''}
+                </div>
+                <div style="font-size:10px;color:#8b949e;margin-bottom:2px">
+                  Rocío ${cw.level_dewpoint_c != null ? cw.level_dewpoint_c+'°C' : '---'} &nbsp;HR ${cw.level_rh_pct != null ? cw.level_rh_pct+'%' : '---'} &nbsp;Nubes en el nivel ${cw.level_cloud_pct != null ? cw.level_cloud_pct+'%' : '---'}
+                </div>` : ''}
+              <div style="font-size:9px;color:#6e7681;margin-top:4px;margin-bottom:1px;letter-spacing:.04em">EN SUPERFICIE, DEBAJO DEL PUNTO</div>
+              <div style="font-size:10px;color:#8b949e;margin-bottom:2px">
                 Vis: ${cw.visibility_km != null ? (cw.visibility_km>=9.9 ? '>10 km' : cw.visibility_km+' km') : '---'} &nbsp;|&nbsp;
-                Techo: ${cw.ceiling_ft != null ? cw.ceiling_ft+' ft' : 'CLR'}
+                Techo: ${cw.ceiling_ft != null ? cw.ceiling_ft+' ft' : 'CLR'}${cw.temp_c != null ? ' &nbsp;|&nbsp; Temp: '+cw.temp_c+'°C' : ''}
               </div>
-              ${cw.temp_c != null ? `<div style="font-size:10px;color:#8b949e">Temp: ${cw.temp_c}°C &nbsp;Spread: ${cw.spread_c != null ? cw.spread_c+'°C' : '---'}</div>` : ''}
               ${cw.wx_codes && cw.wx_codes.length ? `<div style="font-size:10px;color:#d29922">Fenómenos: ${cw.wx_codes.join(' ')}</div>` : ''}
               ${cw.flight_category ? `<div style="font-size:10px;color:#8b949e">Cat: ${cw.flight_category}</div>` : ''}
               <div style="margin-top:4px">
@@ -2507,8 +2514,11 @@ function app() {
             <div style="font-size:10px;color:#e6edf3">
               ${cw.wind_variable ? 'VRB' : (cw.wind_dir != null ? String(cw.wind_dir).padStart(3,'0')+'°' : '---')} / ${cw.wind_spd_kt != null ? cw.wind_spd_kt+' kt' : '--'}${cw.wind_gust_kt ? ' G'+cw.wind_gust_kt : ''}
             </div>
-            <div style="font-size:10px;color:#e6edf3">
-              Vis: ${cw.visibility_km != null ? (cw.visibility_km>=9.9?'>10 km':cw.visibility_km+' km') : '---'} · Techo: ${cw.ceiling_ft != null ? cw.ceiling_ft+' ft' : 'CLR'}
+            ${cw.level_temp_c != null ? `<div style="font-size:10px;color:#e6edf3">
+              ${cw.level_temp_c}°C en el nivel${cw.level_below_zero ? ' (bajo cero)' : ''}${cw.level_cloud_pct != null ? ' · nubes '+cw.level_cloud_pct+'%' : ''}
+            </div>` : ''}
+            <div style="font-size:9px;color:#6e7681;margin-top:2px">
+              Superficie · Vis: ${cw.visibility_km != null ? (cw.visibility_km>=9.9?'>10 km':cw.visibility_km+' km') : '---'} · Techo: ${cw.ceiling_ft != null ? cw.ceiling_ft+' ft' : 'CLR'}
             </div>
             ${cw.wx_codes && cw.wx_codes.length ? `<div style="font-size:10px;color:#d29922">${cw.wx_codes.join(' ')}</div>` : ''}
           </div>` : '';

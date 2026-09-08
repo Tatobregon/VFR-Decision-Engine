@@ -160,7 +160,28 @@ class DiversionAirport(BaseModel):
 
 
 class CheckpointWeather(BaseModel):
-    """Condiciones NWP en un checkpoint intermedio (altitud de crucero)."""
+    """
+    Condiciones NWP en un checkpoint intermedio de la ruta.
+
+    Un punto de ruta tiene DOS realidades a la vez y este modelo las separa en
+    vez de confundirlas: el suelo que queda debajo y el aire por el que el
+    avion efectivamente lo cruza.
+
+      * Los campos SIN prefijo son de SUPERFICIE. La visibilidad y el techo
+        siguen ahi porque Open-Meteo no los publica por nivel de presion, y
+        porque son los que alimentan r_vis y r_ceil del puntaje.
+
+      * Los campos `level_*` son las condiciones EN EL NIVEL DE CRUCERO:
+        temperatura, punto de rocio, humedad y nubosidad del nivel, mas su
+        altura geopotencial real. Vienen en la MISMA peticion que el viento,
+        asi que no cuestan una llamada extra.
+
+    El viento (`wind_*`) ya es del nivel cuando se pidio altitud de crucero.
+
+    Antes esta clase decia "altitud de crucero" y devolvia la temperatura de
+    superficie: a 15.000 ft eso es un error de decenas de grados. Los nombres
+    ahora dicen de donde sale cada dato.
+    """
     wind_dir: Optional[int] = None
     wind_spd_kt: Optional[float] = None
     wind_gust_kt: Optional[float] = None
@@ -179,6 +200,14 @@ class CheckpointWeather(BaseModel):
     r_wx: Optional[float] = None
     r_fog: Optional[float] = None
     dominant_factor: Optional[str] = None
+
+    # ── Condiciones EN EL NIVEL DE CRUCERO ────────────────────────────────────
+    level_temp_c: Optional[float] = None       # temperatura en el nivel
+    level_dewpoint_c: Optional[float] = None   # punto de rocio en el nivel
+    level_rh_pct: Optional[int] = None         # humedad relativa en el nivel
+    level_cloud_pct: Optional[int] = None      # nubosidad EN el nivel
+    level_altitude_ft: Optional[int] = None    # altura geopotencial real
+    level_below_zero: bool = False             # el nivel esta bajo cero
 
 
 class RouteWaypoint(BaseModel):
@@ -715,14 +744,14 @@ def _generate_route_waypoints(
 
     def _eval_chk(idx_spec):
         idx, spec = idx_spec
-        r, dec, ref_wx, worst = _evaluate_nwp_at_coord(
+        r, dec, ref_wx, worst, lvl = _evaluate_nwp_at_coord(
             lat=spec['lat'], lon=spec['lon'], elev_m=spec['elev_m'],
             dep_time=spec['dep_time'], duration_hours=1.0,
             aircraft=aircraft, mock=mock,
             cruise_alt_ft=spec['cruise_alt'], track_bearing=spec['track'],
             flight_rules=flight_rules,
         )
-        return idx, spec, r, dec, ref_wx, worst
+        return idx, spec, r, dec, ref_wx, worst, lvl
 
     route_codes = set(path)
 
@@ -730,7 +759,7 @@ def _generate_route_waypoints(
         with ThreadPoolExecutor(max_workers=min(8, len(chk_items))) as ex:
             futures = [ex.submit(_eval_chk, item) for item in chk_items]
             for fut in futures:
-                idx, spec, r, dec, ref_wx, worst = fut.result()
+                idx, spec, r, dec, ref_wx, worst, lvl = fut.result()
 
                 # Construir resumen meteo del checkpoint si hay datos NWP
                 chk_wx = None
@@ -754,6 +783,16 @@ def _generate_route_waypoints(
                         r_wx=getattr(worst, 'r_wx', None),
                         r_fog=getattr(worst, 'r_fog', None),
                         dominant_factor=getattr(worst, 'dominant_factor', None),
+                        # Condiciones del nivel de crucero (misma petición)
+                        level_temp_c=getattr(lvl, 'level_temp_c', None),
+                        level_dewpoint_c=getattr(lvl, 'level_dewpoint_c', None),
+                        level_rh_pct=getattr(lvl, 'level_rh_pct', None),
+                        level_cloud_pct=getattr(lvl, 'level_cloud_pct', None),
+                        level_altitude_ft=getattr(lvl, 'level_altitude_ft', None),
+                        level_below_zero=bool(
+                            getattr(lvl, 'level_temp_c', None) is not None
+                            and lvl.level_temp_c < 0
+                        ),
                     )
 
                 # Para checkpoints NO GO, sugerir aeródromo alternativo cercano
