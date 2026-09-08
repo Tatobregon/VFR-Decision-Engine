@@ -644,6 +644,62 @@ class OpenMeteoFetcher:
                 logger.warning(f"Punto del anillo ilegible, se descarta: {e}")
         return out
 
+    # ──────────────────────────────────────────────────────────────────────────
+    # Aire en altura
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def get_upper_air(
+        self,
+        lat         : float,
+        lon         : float,
+        alt_ft      : int,
+        hours_ahead : int = 12,
+    ) -> "Optional[UpperAir]":
+        """
+        Condiciones EN EL NIVEL DE PRESION correspondiente a una altitud.
+
+        A diferencia de `get_forecast(cruise_alt_ft=...)`, que solo toma el
+        viento del nivel y deja el resto en superficie, esto trae temperatura,
+        punto de rocio, humedad y nubosidad DEL NIVEL, mas su altura
+        geopotencial real.
+
+        No devuelve visibilidad: Open-Meteo no la publica por nivel de presion
+        (verificado contra la API). Antes que informar la de superficie como si
+        fuera de altura, no se informa ninguna.
+        """
+        nivel = _pressure_level_for_alt(alt_ft)
+        logger.info(f"Aire en altura lat={lat} lon={lon} "
+                    f"alt={alt_ft}ft ({nivel} hPa) (mock={self.mock})")
+
+        if self.mock:
+            return _mock_upper_air(lat, lon, alt_ft, hours_ahead)
+
+        variables = ",".join(f"{v}_{nivel}hPa" for v in _UPPER_AIR_VARS)
+        cache_key = ("upper", round(lat, 3), round(lon, 3), nivel, FORECAST_DAYS)
+
+        def _fetch():
+            try:
+                return self._get(params={
+                    "latitude"       : lat,
+                    "longitude"      : lon,
+                    "hourly"         : variables,
+                    "wind_speed_unit": "kn",
+                    "timezone"       : "America/Argentina/Buenos_Aires",
+                    "forecast_days"  : FORECAST_DAYS,
+                })
+            except (ConnectionError, ValueError) as e:
+                logger.error(f"No se pudo obtener el aire en altura: {e}")
+                return None
+
+        raw = NWP_CACHE.get_or_call(cache_key, _fetch)
+        if raw is None:
+            return None
+        try:
+            return _upper_air_from_response(raw, lat, lon, alt_ft, nivel, hours_ahead)
+        except Exception as e:
+            logger.warning(f"Respuesta de aire en altura ilegible: {e}")
+            return None
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Script de prueba standalone
@@ -725,3 +781,149 @@ if __name__ == "__main__":
     print("\n" + "=" * 60)
     print("  TEST completado")
     print("=" * 60)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# AIRE EN ALTURA — variables en el nivel de presion, no en superficie
+# ══════════════════════════════════════════════════════════════════════════════
+# `get_forecast(cruise_alt_ft=...)` pide del nivel de presion SOLO el viento, y
+# deja temperatura, punto de rocio, nubes y visibilidad en superficie. Para el
+# scoring de riesgo en ruta eso alcanza, porque el viento es lo que cambia el
+# puntaje. Para INFORMARLE al piloto como esta el aire alla arriba, no: reportar
+# la temperatura de superficie como si fuera la de crucero es un error de
+# decenas de grados.
+#
+#   Bell Ville, 08/09/2026 12:00 — medido contra la API:
+#       superficie          15.5 C
+#       800 hPa (6.581 ft)   5.2 C
+#       600 hPa (14.154 ft) -8.1 C
+#
+# De ahi que exista esta consulta aparte. Devuelve los valores DEL NIVEL, sin
+# pasarlos por `ParsedWeather`, que es un contrato de superficie (visibilidad,
+# techo AGL) y no tiene donde alojarlos con honestidad.
+
+# Variables que Open-Meteo publica por nivel de presion (verificado contra la
+# API; la visibilidad NO esta entre ellas y por eso no se la puede informar en
+# altura).
+_UPPER_AIR_VARS = (
+    "temperature",
+    "dew_point",
+    "relative_humidity",
+    "cloud_cover",
+    "wind_speed",
+    "wind_direction",
+    "geopotential_height",
+)
+
+
+@dataclass
+class UpperAirHour:
+    """Un slot horario con las condiciones EN EL NIVEL DE PRESION."""
+    valid_time_iso        : str
+    valid_time_utc        : int
+    temperature_c         : Optional[float] = None
+    dewpoint_c            : Optional[float] = None
+    relative_humidity_pct : Optional[int]   = None
+    cloud_cover_pct       : Optional[int]   = None
+    wind_dir              : Optional[int]   = None
+    wind_spd_kt           : Optional[float] = None
+    level_altitude_ft     : Optional[int]   = None   # altura geopotencial real
+
+
+@dataclass
+class UpperAir:
+    """
+    Pronostico en altura para un punto.
+
+    `requested_alt_ft` es lo que pidio el piloto; `pressure_level_hpa` es el
+    nivel estandar mas cercano, y la altura real de ese nivel varia dia a dia
+    con la masa de aire. Los tres se informan juntos a proposito: decir "a
+    15.000 ft" cuando el dato es de un nivel que hoy esta a 14.154 ft seria
+    presentar una aproximacion como una medicion.
+    """
+    lat                : float
+    lon                : float
+    requested_alt_ft   : int
+    pressure_level_hpa : int
+    hours              : List[UpperAirHour]
+    nwp_estimated      : bool = True
+
+
+def _mock_upper_air(lat: float, lon: float, alt_ft: int,
+                    hours_ahead: int) -> UpperAir:
+    """
+    Perfil sintetico con gradiente ISA, para desarrollo sin conexion.
+
+    Usa el gradiente termico estandar (2 C por cada 1.000 ft) justamente para
+    que el modo mock NO reproduzca el error que este modulo viene a corregir:
+    si en el mock la temperatura no bajara con la altura, un test podria pasar
+    con el bug puesto.
+    """
+    nivel = int(_pressure_level_for_alt(alt_ft))
+    ahora = int(time.time())
+    base_sup = 20.0
+    temp_nivel = base_sup - (alt_ft / 1000.0) * 2.0
+    horas = []
+    for i in range(hours_ahead):
+        ts = ((ahora // 3600) + 1 + i) * 3600
+        horas.append(UpperAirHour(
+            valid_time_iso=datetime.fromtimestamp(ts, timezone.utc).isoformat(),
+            valid_time_utc=ts,
+            temperature_c=round(temp_nivel + (i % 3) * 0.4, 1),
+            dewpoint_c=round(temp_nivel - 8.0, 1),
+            relative_humidity_pct=40,
+            cloud_cover_pct=10,
+            wind_dir=270,
+            wind_spd_kt=round(15.0 + alt_ft / 1000.0, 1),
+            level_altitude_ft=alt_ft,
+        ))
+    return UpperAir(lat=lat, lon=lon, requested_alt_ft=alt_ft,
+                    pressure_level_hpa=nivel, hours=horas)
+
+
+def _upper_air_from_response(
+    data: dict, lat: float, lon: float, alt_ft: int,
+    nivel: str, hours_ahead: int,
+) -> Optional[UpperAir]:
+    """Convierte la respuesta cruda en UpperAir."""
+    hourly = (data or {}).get("hourly") or {}
+    tiempos = hourly.get("time") or []
+    if not tiempos:
+        return None
+
+    def col(nombre: str) -> list:
+        return hourly.get(f"{nombre}_{nivel}hPa") or []
+
+    def en(lista: list, i: int):
+        return lista[i] if i < len(lista) else None
+
+    ahora = int(time.time())
+    horas: List[UpperAirHour] = []
+    for i, t in enumerate(tiempos):
+        # Se reusa el helper del modulo en vez de reimplementar la conversion:
+        # el desfase horario es la clase de cosa que solo hay que escribir una vez.
+        try:
+            ts = _argentina_iso_to_utc_timestamp(t)
+        except (TypeError, ValueError):
+            continue
+        if ts < ahora - 3600:
+            continue
+        alt_real = _to_float(en(col("geopotential_height"), i))
+        horas.append(UpperAirHour(
+            valid_time_iso=t,
+            valid_time_utc=ts,
+            temperature_c=_to_float(en(col("temperature"), i)),
+            dewpoint_c=_to_float(en(col("dew_point"), i)),
+            relative_humidity_pct=_to_int(en(col("relative_humidity"), i)),
+            cloud_cover_pct=_to_int(en(col("cloud_cover"), i)),
+            wind_dir=_to_int(en(col("wind_direction"), i)),
+            wind_spd_kt=_to_float(en(col("wind_speed"), i)),
+            level_altitude_ft=int(alt_real * 3.28084) if alt_real is not None else None,
+        ))
+        if len(horas) >= hours_ahead:
+            break
+
+    if not horas:
+        return None
+    return UpperAir(lat=lat, lon=lon, requested_alt_ft=alt_ft,
+                    pressure_level_hpa=int(nivel), hours=horas)

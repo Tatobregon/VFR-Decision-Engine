@@ -524,3 +524,93 @@ def test_sin_serie_la_exclusividad_sigue_siendo_estricta():
         hay_serie_de_veredictos=False,
     )
     assert forzado is True
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Aire en altura: consistencia fisica
+# ══════════════════════════════════════════════════════════════════════════════
+# Estos tests existen por un bug real, encontrado por el piloto usando la
+# herramienta: informaba 19 C tanto a 6.000 como a 15.000 ft. La causa era que
+# el fetcher pedia del nivel de presion SOLO el viento y dejaba temperatura,
+# rocio y nubes en superficie. Un informe de altura construido con datos de
+# suelo es peor que no tener informe: se equivoca con la misma confianza con la
+# que acierta.
+
+def test_la_temperatura_baja_con_la_altura():
+    """
+    La consistencia fisica basica del informe. El modo mock usa gradiente ISA
+    justamente para que este test NO pueda pasar con el bug puesto: si el
+    fetcher devolviera superficie, las tres altitudes darian lo mismo.
+    """
+    from data.fetcher_openmeteo import OpenMeteoFetcher
+
+    f = OpenMeteoFetcher(mock=True)
+    temps = [
+        f.get_upper_air(-32.63, -62.68, alt, hours_ahead=2).hours[0].temperature_c
+        for alt in (3000, 6000, 15000)
+    ]
+    assert temps[0] > temps[1] > temps[2], f"la temperatura no baja: {temps}"
+
+
+def test_a_mayor_altura_el_nivel_de_presion_es_menor():
+    from data.fetcher_openmeteo import _pressure_level_for_alt
+
+    niveles = [int(_pressure_level_for_alt(a))
+               for a in (2000, 5000, 7000, 11000, 15000, 20000, 25000)]
+    assert niveles == sorted(niveles, reverse=True), niveles
+
+
+def test_el_informe_declara_la_altura_real_del_nivel():
+    """
+    El nivel de presion es una aproximacion: 600 hPa estuvo a 14.091 ft el dia
+    en que se probo, no a los 15.000 pedidos. Informar solo lo pedido seria
+    presentar una aproximacion como una medicion en el punto exacto.
+    """
+    import inspect
+    fuente = inspect.getsource(T.atmosfera_en_punto)
+    assert "altitud_real_del_nivel_ft" in fuente
+    assert "desvio_respecto_de_lo_pedido_ft" in fuente
+
+
+def test_no_se_informa_visibilidad_en_altura():
+    """
+    Open-Meteo no publica visibilidad por nivel de presion. Sustituirla por la
+    de superficie seria repetir el error que este modulo corrige.
+    """
+    import inspect
+    fuente = inspect.getsource(T.atmosfera_en_punto)
+    assert '"disponible": False' in fuente
+
+
+def test_el_aire_en_altura_no_pasa_por_parsedweather():
+    """
+    ParsedWeather es un contrato de SUPERFICIE: visibilidad, techo AGL, spread
+    para niebla. Forzar ahi los datos de un nivel de presion obligaria a
+    rellenar campos que en altura no significan nada, que es como nacio el bug.
+    """
+    from data.fetcher_openmeteo import UpperAir, UpperAirHour
+
+    campos = set(UpperAirHour.__dataclass_fields__)
+    assert "level_altitude_ft" in campos
+    assert "visibility_km" not in campos
+    assert "ceiling_ft" not in campos
+
+
+@pytest.mark.parametrize("consulta,esperado", [
+    ("bellville",     "BEL"),     # BELL VILLE
+    ("lacumbre",      "SACC"),    # LA CUMBRE
+    ("cruzalta",      "ALT"),     # CRUZ ALTA
+    ("venadotuerto",  "VNO"),     # VENADO TUERTO
+    ("riocuarto",     "SAOC"),    # RIO CUARTO / AREA DE MATERIAL
+])
+def test_el_resolutor_tolera_nombres_escritos_sin_separar(consulta, esperado):
+    """Escribir el nombre sin espacios es corriente y no deberia fallar."""
+    ap, _ = T.resolve_airport(consulta)
+    assert ap is not None, f"{consulta} no resolvio"
+    assert ap.code == esperado
+
+
+def test_el_nombre_bien_escrito_le_gana_al_compacto():
+    """La tolerancia no puede desplazar a una coincidencia exacta."""
+    ap, _ = T.resolve_airport("La Cumbre")
+    assert ap.code == "SACC"

@@ -33,7 +33,20 @@ Herramientas
     contacto_aerodromo    -> AirportInfo.phones
     servicios_aerodromo   -> fuel / schedule / runways / condition / norms
     combustible_cercano   -> los 110 con fuel + haversine
-    evaluar_meteo         -> DecisionEngine.evaluate   (unica que sale a la red)
+    evaluar_meteo         -> DecisionEngine.evaluate                    (red)
+    atmosfera_en_punto    -> OpenMeteoFetcher.get_upper_air             (red)
+    mejor_hora_para_salir -> decision.enroute.nwp_series_at_coord       (red)
+
+Superficie y altura no se mezclan
+---------------------------------
+`evaluar_meteo` y `mejor_hora_para_salir` son de SUPERFICIE: miden despegue y
+aterrizaje contra una pista, y de ahi que devuelvan veredicto.
+
+`atmosfera_en_punto` es de ALTURA y no devuelve veredicto. Usa
+`get_upper_air()`, que trae temperatura, punto de rocio, humedad y nubosidad
+DEL NIVEL DE PRESION. No alcanza con pedir el viento en altura y dejar el resto
+en superficie: a 15.000 ft la diferencia de temperatura contra el suelo es de
+decenas de grados, y presentarla como dato de altura es un error grosero.
 """
 
 import inspect
@@ -45,14 +58,14 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 try:
     from data.airports import AIRPORTS, AirportInfo, get_by_code, search_airports
-    from route.performance import bearing_deg, haversine_km
+    from route.performance import haversine_km
     from risk.aircraft_profiles import PROFILE_NAMES, get_profile
 except ImportError:                                    # ejecucion como script
     import os
     import sys
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from data.airports import AIRPORTS, AirportInfo, get_by_code, search_airports
-    from route.performance import bearing_deg, haversine_km
+    from route.performance import haversine_km
     from risk.aircraft_profiles import PROFILE_NAMES, get_profile
 
 logger = logging.getLogger(__name__)
@@ -129,6 +142,11 @@ _PUNTAJE_NOMBRE_CONTIENE = 100
 _PUNTAJE_SOLO_PROVINCIA = 10
 
 
+def _compacto(s: str) -> str:
+    """Sin espacios ni guiones: 'bellville' tiene que encontrar 'BELL VILLE'."""
+    return s.replace(" ", "").replace("-", "").replace(".", "")
+
+
 def _puntuar(ap: AirportInfo, q: str) -> int:
     """Puntaje de afinidad entre un aerodromo y la consulta ya normalizada."""
     nombre = _norm(ap.name)
@@ -147,6 +165,11 @@ def _puntuar(ap: AirportInfo, q: str) -> int:
     elif any(palabra.startswith(q) for palabra in nombre.replace("/", " ").split()):
         base = _PUNTAJE_PALABRA_PREFIJO
     elif q in nombre:
+        base = _PUNTAJE_NOMBRE_CONTIENE
+    # Nombre escrito sin separar: "bellville" por "BELL VILLE", "riocuarto"
+    # por "RIO CUARTO". Es una forma corriente de tipear y no deberia fallar.
+    # Puntua por debajo del match exacto para que no le gane a uno bien escrito.
+    elif _compacto(q) and _compacto(q) in _compacto(nombre):
         base = _PUNTAJE_NOMBRE_CONTIENE
     elif q in _norm(ap.province):
         base = _PUNTAJE_SOLO_PROVINCIA
@@ -581,8 +604,12 @@ def evaluar_meteo(
 # bien definido sobre el que se apoya todo el motor. Para un veredicto esta
 # `evaluar_meteo` sobre un aerodromo.
 
-_TERRENO_RADIO_KM = 10.0     # semiancho de la grilla de terreno alrededor del punto
-_TERRENO_LADO     = 3        # grilla 3x3 -> 9 puntos en UNA sola peticion
+# Grilla 3x3 centrada en el punto: 9 muestras de terreno en UNA sola peticion.
+# El radio es el mismo que usa el muestreo en anillo del motor (~una celda de
+# modelo global), asi que el criterio de "entorno del punto" es el mismo en
+# todo el sistema.
+_TERRENO_RADIO_KM = 10.0
+_TERRENO_PASOS    = (-1, 0, 1)
 
 
 def _terreno_alrededor(lat: float, lon: float) -> Optional[Dict[str, Any]]:
@@ -600,9 +627,8 @@ def _terreno_alrededor(lat: float, lon: float) -> Optional[Dict[str, Any]]:
 
     grados_lat = _TERRENO_RADIO_KM / 111.0
     grados_lon = _TERRENO_RADIO_KM / (111.0 * max(0.2, math.cos(math.radians(lat))))
-    pasos = [-1, 0, 1] if _TERRENO_LADO == 3 else [0]
     puntos = [(lat + i * grados_lat, lon + j * grados_lon)
-              for i in pasos for j in pasos]
+              for i in _TERRENO_PASOS for j in _TERRENO_PASOS]
     try:
         elevaciones = [e for e in get_elevations_m(puntos) if e is not None]
     except Exception as e:                                 # pragma: no cover
@@ -674,7 +700,6 @@ def atmosfera_en_punto(
     cuando: Optional[str] = None,
     aeronave: Optional[str] = None,
     regimen: Optional[str] = None,
-    rumbo_grados: Optional[int] = None,
     provincia: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
@@ -723,62 +748,66 @@ def atmosfera_en_punto(
         }
 
     dep_ts, etiqueta = _parse_cuando(cuando)
-    track = int(rumbo_grados) if rumbo_grados is not None else 0
 
     try:
-        from decision.enroute import evaluate_nwp_at_coord
-        _, _, wx, _ = evaluate_nwp_at_coord(
-            lat=ap.lat, lon=ap.lon, elev_m=ap.elev_ft * 0.3048,
-            dep_time=dep_ts, duration_hours=1.0,
-            aircraft=perfil, mock=False,
-            cruise_alt_ft=alt["altitud_ft"],
-            track_bearing=track,
-            flight_rules=(regimen or "VFR").upper(),
+        from data.fetcher_openmeteo import OpenMeteoFetcher
+        aire = OpenMeteoFetcher().get_upper_air(
+            lat=ap.lat, lon=ap.lon, alt_ft=alt["altitud_ft"], hours_ahead=24,
         )
     except Exception as e:                                 # pragma: no cover
-        logger.warning(f"Copiloto: fallo el informe de atmosfera en {ap.code}: {e}")
-        wx = None
+        logger.warning(f"Copiloto: fallo el aire en altura sobre {ap.code}: {e}")
+        aire = None
 
-    if wx is None:
+    if aire is None or not aire.hours:
         return {
             "ok": False,
             "motivo": "sin_datos_meteorologicos",
             "lugar": _ficha_breve(ap),
-            "mensaje": "No hay pronostico disponible para ese punto y esa hora. "
+            "mensaje": "No hay pronostico en altura para ese punto y esa hora. "
                        "No lo estimes vos.",
         }
 
-    delta_rafaga = None
-    if wx.wind_gust_kt is not None and wx.wind_spd_kt is not None:
-        delta_rafaga = round(wx.wind_gust_kt - wx.wind_spd_kt, 1)
+    h = min(aire.hours, key=lambda x: abs(x.valid_time_utc - dep_ts))
+
+    # El nivel de presion es una aproximacion de la altitud pedida, y su altura
+    # real varia con la masa de aire. Informar las dos evita presentar una
+    # aproximacion como si fuera una medicion en el punto exacto.
+    desvio = (h.level_altitude_ft - alt["altitud_ft"]) if h.level_altitude_ft else None
 
     informe: Dict[str, Any] = {
         "ok": True,
         "lugar": _ficha_breve(ap),
-        "altitud_ft": alt["altitud_ft"],
+        "altitud_consultada_ft": alt["altitud_ft"],
         "origen_de_la_altitud": alt["origen"],
+        "nivel_de_presion_hpa": aire.pressure_level_hpa,
+        "altitud_real_del_nivel_ft": h.level_altitude_ft,
+        "desvio_respecto_de_lo_pedido_ft": desvio,
         "momento_evaluado": etiqueta,
-        "aeronave_de_referencia": perfil.name,
         "regimen": (regimen or "VFR").upper(),
-        "atmosfera": {
-            "viento_direccion_grados": wx.wind_dir,
-            "viento_kt": wx.wind_spd_kt,
-            "rafaga_kt": wx.wind_gust_kt,
-            "delta_rafaga_kt": delta_rafaga,
-            "temperatura_c": wx.temp_c,
-            "visibilidad_km": wx.visibility_km,
-            "techo_ft": wx.ceiling_ft,
-            "capas_de_nubes": list(wx.sky_layers or []),
-            "fenomenos": list(wx.wx_codes or []),
+        "aire_en_ese_nivel": {
+            "temperatura_c": h.temperature_c,
+            "punto_de_rocio_c": h.dewpoint_c,
+            "humedad_relativa_pct": h.relative_humidity_pct,
+            "bajo_cero": (h.temperature_c is not None and h.temperature_c < 0),
+            "viento_direccion_grados": h.wind_dir,
+            "viento_kt": h.wind_spd_kt,
+            "nubosidad_en_el_nivel_pct": h.cloud_cover_pct,
         },
-        "fuente": "pronostico numerico NWP en el nivel de presion de esa altitud "
-                  "(no es una observacion directa)",
+        "visibilidad": {
+            "disponible": False,
+            "nota": "Open-Meteo no publica visibilidad por nivel de presion. La "
+                    "de superficie NO sirve como sustituto y por eso no se "
+                    "informa. Si el piloto la pide, decile esto.",
+        },
+        "fuente": "pronostico numerico NWP en el nivel de presion indicado "
+                  "(no es una observacion directa ni un sondeo real)",
         "instruccion": (
-            "Esto es un INFORME DE ATMOSFERA en un punto, no un veredicto de "
-            "vuelo. NO digas GO, CAUTION ni NO GO al responder esto: esas "
-            "etiquetas son de aerodromo y salen de evaluar_meteo. Describi las "
-            "condiciones y deci a que altitud corresponden y de donde salio esa "
-            "altitud."
+            "Es un INFORME DE ATMOSFERA en altura, no un veredicto de vuelo. NO "
+            "digas GO, CAUTION ni NO GO: esas etiquetas son de aerodromo y "
+            "salen de evaluar_meteo. Deci a que altitud corresponde el dato, de "
+            "donde salio esa altitud, y a que altura esta realmente el nivel de "
+            "presion si difiere de lo pedido. Si la temperatura esta bajo cero, "
+            "nombralo explicitamente."
         ),
     }
     if "aerovia" in alt:
@@ -1045,9 +1074,6 @@ def tool_declarations() -> List[Dict[str, Any]]:
                 "regimen": {"type": "string",
                             "description": "VFR o IFR. En IFR la altitud sale de la "
                                            "MEA de la aerovia si no se especifica."},
-                "rumbo_grados": {"type": "integer",
-                                 "description": "Rumbo de la derrota al pasar por el "
-                                                "punto, si se conoce."},
                 "provincia": _P_PROV,
             }, "required": ["lugar"]},
         },
