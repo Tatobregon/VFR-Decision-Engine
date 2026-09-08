@@ -1237,39 +1237,11 @@
         <h3 class="text-[11px] font-bold tracking-widest uppercase text-muted">Perfil vertical de ruta</h3>
         <div class="flex items-center gap-3 text-[10px] font-mono flex-wrap">
           <span class="flex items-center gap-1"><span style="width:14px;height:7px;background:#5a4632;display:inline-block;border-radius:1px"></span>Terreno</span>
-          <span class="flex items-center gap-1" x-show="result?.route?.flight_rules === 'IFR'"><span style="width:14px;height:0;border-top:2px solid #f85149;display:inline-block"></span>MEA aerovía</span>
-          <span class="flex items-center gap-1" x-show="result?.route?.flight_rules !== 'IFR'"><span style="width:14px;height:0;border-top:2px dashed #f0883e;display:inline-block"></span>Mín. segura</span>
-          <span class="flex items-center gap-1"><span style="width:14px;height:0;border-top:2px dashed #58a6ff;display:inline-block"></span><span x-text="result?.route?.flight_rules === 'IFR' ? 'Crucero' : 'Altitud VFR'"></span></span>
-          <template x-if="result?.route?.flight_rules === 'IFR' && profCruiseBelowMea()">
-            <span class="text-nogo font-bold">⚠ Crucero por debajo del MEA</span>
-          </template>
+          <span class="flex items-center gap-1"><span style="width:14px;height:0;border-top:2px dashed #f0883e;display:inline-block"></span>Mín. segura</span>
+          <span class="flex items-center gap-1"><span style="width:14px;height:0;border-top:2px dashed #a371f7;display:inline-block"></span>Techo de servicio</span>
+          <span class="text-muted">· informativo</span>
         </div>
       </div>
-
-      <!-- Aviso de conflicto de terreno en VFR (Fase 2): el terreno supera la
-           altitud VFR alcanzable → sugerir recalcular en IFR -->
-      <template x-if="profile && profile.vfr_terrain_conflict">
-        <div class="mb-3 rounded-lg border border-[#f85149]/40 bg-[#f85149]/10 px-4 py-3">
-          <div class="flex items-start gap-3 flex-wrap">
-            <div class="flex-1 min-w-0">
-              <div class="text-sm font-bold text-nogo">⛰ Terreno por encima de tu altitud VFR</div>
-              <div class="text-xs text-[#e6edf3] mt-1 leading-relaxed">
-                El terreno alcanza
-                <span class="font-mono font-bold" x-text="(profile.vfr_max_terrain_ft||0).toLocaleString()+' ft'"></span><span
-                  x-show="profile.vfr_conflict_dist_km != null" x-text="' (a ~'+profile.vfr_conflict_dist_km+' km del origen)'"></span>,
-                por encima de la altitud VFR alcanzable
-                (<span class="font-mono" x-text="(profile.vfr_cruise_ft||0).toLocaleString()+' ft'"></span>).
-                Esta ruta no se puede librar en VFR. Volala en <strong>IFR</strong>: usa la MEA de la aerovía,
-                pensada para librar el terreno.
-              </div>
-            </div>
-            <button @click="switchToIFR()"
-              class="px-4 py-2 rounded-lg font-semibold text-xs uppercase tracking-wider bg-accent text-[#0d1117] hover:bg-[#79b8ff] active:scale-95 transition-all whitespace-nowrap">
-              ↻ Recalcular en IFR
-            </button>
-          </div>
-        </div>
-      </template>
 
       <div x-show="profileLoading" class="text-xs text-muted font-mono py-6 text-center">Calculando perfil de terreno…</div>
 
@@ -1978,11 +1950,13 @@ function app() {
       const W = 1000, H = 320, ml = 56, mr = 14, mt = 16, mb = 40;
       const plotW = W - ml - mr, plotH = H - mt - mb;
       const total = p.total_km || 1;
-      // Techo del eje Y: el mayor entre terreno, MEA y crucero + 15 % de margen
-      let maxAlt = p.cruise_alt_ft || 0;
+      // Techo del eje Y: el mayor entre terreno, minima segura y techo de
+      // servicio, + 15 % de margen. El perfil es INFORMATIVO: muestra el
+      // relieve y las dos referencias que acotan donde se puede volar, sin
+      // dibujar la altitud planificada ni emitir juicio sobre ella.
+      let maxAlt = this.profServiceCeiling() || 0;
       for (const pt of p.profile) {
         if (pt.terrain_ft > maxAlt) maxAlt = pt.terrain_ft;
-        if (pt.mea_ft && pt.mea_ft > maxAlt) maxAlt = pt.mea_ft;
         if (pt.safe_alt_ft && pt.safe_alt_ft > maxAlt) maxAlt = pt.safe_alt_ft;
       }
       maxAlt = Math.ceil((maxAlt * 1.15) / 1000) * 1000 || 5000;
@@ -1991,7 +1965,16 @@ function app() {
       return { W, H, ml, mr, mt, mb, plotW, plotH, total, maxAlt, X, Y };
     },
 
-    // ¿La altitud de crucero queda por debajo de algún MEA? (alerta)
+    // Techo de servicio de la aeronave elegida, para el perfil.
+    profServiceCeiling() {
+      return this.selectedAc?.service_ceiling_ft || null;
+    },
+
+    // ── SIN USO ACTUAL ────────────────────────────────────────────────────
+    // La llamaba la leyenda del perfil vertical para avisar "crucero por debajo
+    // del MEA". El perfil ya no dibuja ni el crucero ni la MEA: quedo
+    // informativo (terreno, minima segura y techo de servicio). Se conserva
+    // porque la comprobacion sigue siendo correcta si vuelve a hacer falta.
     profCruiseBelowMea() {
       const p = this.profile; if (!p?.profile) return false;
       return p.profile.some(pt => pt.mea_ft && p.cruise_alt_ft < pt.mea_ft);
@@ -2021,38 +2004,17 @@ function app() {
       dT += ` L ${g.X(g.total)} ${g.Y(0)} Z`;
       s += `<path d="${dT}" fill="#5a4632" fill-opacity="0.85" stroke="#7a6044" stroke-width="1"/>`;
 
-      // Línea de crucero / altitud VFR + etiqueta
-      const isVfr = (p.flight_rules || 'VFR') === 'VFR';
-      const cruiseAlt = (isVfr && p.vfr_cruise_ft) ? p.vfr_cruise_ft : p.cruise_alt_ft;
-      const cruiseLbl = isVfr ? 'Altitud VFR' : 'Crucero';
-      const cy = g.Y(cruiseAlt);
-      s += `<line x1="${g.ml}" y1="${cy}" x2="${g.W-g.mr}" y2="${cy}" stroke="#58a6ff" stroke-width="2" stroke-dasharray="7 4"/>`;
-      s += `<text x="${g.W-g.mr-3}" y="${cy-5}" text-anchor="end" font-size="10" font-family="monospace" fill="#58a6ff">${cruiseLbl} ${(cruiseAlt||0).toLocaleString()} ft</text>`;
+      // Altitud minima segura (terreno + margen), siempre.
+      let dS = '';
+      p.profile.forEach((pt, i) => { dS += (i ? ' L ' : 'M ') + g.X(pt.dist_km) + ' ' + g.Y(pt.safe_alt_ft); });
+      s += `<path d="${dS}" fill="none" stroke="#f0883e" stroke-width="1.5" stroke-dasharray="3 3" stroke-opacity="0.9"/>`;
 
-      // En VFR: línea de altitud mínima segura (terreno + 500 ft). Donde supera
-      // la altitud VFR, el terreno no se libra → conflicto (ver aviso arriba).
-      if (isVfr) {
-        let dS = '';
-        p.profile.forEach((pt, i) => { dS += (i ? ' L ' : 'M ') + g.X(pt.dist_km) + ' ' + g.Y(pt.safe_alt_ft); });
-        s += `<path d="${dS}" fill="none" stroke="#f0883e" stroke-width="1.5" stroke-dasharray="3 3" stroke-opacity="0.85"/>`;
-      }
-
-      // Segmentos de MEA (se cortan donde no hay aerovía)
-      let cur = [];
-      const flush = () => { if (cur.length) { s += `<polyline points="${cur.join(' ')}" fill="none" stroke="#f85149" stroke-width="2" stroke-opacity="0.9"/>`; cur = []; } };
-      for (const pt of p.profile) {
-        if (pt.mea_ft) cur.push(`${g.X(pt.dist_km)},${g.Y(pt.mea_ft)}`);
-        else flush();
-      }
-      flush();
-
-      // Waypoints de aerovía: punto sobre su altura (MEA) + código rotado
-      for (const w of (p.waypoints || [])) {
-        if (w.is_airport) continue;            // los aeropuertos se dibujan aparte
-        const x = g.X(w.dist_km), y = g.Y(w.alt_ft);
-        const altTxt = w.mea_ft ? w.mea_ft.toLocaleString()+' ft (MEA)' : (w.alt_ft||0).toLocaleString()+' ft';
-        s += `<circle cx="${x}" cy="${y}" r="2.6" fill="#f0883e" stroke="#0d1117" stroke-width="0.8"><title>${esc(w.code)} · ${altTxt}</title></circle>`;
-        s += `<text x="${x}" y="${y-6}" font-size="8" font-family="monospace" fill="#a9b3bd" transform="rotate(-55 ${x} ${y-6})">${esc(w.code)}</text>`;
+      // Techo de servicio de la aeronave: lo mas alto que puede volar.
+      const ceil = this.profServiceCeiling();
+      if (ceil) {
+        const ky = g.Y(ceil);
+        s += `<line x1="${g.ml}" y1="${ky}" x2="${g.W-g.mr}" y2="${ky}" stroke="#a371f7" stroke-width="2" stroke-dasharray="7 4" stroke-opacity="0.9"/>`;
+        s += `<text x="${g.W-g.mr-3}" y="${ky-5}" text-anchor="end" font-size="10" font-family="monospace" fill="#a371f7">Techo de servicio ${ceil.toLocaleString()} ft</text>`;
       }
 
       // Aeropuertos: línea vertical + punto a su elevación + código + elevación
@@ -2664,7 +2626,12 @@ function app() {
       }
     },
 
-    // ── Recalcular la ruta en IFR (desde el aviso de conflicto de terreno VFR) ──
+    // ── SIN USO ACTUAL ────────────────────────────────────────────────────
+    // La llamaba el boton del aviso de conflicto de terreno del perfil vertical.
+    // Ese aviso se quito: el perfil pasa a ser INFORMATIVO (terreno, minima
+    // segura y techo de servicio) y no emite juicio sobre la ruta ni ofrece
+    // acciones. Se conserva la funcion porque el cambio de regimen sigue siendo
+    // valido y puede volver a engancharse desde otro lado.
     switchToIFR() {
       this.form.flight_rules = 'IFR';
       this.evaluate();
