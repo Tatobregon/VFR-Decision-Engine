@@ -385,6 +385,13 @@ Los datos estaban disponibles (el fetcher trae 2 dias); los descartaba el filtro
 - Si aun asi la salida cae fuera, `DecisionResult.forecast_out_of_range` lo declara y
   la interfaz lo muestra como advertencia. Devolver condiciones de otro momento como
   si fueran las pedidas es peor que no responder: el piloto no tiene como notarlo.
+- **El aviso mira el DESVIO REAL, no si la ventana quedo vacia.** Hay dos causas muy
+  distintas para que ninguna hora caiga dentro de la ventana, y solo una es un
+  problema: un vuelo de 14 min que sale 20:11 no contiene ni las 20:00 ni las 21:00,
+  y eso es lo normal en tramos cortos —la hora mas cercana esta a 11 minutos—. Como el
+  pronostico es horario, el redondeo legitimo nunca cuesta mas de media hora:
+  `DESVIO_MAX_ACEPTABLE_H = 1.0` deja margen al doble. Confundir los dos casos producia
+  un falso "fuera de alcance" en casi todo vuelo corto.
 
 **Y la tarjeta ahora dice SIEMPRE para que momento son los datos**, en hora local y
 UTC. Sin eso, un pronostico de madrugada se lee como el estado actual. El campo de

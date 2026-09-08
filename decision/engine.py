@@ -87,6 +87,12 @@ logger = logging.getLogger(__name__)
 # medianoche local, asi que desde "ahora" quedan entre 24 y 48 h disponibles.
 MAX_FORECAST_HOURS = 48
 
+# Desvio maximo tolerable entre la hora pedida y la muestra evaluada, sin que se
+# considere que la salida quedo fuera de alcance. El pronostico es horario, asi
+# que redondear al slot mas cercano nunca deberia costar mas de media hora; se
+# toma el doble como margen.
+DESVIO_MAX_ACEPTABLE_H = 1.0
+
 
 def _horizonte_necesario(departure_time: int, flight_duration_h: float) -> int:
     """
@@ -268,17 +274,29 @@ class DecisionEngine:
                       if departure_time <= w.obs_time <= window_end]
         fuera_de_rango = False
         if not window_wx:
-            # La salida pedida cae fuera del horizonte del pronostico. Se evalua
-            # la hora disponible mas cercana, pero se DECLARA: devolver
-            # condiciones de otro momento como si fueran las pedidas es peor que
-            # no responder, porque el piloto no tiene como notarlo.
+            # La ventana no contiene ninguna hora del pronostico. Hay DOS causas
+            # muy distintas y solo una es un problema:
+            #
+            #   a) La ventana es mas CORTA que una hora y cae entre dos slots.
+            #      Un vuelo de 14 min que sale 20:11 no contiene ni las 20:00 ni
+            #      las 21:00. Es lo normal en tramos cortos y la hora mas cercana
+            #      esta a minutos: no hay nada que advertir.
+            #
+            #   b) La salida esta FUERA del horizonte del pronostico y la hora
+            #      mas cercana esta a horas de distancia. Eso si hay que decirlo.
+            #
+            # Lo que las distingue es el DESVIO REAL, no que la ventana este
+            # vacia. Como el pronostico es horario, el desvio legitimo maximo es
+            # de media hora; el umbral se pone al doble para tener margen.
             window_wx = [min(all_wx, key=lambda w: abs(w.obs_time - departure_time))]
-            fuera_de_rango = True
             desvio_h = abs(window_wx[0].obs_time - departure_time) / 3600.0
-            logger.warning(
-                f"NWP {sid}: la salida pedida esta fuera del horizonte del "
-                f"pronostico; se evalua la hora mas cercana ({desvio_h:.1f} h de desvio)"
-            )
+            fuera_de_rango = desvio_h > DESVIO_MAX_ACEPTABLE_H
+            if fuera_de_rango:
+                logger.warning(
+                    f"NWP {sid}: la salida pedida esta fuera del horizonte del "
+                    f"pronostico; se evalua la hora mas cercana "
+                    f"({desvio_h:.1f} h de desvio)"
+                )
 
         # Pista a usar (favorable si fue auto), segun el viento representativo.
         ref_wx = min(window_wx, key=lambda w: abs(w.obs_time - departure_time))

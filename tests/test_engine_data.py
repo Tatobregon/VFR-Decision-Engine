@@ -549,3 +549,39 @@ def test_el_resultado_dice_de_que_muestra_salio_el_veredicto():
     """
     from decision.engine import DecisionResult
     assert "worst_obs_time" in DecisionResult.__dataclass_fields__
+
+
+# ── Ventana mas corta que una hora: NO es estar fuera de alcance ──────────────
+# Falso positivo real: un vuelo de 14 min que sale 20:11 no contiene ninguna
+# hora del pronostico (ni 20:00 ni 21:00), y el aviso de "fuera del alcance"
+# saltaba aunque la hora mas cercana estuviera a 11 minutos. Lo que distingue
+# los dos casos es el DESVIO REAL, no que la ventana quede vacia.
+
+@pytest.mark.parametrize("offset_min,duracion_h", [
+    (11, 14 / 60),      # el caso reportado
+    (5,  10 / 60),
+    (30, 0.5),
+    (45, 0.25),
+])
+def test_un_vuelo_corto_no_dispara_el_aviso_de_fuera_de_alcance(offset_min, duracion_h):
+    base = ((int(time.time()) // 3600) + 1) * 3600
+    r = DecisionEngine(mock=True).evaluate(
+        "SACC", runway_heading=320,
+        departure_time=base + offset_min * 60,
+        flight_duration_h=duracion_h,
+    )
+    assert r.fetch_ok
+    assert r.forecast_out_of_range is False, (
+        f"salida a :{offset_min:02d} con vuelo de {duracion_h*60:.0f} min no puede "
+        f"considerarse fuera del horizonte del pronostico"
+    )
+
+
+def test_el_umbral_de_desvio_tolera_el_redondeo_horario():
+    """
+    El pronostico es horario: redondear al slot mas cercano nunca cuesta mas de
+    media hora. El umbral tiene que estar por encima de eso o marcaria como
+    fuera de alcance cualquier salida que no caiga en punto.
+    """
+    from decision.engine import DESVIO_MAX_ACEPTABLE_H
+    assert DESVIO_MAX_ACEPTABLE_H > 0.5
