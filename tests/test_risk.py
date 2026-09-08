@@ -177,15 +177,24 @@ def test_condiciones_buenas_no_imponen_piso():
     assert piso == "GO" and motivo == ""
 
 
-def test_el_veto_no_se_diluye_en_el_promedio(weather):
+@pytest.mark.parametrize("perfil", PROFILE_NAMES)
+def test_el_veto_no_se_diluye_en_el_promedio(weather, perfil):
     """
     El caso que motiva la barrera: cruzado por encima del maximo demostrado con
     todo lo demas perfecto. El score compensatorio daria GO; debe salir NO GO.
+
+    El viento se DERIVA del limite de cada aeronave en vez de fijarlo en un
+    numero: atarlo a los 12 kt del Alpha hacia que el test dependiera de un
+    valor del perfil, y se rompia al corregir ese dato (paso: el maximo del
+    Alpha se ajusto a 18 kt y el test empezo a fallar sin que hubiera ningun
+    problema en el motor). Ademas asi se verifica en las cinco aeronaves, que
+    es lo que pide la regla de alcance del proyecto.
     """
-    alpha = get_profile("Pipistrel Alpha Trainer")
+    ac = get_profile(perfil)
+    # Cruzado justo por encima del maximo demostrado, viento perpendicular.
     w = weather(visibility_km=10.0, ceiling_ft=None,
-                wind_dir=270, wind_spd_kt=13.0, spread_c=9.0)
-    res = compute_soft_score(w, runway_heading=360, aircraft=alpha)
+                wind_dir=270, wind_spd_kt=ac.crosswind_max_kt + 1.0, spread_c=9.0)
+    res = compute_soft_score(w, runway_heading=360, aircraft=ac)
 
     assert res.r_total < THRESHOLD_CAUTION      # el promedio no lo detecta
     assert res.decision == "NO GO"              # la barrera si

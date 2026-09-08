@@ -365,6 +365,30 @@ Bell Ville, 08/09 12:00 — medido contra la API
 > nubosidad del nivel alteraria veredictos de ruta y exigiria recalibrar: es una
 > decision pendiente, no un olvido.
 
+### El techo de un corredor VFR es AGL; la altitud de vuelo es MSL
+
+Bug real (septiembre 2026): los corredores visuales publican su techo en **AGL** —sobre
+el terreno— y `web/app.py` lo usaba tal cual como `cruise_alt_ft`, que es MSL.
+
+```
+Corredor TMA Cordoba: upper_limit_ft 1500, limit_reference "AGL"
+    tomado como MSL  ->  1500 ft, o sea 2234 ft POR DEBAJO de SACC (3734 ft)
+    convertido a MSL ->  5207 ft sobre el terreno de la salida
+```
+
+Consecuencias que producia: un falso "terreno por encima de tu altitud VFR" en toda
+ruta por corredor, y una consulta NWP al nivel de presion de 1500 ft para un vuelo que
+va a 5200.
+
+`_corridor_alts_msl()` resuelve el terreno de todos los puntos del tramo en **una sola**
+peticion SRTM y suma el limite AGL. Si el terreno falla, degrada interpolando entre las
+elevaciones de los dos aerodromos: peor estimacion, pero del orden correcto. Un techo
+que ya venga en MSL se usa sin tocar.
+
+**Nota:** al ser AGL, la altitud del corredor SIGUE al terreno y no es un nivel plano
+(5207 -> 3951 -> 3216 ft en SACC-JES). El perfil vertical la dibuja como una linea
+horizontal tomando el primer valor: es una aproximacion, ya no un disparate.
+
 ### El horizonte del pronostico sigue a la salida pedida, y se declara si no llega
 
 Bug real (septiembre 2026): `_evaluate_nwp` pedia siempre `NWP_HOURS_AHEAD` (12 h).

@@ -585,3 +585,61 @@ def test_el_umbral_de_desvio_tolera_el_redondeo_horario():
     """
     from decision.engine import DESVIO_MAX_ACEPTABLE_H
     assert DESVIO_MAX_ACEPTABLE_H > 0.5
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Corredores VFR: el techo publicado es AGL, la altitud de vuelo es MSL
+# ══════════════════════════════════════════════════════════════════════════════
+# Bug real: el techo del corredor (1500 ft AGL en la TMA Cordoba) se usaba tal
+# cual como altitud de crucero. Tomado como MSL dejaba al avion 2200 ft POR
+# DEBAJO del propio aerodromo de salida (SACC esta a 3734 ft), disparaba un
+# falso "terreno por encima de tu altitud VFR" y ademas pedia el pronostico en
+# el nivel de presion de 1500 ft para un vuelo que va a 5200.
+
+def test_el_techo_agl_de_un_corredor_se_convierte_a_msl(monkeypatch):
+    from web import app as webapp
+
+    # Terreno sintetico: 1000 m (~3281 ft) en los tres puntos del corredor.
+    monkeypatch.setattr(webapp, "get_elevations_m", lambda pts: [1000.0] * len(pts))
+
+    corridor = [{"lat": -31.0, "lon": -64.5, "upper_limit_ft": 1500,
+                 "limit_reference": "AGL"} for _ in range(3)]
+    alts = webapp._corridor_alts_msl(corridor, AIRPORTS["SACC"], AIRPORTS["JES"])
+
+    esperado = int(round(1000.0 * 3.28084 + 1500))
+    assert alts == [esperado] * 3
+    assert all(a > AIRPORTS["SACC"].elev_ft for a in alts), (
+        "la altitud de vuelo no puede quedar por debajo del aerodromo de salida"
+    )
+
+
+def test_un_techo_ya_en_msl_no_se_toca(monkeypatch):
+    from web import app as webapp
+
+    monkeypatch.setattr(webapp, "get_elevations_m", lambda pts: [1000.0] * len(pts))
+    corridor = [{"lat": -31.0, "lon": -64.5, "upper_limit_ft": 4500,
+                 "limit_reference": "MSL"}]
+    alts = webapp._corridor_alts_msl(corridor, AIRPORTS["SACC"], AIRPORTS["JES"])
+    assert alts == [4500]
+
+
+def test_si_falla_el_terreno_se_degrada_interpolando_los_aerodromos():
+    """Peor estimacion que el SRTM, pero del orden correcto: nunca 1500 ft MSL."""
+    from web import app as webapp
+
+    def _explota(pts):
+        raise ConnectionError("sin red")
+
+    original = webapp.get_elevations_m
+    webapp.get_elevations_m = _explota
+    try:
+        corridor = [{"lat": -31.0, "lon": -64.5, "upper_limit_ft": 1500,
+                     "limit_reference": "AGL"} for _ in range(3)]
+        alts = webapp._corridor_alts_msl(corridor, AIRPORTS["SACC"], AIRPORTS["JES"])
+    finally:
+        webapp.get_elevations_m = original
+
+    assert len(alts) == 3
+    assert all(a > 1500 for a in alts)
+    # Interpola entre los dos aerodromos, asi que desciende como ellos
+    assert alts[0] > alts[-1]

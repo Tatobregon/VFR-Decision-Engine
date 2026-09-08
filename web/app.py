@@ -317,6 +317,54 @@ def _clamp_vfr_alt(alt_ft, aircraft: AircraftProfile) -> Optional[int]:
     return max(1000, min(alt, aircraft.service_ceiling_ft))
 
 
+def _corridor_alts_msl(corridor_wps: list, ap: AirportInfo,
+                       next_ap: AirportInfo) -> List[int]:
+    """
+    Convierte el limite superior de un corredor VFR a altitud MSL.
+
+    Los corredores visuales publican su techo en **AGL** (`limit_reference`),
+    es decir sobre el terreno, no sobre el nivel del mar. Usarlo tal cual como
+    altitud de crucero produce disparates: el corredor de la TMA Cordoba tiene
+    1500 ft AGL y, tomado como MSL, deja al avion 2200 ft POR DEBAJO del propio
+    aerodromo de salida (SACC esta a 3734 ft). Ademas envenena la consulta NWP,
+    que termina pidiendo el nivel de presion de 1500 ft para un vuelo que va a
+    5200.
+
+    El terreno se resuelve con una UNICA peticion SRTM para todos los puntos del
+    tramo. Si falla, se degrada a interpolar entre las elevaciones de los dos
+    aerodromos: peor estimacion, pero del orden correcto.
+    """
+    if not corridor_wps:
+        return []
+
+    puntos = [(cw["lat"], cw["lon"]) for cw in corridor_wps]
+    try:
+        elevaciones = get_elevations_m(puntos)
+    except Exception as e:
+        logger.warning(f"No se pudo consultar el terreno del corredor VFR: {e}")
+        elevaciones = [None] * len(puntos)
+
+    salida: List[int] = []
+    n = max(1, len(corridor_wps) - 1)
+    for i, cw in enumerate(corridor_wps):
+        limite = cw.get("upper_limit_ft") or 0
+        ref = str(cw.get("limit_reference") or "").upper()
+
+        if "AGL" not in ref:
+            # Ya viene en MSL: se usa tal cual.
+            salida.append(int(limite))
+            continue
+
+        elev_m = elevaciones[i] if i < len(elevaciones) else None
+        if elev_m is not None:
+            terreno_ft = elev_m * M_TO_FT
+        else:
+            frac = i / n
+            terreno_ft = ap.elev_ft + frac * (next_ap.elev_ft - ap.elev_ft)
+        salida.append(int(round(terreno_ft + limite)))
+    return salida
+
+
 def _to_card(result, runway_heading: int, ap: AirportInfo, notams: list = None) -> WeatherCard:
     wx = result.weather
     notam_models = [
@@ -656,7 +704,8 @@ def _generate_route_waypoints(
                 corridor_wps = corridor_path_for_leg(ap.lat, ap.lon, next_ap.lat, next_ap.lon)
             except Exception as e:
                 logger.warning(f"Error ruteando corredor VFR {code}->{path[i+1]}: {e}")
-        for cw in corridor_wps:
+        corridor_alts = _corridor_alts_msl(corridor_wps, ap, next_ap)
+        for ci, cw in enumerate(corridor_wps):
             sequence.append(RouteWaypoint(
                 code=cw["corridor_id"] or "VFR-COR",
                 name=f"Corredor {cw['corridor_id']}",
@@ -669,7 +718,9 @@ def _generate_route_waypoints(
                 corridor_region=cw["region_name"],
                 corridor_limit_ft=cw["upper_limit_ft"],
                 corridor_limit_ref=cw["limit_reference"],
-                cruise_alt_ft=cw["upper_limit_ft"],
+                # El techo del corredor es AGL: la altitud de vuelo es MSL.
+                cruise_alt_ft=corridor_alts[ci] if ci < len(corridor_alts)
+                              else cw["upper_limit_ft"],
             ))
 
         # Waypoints de aerovía para este tramo
