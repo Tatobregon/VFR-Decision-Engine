@@ -86,6 +86,11 @@ logger = logging.getLogger(__name__)
 _VERDICT_RANK = {"GO": 0, "CAUTION": 1, "NO GO": 2}
 
 
+def _con_rafaga(activo: bool) -> str:
+    """Sufijo que aclara que el cruzado se midio sobre la rafaga."""
+    return " con rafaga" if activo else ""
+
+
 def _worst_verdict(a: str, b: str) -> str:
     """Devuelve el veredicto mas restrictivo entre dos."""
     return a if _VERDICT_RANK[a] >= _VERDICT_RANK[b] else b
@@ -165,6 +170,11 @@ def conjunctive_floor(
     gust_max_kt : float,           # rafaga maxima de referencia del avion
     r_fog       : float,           # score de niebla ya calculado [0,1]
     r_taf       : float,           # score de tendencia TAF [0,1]
+    # Solo para redactar el motivo: si el cruzado efectivo salio de la RAFAGA,
+    # hay que decirlo. Sin eso el piloto lee "viento cruzado 16 kt" al lado de
+    # un "Xwind 4.6 kt" en pantalla y los dos numeros parecen contradecirse,
+    # cuando en realidad miden cosas distintas (sostenido contra rafaga).
+    xw_con_rafaga : bool = False,
 ) -> tuple:
     """
     Piso no-compensatorio. Devuelve (veredicto_piso, motivo).
@@ -188,11 +198,12 @@ def conjunctive_floor(
         if xw_eff_kt >= xw_limit_kt:
             floor = _worst_verdict(floor, "NO GO")
             reasons.append(
-                f"viento cruzado {xw_eff_kt:.0f} kt supera el limite del avion ({xw_limit_kt:.0f} kt)")
+                f"viento cruzado{_con_rafaga(xw_con_rafaga)} {xw_eff_kt:.0f} kt "
+                f"supera el limite del avion ({xw_limit_kt:.0f} kt)")
         elif xw_eff_kt >= XWIND_CAUTION_FRACTION * xw_limit_kt:
             floor = _worst_verdict(floor, "CAUTION")
             reasons.append(
-                f"viento cruzado {xw_eff_kt:.0f} kt "
+                f"viento cruzado{_con_rafaga(xw_con_rafaga)} {xw_eff_kt:.0f} kt "
                 f"(>={XWIND_CAUTION_FRACTION:.0%} del limite de {xw_limit_kt:.0f} kt)")
 
     # ── Rafagas (variabilidad del viento) ─────────────────────────────────────
@@ -354,6 +365,7 @@ def compute_soft_score(
     guardrail_floor, guardrail_reason = conjunctive_floor(
         xw_eff_kt   = _xw_eff,
         xw_limit_kt = xw_limit,
+        xw_con_rafaga = xw_result.crosswind_gust_kt is not None,
         gust_kt     = weather.wind_gust_kt,
         spd_kt      = weather.wind_spd_kt,
         gust_max_kt = aircraft.gust_max_kt,

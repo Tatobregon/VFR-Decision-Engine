@@ -120,6 +120,11 @@ class WeatherCard(BaseModel):
     obs_time: int = 0
     xwind_kt: Optional[float] = None
     headwind_kt: Optional[float] = None
+    # Cruzado calculado sobre la RAFAGA. Es el que usa la barrera
+    # no-compensatoria, y sin mostrarlo el motivo del veredicto ("viento cruzado
+    # 16 kt") no se puede reconciliar con el sostenido que muestra la tarjeta
+    # ("Xwind 4.6 kt"): miden cosas distintas.
+    xwind_gust_kt: Optional[float] = None
     runway_heading: int = 0
     density_alt_ft: Optional[float] = None
     pressure_alt_ft: Optional[float] = None
@@ -378,7 +383,7 @@ def _to_card(result, runway_heading: int, ap: AirportInfo, notams: list = None) 
         for n in (notams or [])
     ]
 
-    xwind = headwind = None
+    xwind = headwind = xwind_gust = None
     if wx:
         try:
             cw = compute_crosswind(
@@ -387,6 +392,8 @@ def _to_card(result, runway_heading: int, ap: AirportInfo, notams: list = None) 
             )
             xwind   = round(cw.crosswind_kt, 1)
             headwind = round(cw.headwind_kt, 1)
+            if cw.crosswind_gust_kt is not None:
+                xwind_gust = round(cw.crosswind_gust_kt, 1)
         except Exception:
             pass
 
@@ -428,6 +435,7 @@ def _to_card(result, runway_heading: int, ap: AirportInfo, notams: list = None) 
         obs_time        = result.obs_time,
         xwind_kt        = xwind,
         headwind_kt     = headwind,
+        xwind_gust_kt   = xwind_gust,
         runway_heading  = runway_heading,
         density_alt_ft  = da_ft,
         pressure_alt_ft = pa_ft,

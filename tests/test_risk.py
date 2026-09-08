@@ -379,3 +379,41 @@ def test_todo_perfil_declara_techo_de_servicio_por_encima_de_su_crucero():
         p = get_profile(nombre)
         assert p.service_ceiling_ft > 0, nombre
         assert p.service_ceiling_ft >= p.cruise_alt_ft, nombre
+
+
+# ── El motivo distingue cruzado sostenido de cruzado con rafaga ───────────────
+# Reporte del piloto: la tarjeta mostraba "Xwind 4.6 kt" y el cartel del factor
+# limitante decia "viento cruzado 16 kt". Los dos numeros eran correctos —uno es
+# el cruzado del viento sostenido y el otro el de la rafaga— pero nada lo decia,
+# asi que parecian contradecirse.
+
+def test_el_motivo_aclara_cuando_el_cruzado_es_con_rafaga():
+    _, motivo = conjunctive_floor(
+        xw_eff_kt=16.0, xw_limit_kt=18.0, gust_kt=16.1, spd_kt=4.7,
+        gust_max_kt=20.0, r_fog=0.0, r_taf=0.0, xw_con_rafaga=True,
+    )
+    assert "con rafaga" in motivo
+
+
+def test_sin_rafaga_el_motivo_no_la_menciona():
+    _, motivo = conjunctive_floor(
+        xw_eff_kt=16.0, xw_limit_kt=18.0, gust_kt=None, spd_kt=None,
+        gust_max_kt=20.0, r_fog=0.0, r_taf=0.0,
+    )
+    assert motivo and "con rafaga" not in motivo
+
+
+def test_el_cruzado_que_veta_es_el_de_la_rafaga(weather):
+    """
+    Con viento sostenido flojo y rafaga fuerte casi perpendicular a la pista, el
+    cruzado que decide es el de la RAFAGA. Es la razon por la que el umbral de
+    CAUTION esta en el 85 % y no en la mitad: el valor ya es el peor caso
+    instantaneo.
+    """
+    ac = get_profile("Pipistrel Alpha Trainer")
+    w = weather(visibility_km=10.0, ceiling_ft=None, wind_dir=270,
+                wind_spd_kt=4.0, wind_gust_kt=ac.crosswind_max_kt + 2.0,
+                spread_c=9.0)
+    res = compute_soft_score(w, runway_heading=360, aircraft=ac)
+    assert res.decision == "NO GO"
+    assert "con rafaga" in res.guardrail_reason

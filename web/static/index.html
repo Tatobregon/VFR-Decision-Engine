@@ -898,9 +898,14 @@
               <div class="text-xs text-muted mt-1">
                 RWY <span class="font-mono" x-text="card.runway_heading + '°'"></span>
                 <span x-show="card.xwind_kt !== null">
-                  · <span x-text="`Xwind ${card.xwind_kt} kt`"
-                          :class="card.xwind_kt > 12 ? 'text-nogo' : card.xwind_kt > 8 ? 'text-caution' : 'text-go'">
-                    </span>
+                  · <span x-text="`Xwind ${card.xwind_kt} kt`" :class="xwindClass(card.xwind_kt)"></span><!--
+                    El cruzado que usa la barrera es el de la RAFAGA, no el del
+                    viento sostenido. Mostrar solo uno hacia que el motivo del
+                    veredicto pareciera contradecir la tarjeta. -->
+                  <template x-if="card.xwind_gust_kt != null && card.xwind_gust_kt > card.xwind_kt">
+                    <span class="text-muted">(<span x-text="card.xwind_gust_kt"
+                          :class="xwindClass(card.xwind_gust_kt)"></span> con ráfaga)</span>
+                  </template>
                 </span>
                 <span x-show="card.headwind_kt !== null">
                   · <span x-text="(card.headwind_kt >= 0 ? 'HW ' : 'TW ') + Math.abs(card.headwind_kt) + ' kt'"
@@ -1979,6 +1984,18 @@ function app() {
       const X = d => ml + (d / total) * plotW;
       const Y = a => mt + plotH - (Math.max(0, a) / maxAlt) * plotH;
       return { W, H, ml, mr, mt, mb, plotW, plotH, total, maxAlt, X, Y };
+    },
+
+    // Color del viento cruzado, DERIVADO del limite de la aeronave elegida.
+    // Antes estaba fijo en 12 y 8 kt, que eran los valores del Alpha: al
+    // corregirse ese dato del perfil (18 kt) la pantalla pintaba rojo de mas.
+    // Se usan las mismas fronteras que la barrera: el limite y su 85 %.
+    xwindClass(v) {
+      const lim = this.selectedAc?.crosswind_max_kt;
+      if (v == null || !lim) return 'text-muted';
+      if (v >= lim) return 'text-nogo';
+      if (v >= 0.85 * lim) return 'text-caution';
+      return 'text-go';
     },
 
     // Techo de servicio de la aeronave elegida. Se informa como texto, no se
