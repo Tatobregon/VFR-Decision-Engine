@@ -96,7 +96,18 @@ automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a
 | `decision/engine.py` | **COMPLETO** | `DecisionEngine.evaluate()` → `DecisionResult`. Pipeline: fetch→parse→hard_blockers→soft_score+taf_window→decision. **Regla de fuente**: con codigo ICAO intenta METAR+TAF y cae a NWP si no hay METAR; sin ICAO va directo a NWP. El camino NWP usa **muestreo en anillo** (peor caso en tiempo Y espacio). |
 | `output/briefing.py` | **COMPLETO** | `generate_briefing(...)` → briefing meteorologico multi-linea para el piloto (origen, destino, ruta, NOTAMs). 100% reglas, sin IA. |
 | `output/flight_plan.py` | **COMPLETO** | `build_flight_plan(...)` → plan de vuelo OACI (casillas 7-19 + mensaje FPL). **No radica** el plan: lo presenta el piloto. |
-| `web/app.py` | **COMPLETO** | Backend FastAPI + frontend HTML (`web/static`). **Entry point unico del sistema.** Endpoints: `/api/evaluate`, `/api/profile`, `/api/timeline`, `/api/flightplan`, `/api/airport/{code}`, `/api/airports`, `/api/airports/map`, `/api/aircraft`, `/api/vfr_corridors`, `/api/airspace`. Switch VFR/IFR, corredores VFR, perfil vertical. |
+| `web/app.py` | **COMPLETO** | Backend FastAPI + frontend HTML (`web/static`). **Entry point unico del sistema.** Endpoints: `/api/evaluate`, `/api/profile`, `/api/timeline`, `/api/flightplan`, `/api/airport/{code}`, `/api/airports`, `/api/airports/map`, `/api/aircraft`, `/api/vfr_corridors`, `/api/airspace`, `/api/copilot`, `/api/copilot/status`. Switch VFR/IFR, corredores VFR, perfil vertical, panel del copiloto. |
+
+### COPILOTO (capa de lenguaje natural)
+
+| Archivo | Estado | Descripcion |
+|---|---|---|
+| `copilot/client.py` | **COMPLETO** | Cliente Gemini por **REST plano, sin SDK** (`requirements.txt` sigue en 4 paquetes). `LLMClient` es un Protocol: el resto del paquete no depende de Gemini. **Cadena de reserva** entre modelos ante los 503 del nivel gratuito. `ScriptedClient` para tests sin red. |
+| `copilot/tools.py` | **COMPLETO** | Las 5 herramientas deterministas + su esquema de function calling. Envoltorios finos sobre `data/airports.py`, `route/performance.py` y `decision/engine.py`. **No agregan ninguna fuente de datos.** `resolve_airport()` con ranking (codigo > nombre exacto > prefijo > provincia). |
+| `copilot/prompts.py` | **COMPLETO** | Instruccion de sistema con las 5 reglas duras + `verdict_fallback()`, la plantilla determinista de veredicto. |
+| `copilot/agent.py` | **COMPLETO** | Bucle pregunta→herramienta→datos→redaccion (tope 3 vueltas) y las **dos garantias que se hacen cumplir en codigo**: `_enforce_verdict()` y `_enforce_codes()`. `trim_history()` recorta en limites de turno. |
+| `copilot/eval_set.py` | **COMPLETO** | 71 casos etiquetados, 6 intenciones, **las 5 regiones**. Incluye 11 casos cuyo dato NO existe, con patron de deteccion objetiva. |
+| `copilot/evaluate.py` | **COMPLETO** | Matriz de confusion, P/R/F1, resolucion de entidad, **tasa de invencion**, integridad de veredicto, latencia, desagregado por region. Cachea en `eval_results.json`. |
 
 ### ROUTE LAYER
 
@@ -310,6 +321,87 @@ Es validez de CONSTRUCTO (reproduce la regulacion), no empirica. Concordancia fi
 > Dos derivaciones independientes de los pesos producen el mismo comportamiento
 > decisional: el veredicto no depende de la ponderacion exacta.
 
+### Copiloto en lenguaje natural — arquitectura neurosimbolica
+
+Asistente de planificacion **previo al vuelo, en tierra**. No asiste vuelo en curso
+(coherente con la exclusion de uso en cabina ya declarada en el alcance).
+
+> **Principio rector.** El LLM no sabe nada. No decide, no calcula y no aporta
+> conocimiento propio. Interpreta la pregunta, elige que herramienta determinista
+> llamar, y redacta con lo que esa herramienta devolvio. Si el dato no esta, lo dice.
+
+El modelo de lenguaje es el **unico componente no interpretable** del sistema. Por
+eso queda confinado por arquitectura a un rol donde sus modos de falla no pueden
+alcanzar al veredicto: la decision la sigue tomando el motor deterministico.
+
+**Que problema resuelve** (no es "IA porque si"): el registro ya tiene 395 telefonos
+de jefes de aerodromo y 376 conjuntos de normas particulares que **nadie puede
+consultar**, porque nadie navega 561 fichas. El asistente no agrega informacion:
+hace utilizable la que ya se relevo.
+
+**Las 5 reglas.** R1 nunca responde de conocimiento propio · R2 el veredicto se
+transcribe, no se parafrasea · R3 ausencia de dato != ausencia de la cosa ·
+R4 siempre nombra el codigo exacto que resolvio · R5 fuera de alcance se dice.
+
+**R2 y R4 no son solo prompt: se verifican en codigo.** Un prompt es una sugerencia;
+una validacion es una garantia.
+- `_enforce_verdict()`: si el texto no transcribe el veredicto del motor, o menciona
+  otro, se **descarta el texto** y se emite `verdict_fallback()`. La integridad de
+  veredicto es 100% por construccion, no por confianza en el modelo.
+- `_enforce_codes()`: detecta codigos con forma OACI argentina (`SA__`) que el modelo
+  **fabrico** — no estan en las herramientas de ese turno NI en el registro. Modo de
+  falla real observado en vivo: la herramienta devolvio `ALT` (Cruz Alta, sin OACI) y
+  el modelo escribio `SAAL`. Un codigo mal escrito manda al piloto a otro aerodromo.
+
+**R3 es la regla critica de seguridad.** La cobertura del registro es **inversa a la
+intuicion**: los aerodromos grandes y controlados (SACO, SAAR) tienen `fuel`, `phones`
+y `norms` VACIOS porque se publican en el AIP; los rurales chicos los tienen completos.
+Las herramientas nunca devuelven `""`: devuelven `{"publicado": false, "nota": ...}`.
+Decir "no tiene combustible" donde el registro solo no lo publica es un piloto que se
+queda sin nafta en el aire.
+
+**La 6a intencion, `fuera_de_alcance`, es de diseno**: sin una clase explicita para
+"no puedo contestar esto", el clasificador queda obligado a elegir una de las cinco
+herramientas y el modelo inventa para encajar.
+
+**Hallazgos operativos** (medidos contra la API real, documentados en `client.py`):
+`gemini-2.5-flash` esta retirado (404 para cuentas nuevas) · el nivel gratuito tiene
+503 intermitentes con tasa que va de 0/5 a 6/6 **segun el modelo** (de ahi la cadena
+de reserva) · `gemini-flash-lite-latest` rechaza `thinkingBudget=0` con 400 ·
+hay que reenviar el `content` del modelo TAL CUAL porque lleva `thoughtSignature`.
+
+**Resultados medidos** sobre los 71 casos de `copilot/eval_set.py`
+(modelo `gemini-flash-lite-latest`, que resuelve a `gemini-3.5-flash-lite`):
+
+| Metrica | Valor |
+|---|---|
+| Exactitud de clasificacion de intencion | **68/71 = 95.8 %** |
+| F1 macro-promedio (6 intenciones) | **0.958** |
+| Exactitud de resolucion de aerodromo | **54/55 = 98.2 %** |
+| **Tasa de invencion sobre datos ausentes** | **0 %** (0 de 9 con deteccion objetiva) |
+| Reconocimiento explicito de la ausencia | 10/11 = 90.9 % |
+| Veredictos que hubo que forzar | **0 de 10** |
+| Codigos fabricados que hubo que corregir | **0** |
+| Latencia (media / mediana / p95) | 3.90 s / 3.14 s / 7.61 s |
+
+Por region: CUYO 8/8, LITORAL 8/8, PATAGONIA 14/14, PAMPA 20/21, NOA 7/8 — el
+comportamiento no depende de la region (regla de alcance).
+
+**Los 3 desaciertos, analizados uno por uno** (seccion [8] del reporte; la matriz de
+confusion NO se retoca, se informa el analisis por separado):
+1. *"a quien llamo en Cordoba?"* → **pidio desambiguacion** en vez de adivinar. Es la
+   conducta que pide R4; la metrica la penaliza porque no invoco herramienta.
+2. *"hay nafta en Andalgala?"* → uso `combustible_cercano` en vez de
+   `servicios_aerodromo`. Confusion real entre dos intenciones vecinas; la respuesta
+   igual fue correcta y declaro la ausencia del dato.
+3. *"que pista tiene el aeropuerto de Wakanda?"* → uso `buscar_aerodromo`, razonable
+   para un nombre desconocido, y reporto correctamente que no existe.
+
+Ninguno de los tres produjo una respuesta incorrecta o peligrosa.
+
+**Fuera de la fase 1, explicitamente**: modificacion de ruta por lenguaje natural,
+uso en vuelo, GPS y cualquier fuente de datos nueva.
+
 ### Perfiles de aeronave (5)
 
 Definidos en `risk/aircraft_profiles.py`. Cada uno tiene limites (crosswind/gust max,
@@ -340,7 +432,8 @@ Nunca basar tests solo en el Alpha Trainer o en un aerodromo unico (ej. SACC).
 ## Estado actual
 
 Todas las capas estan completas y operativas: Data → Parsing → Feature → Risk →
-Decision → Route → Output → Web. El sistema corre como web app.
+Decision → Route → Output → Web, mas la capa de lenguaje natural (Copiloto).
+El sistema corre como web app.
 
 **Documento de referencia**: `DOCUMENTACION_CHECKPOINT_2.md` (agosto 2026) tiene el
 estado verificado por ejecucion, el inventario completo de modulos, los resultados
@@ -358,7 +451,19 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m uvicorn web.app:app --reload --port 8000
 ```
 
-Suite de regresion (122 tests, sin red, < 1 s):
+**Credencial del copiloto.** El asistente necesita `GEMINI_API_KEY` (Google AI Studio,
+nivel gratuito). Va en `.env` en la raiz — **que esta en `.gitignore`** — y en Render
+como variable de entorno del servicio, **nunca en `render.yaml` ni en codigo**:
+
+```
+GEMINI_API_KEY=...
+```
+
+Sin la variable la app arranca igual: `/api/copilot/status` responde
+`available: false`, el panel del frontend no se muestra y **el resto del sistema
+funciona normalmente**. El copiloto es accesorio y su caida no arrastra a nadie.
+
+Suite de regresion (201 tests, sin red, < 1 s):
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
@@ -369,8 +474,20 @@ Suite de regresion (122 tests, sin red, < 1 s):
 veredicto sobre la bateria de referencia (0 sub-avisos, concordancia >= 90%). Si un
 cambio en pesos, umbrales o barrera altera lo que el sistema decide, ahi salta.
 
+`tests/test_copilot.py` fija el contrato de seguridad del asistente: que un veredicto
+parafraseado o invertido se reemplace por la plantilla determinista, que un codigo
+fabricado se detecte sin marcar los legitimos, y que un dato ausente nunca se devuelva
+como vacio. Corre **sin red**: el modelo se inyecta simulado (`ScriptedClient`).
+
 Test standalone de un modulo (se conservan, son parte de la convencion del proyecto):
 `.\.venv\Scripts\python.exe risk\calibration.py`
+
+Evaluacion cuantitativa del copiloto (**si** sale a la red, ~7 min por el limite de
+15 solicitudes/min del nivel gratuito; cachea en `copilot/eval_results.json`):
+```powershell
+.\.venv\Scripts\python.exe -m copilot.evaluate                # corre y cachea
+.\.venv\Scripts\python.exe -m copilot.evaluate --solo-reporte # solo reporta el cache
+```
 
 Si `python` o `git` no se reconocen en una terminal nueva, refrescar el PATH:
 ```powershell
@@ -433,7 +550,13 @@ except ImportError:
 
 ### Lo que NO hacer
 - No atar ninguna solucion a un aerodromo o a una aeronave particular (ver REGLA DE ALCANCE).
-- No usar frameworks de ML; el sistema es motor de reglas + funciones de riesgo.
+- No usar frameworks de ML; el motor de decision es reglas + funciones de riesgo.
+- **No dejar que el LLM decida, calcule ni afirme nada que no venga de una herramienta.**
+  El copiloto es una interfaz de lenguaje sobre el motor, no una segunda opinion. Si
+  se agrega una herramienta nueva, tiene que devolver la ausencia de dato de forma
+  explicita (`{"publicado": false, ...}`), nunca `""` ni una lista vacia a secas.
+- No agregar el SDK de Google: el cliente va por REST plano para no romper la
+  propiedad de 4 dependencias y para poder cambiar de proveedor tocando un archivo.
 - No implementar Iowa State Mesonet (archivo historico, fuera de v1.0).
 - No implementar la excepcion OACI para aeronaves <= 140 kt (criterio conservador).
 - No usar FAA como referencia normativa (usar ANAC/OACI).

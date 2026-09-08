@@ -1,0 +1,1551 @@
+{
+ "generado": 1788877708,
+ "casos": [
+  {
+   "pregunta": "cual es el codigo de La Cumbre?",
+   "intent_esperado": "buscar_aerodromo",
+   "intent_obtenido": "buscar_aerodromo",
+   "codigo_esperado": "SACC",
+   "codigos_resueltos": [
+    "SACC"
+   ],
+   "region": "PAMPA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "El aeródromo de La Cumbre tiene el código **SACC** (LA CUMBRE, CÓRDOBA).",
+   "herramientas": [
+    "buscar_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 2.17,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "donde queda Apostoles?",
+   "intent_esperado": "buscar_aerodromo",
+   "intent_obtenido": "buscar_aerodromo",
+   "codigo_esperado": "APO",
+   "codigos_resueltos": [
+    "APO"
+   ],
+   "region": "LITORAL",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "El aeródromo de Apóstoles (código: **APO**), en la provincia de Misiones, es un aeródromo privado con una elevación de 384 pies.",
+   "herramientas": [
+    "buscar_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 4.9,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "que aerodromos hay en Misiones?",
+   "intent_esperado": "buscar_aerodromo",
+   "intent_obtenido": "buscar_aerodromo",
+   "codigo_esperado": null,
+   "codigos_resueltos": [
+    "SARI",
+    "SARP",
+    "SATD",
+    "SATI",
+    "SATO",
+    "VTE",
+    "APO",
+    "JDA"
+   ],
+   "region": "LITORAL",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Aeródromos encontrados en la provincia de Misiones:\n\n* **SARI** (Cataratas del Iguazú / My. D. C. E. Krause) - Público\n* **SARP** (Posadas / Libertador Gral. D. J. de San Martín) - Público\n* **SATD** (Aeroclub Alto Paraná El Dorado) - Público\n* **SATI** (Bernardo de Irigoyen) - Público\n* **SATO** (Oberá) - Privado\n* **VTE** (San Vicente) - Público\n* **APO** (Apóstoles) - Privado\n* **JDA** (Jardín de América) - Privado\n\nSi querés detalles de servicios, pistas o contactos de alguno en particular, avisame.",
+   "herramientas": [
+    "buscar_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 3.88,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "necesito el codigo de Puerto Deseado",
+   "intent_esperado": "buscar_aerodromo",
+   "intent_obtenido": "buscar_aerodromo",
+   "codigo_esperado": "SAWD",
+   "codigos_resueltos": [
+    "SAWD"
+   ],
+   "region": "PATAGONIA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "SAWD (Puerto Deseado, Santa Cruz).",
+   "herramientas": [
+    "buscar_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 3.77,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "aerodromos en la provincia de Salta",
+   "intent_esperado": "buscar_aerodromo",
+   "intent_obtenido": "buscar_aerodromo",
+   "codigo_esperado": null,
+   "codigos_resueltos": [
+    "SASA"
+   ],
+   "region": "NOA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Encontré el siguiente aeródromo en la provincia de **Salta**:\n\n- **SASA** (SALTA / GENERAL D. MARTÍN MIGUEL DE GÜEMES) - Público - Elevación: 4088 ft.",
+   "herramientas": [
+    "buscar_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 2.39,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "como se identifica Andalgala?",
+   "intent_esperado": "buscar_aerodromo",
+   "intent_obtenido": "buscar_aerodromo",
+   "codigo_esperado": "AND",
+   "codigos_resueltos": [
+    "AND"
+   ],
+   "region": "NOA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "El aeródromo es **AND** (ANDALGALÁ), ubicado en la provincia de Catamarca.",
+   "herramientas": [
+    "buscar_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 2.11,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "busco el aerodromo de Zarate",
+   "intent_esperado": "buscar_aerodromo",
+   "intent_obtenido": "buscar_aerodromo",
+   "codigo_esperado": "ATE",
+   "codigos_resueltos": [
+    "ATE"
+   ],
+   "region": "PAMPA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Encontré el aeródromo **ATE** (ZÁRATE, provincia de Buenos Aires), de condición público.",
+   "herramientas": [
+    "buscar_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 3.14,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "que aerodromos hay en Tierra del Fuego?",
+   "intent_esperado": "buscar_aerodromo",
+   "intent_obtenido": "buscar_aerodromo",
+   "codigo_esperado": null,
+   "codigos_resueltos": [
+    "SAWE",
+    "SAWH",
+    "SAWB",
+    "SAWL",
+    "EAU"
+   ],
+   "region": "PATAGONIA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Aeródromos registrados en la provincia de Tierra del Fuego, Antártida e Islas del Atlántico Sur:\n\n* **SAWE** (RÍO GRANDE) - Público\n* **SAWH** (USHUAIA / MALVINAS ARGENTINAS) - Público\n* **SAWB** (VICECOMODORO MARAMBIO) - Público\n* **SAWL** (TOLHUIN) - Privado\n* **EAU** (USHUAIA / EST. AERONAVAL) - Privado",
+   "herramientas": [
+    "buscar_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 2.29,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "codigo de Alto Rio Senguer",
+   "intent_esperado": "buscar_aerodromo",
+   "intent_obtenido": "buscar_aerodromo",
+   "codigo_esperado": "SAVR",
+   "codigos_resueltos": [
+    "SAVR"
+   ],
+   "region": "PATAGONIA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "El aeródromo de Alto Río Senguer es SAVR (ALTO RÍO SENGUER / D.C. SZLAPELIS), ubicado en la provincia de Chubut. Su código OACI/local es **SAVR**.",
+   "herramientas": [
+    "buscar_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 5.23,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "donde esta Ameghino?",
+   "intent_esperado": "buscar_aerodromo",
+   "intent_obtenido": "buscar_aerodromo",
+   "codigo_esperado": "AMG",
+   "codigos_resueltos": [
+    "AMG"
+   ],
+   "region": "PAMPA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "El aeródromo **AMG** (AMEGHINO), ubicado en la provincia de BUENOS AIRES, con condición PRIVADO y una elevación de 361 ft.",
+   "herramientas": [
+    "buscar_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 3.11,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "a quien llamo en Cruz Alta?",
+   "intent_esperado": "contacto_aerodromo",
+   "intent_obtenido": "contacto_aerodromo",
+   "codigo_esperado": "ALT",
+   "codigos_resueltos": [
+    "ALT"
+   ],
+   "region": "PAMPA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Para **ALT (Cruz Alta, Córdoba)**, los teléfonos publicados son:\n\n* (03467) 421222\n* (03467) 401658\n* (03467) 15-438878 (Jefe de Aeródromo)",
+   "herramientas": [
+    "contacto_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 3.31,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "telefono del jefe de aerodromo de La Cumbre",
+   "intent_esperado": "contacto_aerodromo",
+   "intent_obtenido": "contacto_aerodromo",
+   "codigo_esperado": "SACC",
+   "codigos_resueltos": [
+    "SACC"
+   ],
+   "region": "PAMPA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "SACC (LA CUMBRE, Córdoba):\n\n* **Jefe de Aeródromo (André Hediger):** (03548) 15-463885\n* **Teléfono adicional:** (03548) 452544",
+   "herramientas": [
+    "contacto_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 2.92,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "como contacto Puerto Deseado?",
+   "intent_esperado": "contacto_aerodromo",
+   "intent_obtenido": "contacto_aerodromo",
+   "codigo_esperado": "SAWD",
+   "codigos_resueltos": [
+    "SAWD"
+   ],
+   "region": "PATAGONIA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Para contactar el aeródromo **SAWD (Puerto Deseado, Santa Cruz)**, el teléfono publicado es:\n\n* **(0297) 4872333**",
+   "herramientas": [
+    "contacto_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 2.79,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "numero de Alta Gracia",
+   "intent_esperado": "contacto_aerodromo",
+   "intent_obtenido": "contacto_aerodromo",
+   "codigo_esperado": "AGR",
+   "codigos_resueltos": [
+    "AGR"
+   ],
+   "region": "PAMPA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Para **AGR (ALTA GRACIA / COMANDANTE EDMUNDO OSVALDO WEISS)**, Córdoba:\n\n* **Lucas Laforte (Vicepresidente Aeroclub):** (0351) 15-8647779\n* **Javier Masin (Jefe de Aeródromo):** (0351) 15-3487637\n* **Paracaidismo Alta Gracia:** (0351) 15-3487628\n* **Encargado del Aeroclub:** (0351) 15-3097464\n* **Administración Aeroclub:** (0351) 15-8014541",
+   "herramientas": [
+    "contacto_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 2.59,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "tenes el telefono de Apostoles?",
+   "intent_esperado": "contacto_aerodromo",
+   "intent_obtenido": "contacto_aerodromo",
+   "codigo_esperado": "APO",
+   "codigos_resueltos": [
+    "APO"
+   ],
+   "region": "LITORAL",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Para **APO (Apóstoles, Misiones)**:\n\n* (03758) 424731\n* (03758) 15-403309 — Jefe de Aeródromo",
+   "herramientas": [
+    "contacto_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 2.63,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "a quien aviso antes de aterrizar en Andalgala?",
+   "intent_esperado": "contacto_aerodromo",
+   "intent_obtenido": "contacto_aerodromo",
+   "codigo_esperado": "AND",
+   "codigos_resueltos": [
+    "AND"
+   ],
+   "region": "NOA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Para el aeródromo **AND (ANDALGALÁ, Catamarca)**, el teléfono publicado es:\n\n* **(0383) 4437575/76** — Dirección Provincial de Aeronáutica de Catamarca.",
+   "herramientas": [
+    "contacto_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 2.4,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "contacto de Piedra del Aguila",
+   "intent_esperado": "contacto_aerodromo",
+   "intent_obtenido": "contacto_aerodromo",
+   "codigo_esperado": "SAVA",
+   "codigos_resueltos": [
+    "SAVA"
+   ],
+   "region": "PATAGONIA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "El contacto para SAVA (PIEDRA DEL ÁGUILA, Neuquén):\n\n* **Teléfono:** (02942) 493152",
+   "herramientas": [
+    "contacto_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 3.18,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "telefono de Arroyito",
+   "intent_esperado": "contacto_aerodromo",
+   "intent_obtenido": "contacto_aerodromo",
+   "codigo_esperado": "ARY",
+   "codigos_resueltos": [
+    "ARY"
+   ],
+   "region": "PAMPA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Para el aeródromo **ARY** (ARROYITO / ARCOR, Córdoba), tenés los siguientes teléfonos publicados:\n\n* (03576) 15-653338\n* (03541) 15-595857 - Santiago Bernardi Bruera (Jefe de Aeródromo)\n* (03576) 421301",
+   "herramientas": [
+    "contacto_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 2.28,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "a quien llamo en Cordoba?",
+   "intent_esperado": "contacto_aerodromo",
+   "intent_obtenido": "fuera_de_alcance",
+   "codigo_esperado": "SACO",
+   "codigos_resueltos": [],
+   "region": "PAMPA",
+   "sin_dato": true,
+   "prohibido": "\\(\\s*\\d{3,5}\\s*\\)\\s*[\\d\\s\\-]{6,}|\\b\\d{2,4}\\s*-\\s*\\d{6,}\\b|\\b\\d{4}\\s*-\\s*\\d{4}\\b",
+   "texto": "Para poder pasarte los teléfonos, decime a qué aeródromo de Córdoba te referís, ya que hay varios en la provincia.",
+   "herramientas": [],
+   "grounded": false,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 1.52,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "telefono de Bariloche",
+   "intent_esperado": "contacto_aerodromo",
+   "intent_obtenido": "contacto_aerodromo",
+   "codigo_esperado": "SAZS",
+   "codigos_resueltos": [
+    "SAZS"
+   ],
+   "region": "PATAGONIA",
+   "sin_dato": true,
+   "prohibido": "\\(\\s*\\d{3,5}\\s*\\)\\s*[\\d\\s\\-]{6,}|\\b\\d{2,4}\\s*-\\s*\\d{6,}\\b|\\b\\d{4}\\s*-\\s*\\d{4}\\b",
+   "texto": "Para el aeródromo **SAZS** (SAN CARLOS DE BARILOCHE, Río Negro):\n\nEl registro MADHEL no publica teléfonos para este aeródromo. Al ser controlado, los datos de contacto suelen publicarse en el AIP/AIS.",
+   "herramientas": [
+    "contacto_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 3.2,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "como contacto Catamarca?",
+   "intent_esperado": "contacto_aerodromo",
+   "intent_obtenido": "contacto_aerodromo",
+   "codigo_esperado": "SANC",
+   "codigos_resueltos": [
+    "SANC"
+   ],
+   "region": "NOA",
+   "sin_dato": true,
+   "prohibido": "\\(\\s*\\d{3,5}\\s*\\)\\s*[\\d\\s\\-]{6,}|\\b\\d{2,4}\\s*-\\s*\\d{6,}\\b|\\b\\d{4}\\s*-\\s*\\d{4}\\b",
+   "texto": "Para **SANC (CATAMARCA)**, el registro MADHEL no publica telefonos (es un aerodromo controlado y sus datos se publican en el AIP/AIS, asi que que no figure aca no significa que no exista).",
+   "herramientas": [
+    "contacto_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 2.3,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "numero de Curuzu Cuatia",
+   "intent_esperado": "contacto_aerodromo",
+   "intent_obtenido": "contacto_aerodromo",
+   "codigo_esperado": "SATU",
+   "codigos_resueltos": [
+    "SATU"
+   ],
+   "region": "LITORAL",
+   "sin_dato": true,
+   "prohibido": "\\(\\s*\\d{3,5}\\s*\\)\\s*[\\d\\s\\-]{6,}|\\b\\d{2,4}\\s*-\\s*\\d{6,}\\b|\\b\\d{4}\\s*-\\s*\\d{4}\\b",
+   "texto": "SATU (Curuzú Cuatiá, Corrientes): el registro MADHEL/ANAC no publica teléfonos para este aeródromo.",
+   "herramientas": [
+    "contacto_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 2.84,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "que pista tiene La Cumbre?",
+   "intent_esperado": "servicios_aerodromo",
+   "intent_obtenido": "servicios_aerodromo",
+   "codigo_esperado": "SACC",
+   "codigos_resueltos": [
+    "SACC"
+   ],
+   "region": "PAMPA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Para el aerodromo **SACC (LA CUMBRE)**, Córdoba:\n\n* **Pista 14:** 140°, 1250 m x 45 m, superficie TIERRA.\n* **Pista 32:** 320°, 1250 m x 45 m, superficie TIERRA.",
+   "herramientas": [
+    "servicios_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 3.06,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "de que material es la pista de Cruz Alta?",
+   "intent_esperado": "servicios_aerodromo",
+   "intent_obtenido": "servicios_aerodromo",
+   "codigo_esperado": "ALT",
+   "codigos_resueltos": [
+    "ALT"
+   ],
+   "region": "PAMPA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "En el aeródromo ALT (Cruz Alta, Córdoba), las pistas son de **tierra** (799 m x 20 m).",
+   "herramientas": [
+    "servicios_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 4.91,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "a que elevacion esta Andalgala?",
+   "intent_esperado": "servicios_aerodromo",
+   "intent_obtenido": "servicios_aerodromo",
+   "codigo_esperado": "AND",
+   "codigos_resueltos": [
+    "AND"
+   ],
+   "region": "NOA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "El aeródromo **AND** (Andalgalá, Catamarca) está a una elevación de **2953 pies**.",
+   "herramientas": [
+    "servicios_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 6.54,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "Apostoles es publico o privado?",
+   "intent_esperado": "servicios_aerodromo",
+   "intent_obtenido": "servicios_aerodromo",
+   "codigo_esperado": "APO",
+   "codigos_resueltos": [
+    "APO"
+   ],
+   "region": "LITORAL",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "APO (APÓSTOLES, Misiones) es un aeródromo **privado**.",
+   "herramientas": [
+    "servicios_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 6.83,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "que largo tiene la pista de Puerto Deseado?",
+   "intent_esperado": "servicios_aerodromo",
+   "intent_obtenido": "servicios_aerodromo",
+   "codigo_esperado": "SAWD",
+   "codigos_resueltos": [
+    "SAWD"
+   ],
+   "region": "PATAGONIA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "En SAWD (Puerto Deseado, Santa Cruz):\n\n* **Pistas**: 1.500 metros de largo por 30 metros de ancho (superficie asfaltada - ASPH).",
+   "herramientas": [
+    "servicios_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 3.94,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "hay normas particulares en La Cumbre?",
+   "intent_esperado": "servicios_aerodromo",
+   "intent_obtenido": "servicios_aerodromo",
+   "codigo_esperado": "SACC",
+   "codigos_resueltos": [
+    "SACC"
+   ],
+   "region": "PAMPA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Para el aeródromo **SACC (LA CUMBRE, CÓRDOBA)** están publicadas las siguientes normas particulares:\n\n> Por encontrarse debajo del TMA la HGT MAX en el circuito de tránsito será de 1500 FT excepto que se obtenga el permiso de tránsito de la dependencia de control de tránsito aéreo correspondiente.",
+   "herramientas": [
+    "servicios_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 5.72,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "Piedra del Aguila es controlado?",
+   "intent_esperado": "servicios_aerodromo",
+   "intent_obtenido": "servicios_aerodromo",
+   "codigo_esperado": "SAVA",
+   "codigos_resueltos": [
+    "SAVA"
+   ],
+   "region": "PATAGONIA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "El aeródromo **SAVA (PIEDRA DEL ÁGUILA, NEUQUÉN)** es no controlado (`NON-CONTROLLED`) y de condición privado.",
+   "herramientas": [
+    "servicios_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 4.07,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "rumbo de las pistas de Zarate",
+   "intent_esperado": "servicios_aerodromo",
+   "intent_obtenido": "servicios_aerodromo",
+   "codigo_esperado": "ATE",
+   "codigos_resueltos": [
+    "ATE"
+   ],
+   "region": "PAMPA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "ATE (ZÁRATE):\n\n* Pista 01 / 19: rumbo magnético 010° y 190° (1200 x 40 m, tierra).\n* Pista 09 / 27: rumbo magnético 090° y 270° (1350 x 40 m, tierra).",
+   "herramientas": [
+    "servicios_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 5.09,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "que superficie tiene Alto Rio Senguer?",
+   "intent_esperado": "servicios_aerodromo",
+   "intent_obtenido": "servicios_aerodromo",
+   "codigo_esperado": "SAVR",
+   "codigos_resueltos": [
+    "SAVR"
+   ],
+   "region": "PATAGONIA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "SAVR (ALTO RÍO SENGUER / D.C. SZLAPELIS):\n\n* **Superficie:** Tierra.\n* **Pistas:** \n  * Pista 08 (080°): 1400 m x 40 m de tierra.\n  * Pista 26 (260°): 1400 m x 40 m de tierra.",
+   "herramientas": [
+    "servicios_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 5.4,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "tiene combustible La Cumbre?",
+   "intent_esperado": "servicios_aerodromo",
+   "intent_obtenido": "servicios_aerodromo",
+   "codigo_esperado": "SACC",
+   "codigos_resueltos": [
+    "SACC"
+   ],
+   "region": "PAMPA",
+   "sin_dato": true,
+   "prohibido": "\\bAVGAS\\b|\\bJET\\s*A\\b|\\b100\\s*LL\\b",
+   "texto": "En SACC (LA CUMBRE, CÓRDOBA), el registro MADHEL/ANAC no publica este dato para el aeródromo. Recordá que la cobertura del registro es despareja y que esto no significa que no haya combustible, sino que el dato no figura cargado en esta base.",
+   "herramientas": [
+    "servicios_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 4.15,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "hay nafta en Andalgala?",
+   "intent_esperado": "servicios_aerodromo",
+   "intent_obtenido": "combustible_cercano",
+   "codigo_esperado": "AND",
+   "codigos_resueltos": [
+    "AND"
+   ],
+   "region": "NOA",
+   "sin_dato": true,
+   "prohibido": "\\bAVGAS\\b|\\bJET\\s*A\\b|\\b100\\s*LL\\b",
+   "texto": "Para **AND** (ANDALGALÁ, Catamarca), el registro MADHEL/ANAC no publica este dato (figura publicado = false). \n\nAtención: esta lista sale del registro MADHEL/ANAC, donde solo 110 de 561 aeródromos declaran combustible. Que un aeródromo no aparezca no significa que no tenga: puede ser que no lo publique. Hay que confirmar por teléfono antes de planificar la etapa.\n\nNo se encontraron aeródromos con combustible publicado en un radio de 150 km.",
+   "herramientas": [
+    "combustible_cercano"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 2.24,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "cual es el horario de atencion de Apostoles?",
+   "intent_esperado": "servicios_aerodromo",
+   "intent_obtenido": "servicios_aerodromo",
+   "codigo_esperado": "APO",
+   "codigos_resueltos": [
+    "APO"
+   ],
+   "region": "LITORAL",
+   "sin_dato": true,
+   "prohibido": null,
+   "texto": "Para el aeródromo **APO** (APÓSTOLES, Misiones), el registro MADHEL/ANAC no publica el horario de atención.",
+   "herramientas": [
+    "servicios_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 4.01,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "donde puedo cargar combustible cerca de La Cumbre?",
+   "intent_esperado": "combustible_cercano",
+   "intent_obtenido": "combustible_cercano",
+   "codigo_esperado": "SACC",
+   "codigos_resueltos": [
+    "SACC",
+    "JCM",
+    "SACA",
+    "ESC",
+    "RCR",
+    "OLV"
+   ],
+   "region": "PAMPA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Para **SACC (LA CUMBRE)**, el registro MADHEL/ANAC no publica el dato de combustible. \n\nAcá tenés los aeródromos cercanos dentro de los 150 km que sí declaran combustible publicado:\n\n* **JCM (JUÁREZ CELMAN / BRIG. MY. JUAN IGNACIO SAN MARTÍN)** — Córdoba (a 42.1 km): AVGAS 100 LL\n* **SACA (CÓRDOBA / CAPITÁN D. OMAR DARÍO GELARDI - FADEA)** — Córdoba (a 55 km): AVGAS 100 LL / JET A-1\n* **ESC (CÓRDOBA / ESCUELA DE AVIACIÓN MILITAR)** — Córdoba (a 55.8 km): JET A1 - 100LL (Disponible O/R 24 HR antes, COOR (0351) 4333960 / (0351) 4333900 - RTI: 37238 / 37297)\n* **RCR (RÍO TERCERO)** — Córdoba (a 136.4 km): AVGAS 100 LL\n* **OLV (OLIVA)** — Córdoba (a 149.8 km): AVGAS 100 LL\n\n*Advertencia de cobertura:* Esta lista sale del registro MADHEL/ANAC, donde solo 110 de 561 aeródromos declaran combustible. Que un aeródromo no aparezca en esta lista o en La Cumbre no figure publicado **NO** significa que no tenga: puede ser que simplemente no lo publiquen en este registro. Tenés que confirmar por teléfono antes de planificar la etapa.",
+   "herramientas": [
+    "combustible_cercano"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 3.35,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "donde reposto si salgo de Cruz Alta?",
+   "intent_esperado": "combustible_cercano",
+   "intent_obtenido": "combustible_cercano",
+   "codigo_esperado": "ALT",
+   "codigos_resueltos": [
+    "ALT",
+    "BTS",
+    "GOM",
+    "ILD",
+    "FIM",
+    "PLL",
+    "VNO",
+    "PUP",
+    "ETB"
+   ],
+   "region": "PAMPA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Para el aeródromo **ALT (Cruz Alta, Córdoba)** figura publicado combustible **AVGAS 100 LL**. \n\nEn un radio de 150 km tenés estas opciones con combustible publicado:\n\n* **BTS (Corral de Bustos, Córdoba)**: a 42.2 km - Privado (AVGAS 100 LL)\n* **GOM (Cañada de Gómez, Santa Fé)**: a 49.2 km - Público (AVGAS 100 LL)\n* **ILD (Casilda, Santa Fé)**: a 58.8 km - Público (AVGAS 100 LL)\n* **FIM (Firmat, Santa Fé)**: a 60 km - Privado (AVGAS 100 LL)\n* **PLL (Pujato / La Lucía, Santa Fé)**: a 72.2 km - Privado (AVGAS 100LL / JET A-1)\n* **VNO (Venado Tuerto, Santa Fé)**: a 75.4 km - Público (AVGAS 100 LL / JET A-1)\n* **PUP (Pujato / Pettilep, Santa Fé)**: a 76.4 km - Privado (AVGAS 100LL)\n* **ETB (El Trébol, Santa Fé)**: a 88.7 km - Público (AVGAS 100 LL)\n\n*Advertencia:* Esta lista sale del registro MADHEL/ANAC, donde solo 110 de 561 aeródromos declaran combustible. Que un aeródromo no aparezca NO significa que no tenga: puede ser que no lo publique. Hay que confirmar por teléfono antes de planificar la etapa.",
+   "herramientas": [
+    "combustible_cercano"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 3.55,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "hay algun lugar para cargar nafta cerca de Puerto Deseado?",
+   "intent_esperado": "combustible_cercano",
+   "intent_obtenido": "combustible_cercano",
+   "codigo_esperado": "SAWD",
+   "codigos_resueltos": [
+    "SAWD"
+   ],
+   "region": "PATAGONIA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Resolví **SAWD (Puerto Deseado)**, en Santa Cruz.\n\nNo se encontraron aerodromos con combustible publicado en un radio de 150 km. \n\nTené en cuenta que esta lista sale del registro MADHEL/ANAC, donde solo 110 de 561 aeródromos declaran combustible. Que un aeródromo no aparezca **no** significa que no tenga: puede ser que no lo publique. Hay que confirmar por teléfono antes de planificar la etapa.",
+   "herramientas": [
+    "combustible_cercano"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 3.1,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "aerodromos con combustible cerca de Apostoles",
+   "intent_esperado": "combustible_cercano",
+   "intent_obtenido": "combustible_cercano",
+   "codigo_esperado": "APO",
+   "codigos_resueltos": [
+    "APO",
+    "SATO"
+   ],
+   "region": "LITORAL",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Aeródromo de referencia: **APO** (APÓSTOLES, Misiones). El registro MADHEL/ANAC no publica datos de combustible para este aeródromo.\n\nAeródromos con combustible publicado en un radio de 150 km:\n\n* **SATO** (OBERÁ, Misiones) - Distancia: 76.3 km. Combustible: FUEL 100 LL (O/R).\n\n*Advertencia:* Esta lista sale del registro MADHEL/ANAC, donde solo 110 de 561 aeródromos declaran combustible. Que un aeródromo no aparezca NO significa que no tenga: puede ser que no lo publique. Hay que confirmar por teléfono antes de planificar la etapa.",
+   "herramientas": [
+    "combustible_cercano"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 3.2,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "necesito repostar cerca de Andalgala",
+   "intent_esperado": "combustible_cercano",
+   "intent_obtenido": "combustible_cercano",
+   "codigo_esperado": "AND",
+   "codigos_resueltos": [
+    "AND"
+   ],
+   "region": "NOA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Para AND (ANDALGALÁ, Catamarca): el registro no publica si tiene combustible en el aerodromo de referencia. \n\nEn un radio de 150 km, el registro MADHEL/ANAC no arroja otros aerodromos con combustible publicado. \n\n**Advertencia de cobertura:** Esta lista sale del registro MADHEL/ANAC, donde solo 110 de 561 aerodromos declaran combustible. Que un aerodromo no aparezca NO significa que no tenga: puede ser que no lo publique. Hay que confirmar por telefono antes de planificar la etapa.",
+   "herramientas": [
+    "combustible_cercano"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 2.43,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "donde cargo AVGAS cerca de Zarate?",
+   "intent_esperado": "combustible_cercano",
+   "intent_obtenido": "combustible_cercano",
+   "codigo_esperado": "ATE",
+   "codigos_resueltos": [
+    "ATE",
+    "GIL",
+    "SADO",
+    "CIF",
+    "SSK",
+    "SRDB",
+    "CNA",
+    "BOS",
+    "CHY"
+   ],
+   "region": "PAMPA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Para **ATE (ZÁRATE, BUENOS AIRES)**, el registro MADHEL/ANAC no publica este dato. \n\nCerca de Zárate (en un radio de 150 km) figuran los siguientes aeródromos con AVGAS publicado:\n\n* **GIL (SAN ANDRÉS DE GILES, BUENOS AIRES)** — 50.2 km (Público) — AVGAS 100 LL\n* **CIF (ARRECIFES / AEROCLUB, BUENOS AIRES)** — 88.8 km (Privado) — AVGAS 100LL\n* **SSK (SALTO / SKARE, BUENOS AIRES)** — 102.2 km (Público) — AVGAS 100 LL / JET A-1.\n* **SRDB (BERAZATEGUI / ALAS DE MALVINAS, BUENOS AIRES)** — 106.7 km (Público) — AVGAS 100 LL (DLY 09:00 a 19:00 HR)\n* **CNA (CAÑUELAS, BUENOS AIRES)** — 115.2 km (Público) — AVGAS 100 LL\n* **BOS (LOBOS, BUENOS AIRES)** — 121.6 km (Público) — AVGAS 100 LL\n* **CHY (CHIVILCOY, BUENOS AIRES)** — 128 km (Público) — AVGAS 100 LL\n\n*Advertencia de cobertura:* Esta lista sale del registro MADHEL/ANAC, donde solo 110 de 561 aeródromos declaran combustible. Que un aeródromo no aparezca NO significa que no tenga: puede ser que no lo publique. Hay que confirmar por teléfono antes de planificar la etapa.",
+   "herramientas": [
+    "combustible_cercano"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 4.0,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "lugares para combustible en 200 km de Piedra del Aguila",
+   "intent_esperado": "combustible_cercano",
+   "intent_obtenido": "combustible_cercano",
+   "codigo_esperado": "SAVA",
+   "codigos_resueltos": [
+    "SAVA",
+    "SAZW"
+   ],
+   "region": "PATAGONIA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "En un radio de 200 km de **SAVA** (Piedra del Águila, Neuquén), el aeródromo que declara combustible en el registro es:\n\n* **SAZW** (Cutral Có, Neuquén): cuenta con **JET A1**.\n\n**Importante:** Esta lista proviene del registro MADHEL/ANAC, donde solo 110 de 561 aeródromos declaran combustible. Que un aeródromo no aparezca en la lista no significa que no tenga; puede ser que no lo publique. **Siempre tenés que confirmar por teléfono antes de planificar la etapa.**",
+   "herramientas": [
+    "combustible_cercano"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 4.03,
+   "modelo": "gemini-3.1-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "puedo volar manana a las 9 desde La Cumbre?",
+   "intent_esperado": "evaluar_meteo",
+   "intent_obtenido": "evaluar_meteo",
+   "codigo_esperado": "SACC",
+   "codigos_resueltos": [
+    "SACC"
+   ],
+   "region": "PAMPA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "SACC (La Cumbre, Córdoba) para mañana 09/09/2026 a las 09:00:\n\n* Veredicto: **NO GO**\n* Factor dominante: crosswind (viento cruzado de 16 kt supera el límite del avión de 12 kt; ráfaga +13 kt).\n* Fuente: pronóstico numérico NWP (no es una observación directa).",
+   "herramientas": [
+    "evaluar_meteo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 4.72,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "como esta el tiempo para salir de Cruz Alta?",
+   "intent_esperado": "evaluar_meteo",
+   "intent_obtenido": "evaluar_meteo",
+   "codigo_esperado": "ALT",
+   "codigos_resueltos": [
+    "ALT"
+   ],
+   "region": "PAMPA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Aeródimo **ALT** (Cruz Alta, Córdoba).\n\n* **Veredicto:** CAUTION\n* **Factor dominante:** gusts (ráfaga +11 kt, >=50% del máximo de 20 kt).\n* **Fuente:** pronóstico numérico NWP (no es una observación directa), dentro de una hora.\n\n*La decisión final es siempre del piloto al mando.*",
+   "herramientas": [
+    "evaluar_meteo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 3.76,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "se puede volar hoy desde Apostoles?",
+   "intent_esperado": "evaluar_meteo",
+   "intent_obtenido": "evaluar_meteo",
+   "codigo_esperado": "APO",
+   "codigos_resueltos": [
+    "APO"
+   ],
+   "region": "LITORAL",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Veredicto: **CAUTION**\n\nFactor dominante: crosswind (viento cruzado 10 kt, $\\ge$50% del límite de 12 kt).\nAeródromo: APO (Apóstoles, Misiones).\nFuente: pronóstico numérico NWP (no es una observación directa).",
+   "herramientas": [
+    "evaluar_meteo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 3.06,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "condiciones para despegar de Puerto Deseado esta tarde",
+   "intent_esperado": "evaluar_meteo",
+   "intent_obtenido": "evaluar_meteo",
+   "codigo_esperado": "SAWD",
+   "codigos_resueltos": [
+    "SAWD"
+   ],
+   "region": "PATAGONIA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "SAWD (PUERTO DESEADO, Santa Cruz).\n\nVeredicto: **CAUTION**.\nFactor dominante: *crosswind* (viento cruzado 9 kt, ráfaga +10 kt).\nFuente: pronóstico numérico NWP (no es una observación directa).\nMomento evaluado: 08/09/2026 18:00 hora local.",
+   "herramientas": [
+    "evaluar_meteo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 7.61,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "da GO volar desde Andalgala manana temprano?",
+   "intent_esperado": "evaluar_meteo",
+   "intent_obtenido": "evaluar_meteo",
+   "codigo_esperado": "AND",
+   "codigos_resueltos": [
+    "AND"
+   ],
+   "region": "NOA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Para el aeródromo **AND (ANDALGALÁ, Catamarca)** mañana 09/09/2026 a las 08:00 hora local, el sistema indica:\n\n* **Veredicto:** GO\n* **Factor dominante:** crosswind\n* **Fuente:** pronóstico numérico NWP (no es una observación directa).",
+   "herramientas": [
+    "evaluar_meteo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 3.9,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "puedo salir de Zarate con un Cessna 172?",
+   "intent_esperado": "evaluar_meteo",
+   "intent_obtenido": "evaluar_meteo",
+   "codigo_esperado": "ATE",
+   "codigos_resueltos": [
+    "ATE"
+   ],
+   "region": "PAMPA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "ATE (ZÁRATE) — Cessna 172 Skyhawk: **GO**\n\nFactor dominante: crosswind. \nFuente: pronóstico numérico NWP (no es una observación directa).",
+   "herramientas": [
+    "evaluar_meteo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 3.91,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "evalua la meteo de Piedra del Aguila para un vuelo de 2 horas",
+   "intent_esperado": "evaluar_meteo",
+   "intent_obtenido": "evaluar_meteo",
+   "codigo_esperado": "SAVA",
+   "codigos_resueltos": [
+    "SAVA"
+   ],
+   "region": "PATAGONIA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Aeródromo **SAVA (PIEDRA DEL ÁGUILA)**, provincia de Neuquén.\n\n* **Veredicto:** CAUTION\n* **Factor dominante:** crosswind (viento cruzado 7 kt, >=50% del límite de 12 kt).\n* **Fuente:** Pronóstico numérico NWP (no es una observación directa), evaluado para dentro de una hora.",
+   "herramientas": [
+    "evaluar_meteo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 6.65,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "esta apto Alta Gracia para volar ahora?",
+   "intent_esperado": "evaluar_meteo",
+   "intent_obtenido": "evaluar_meteo",
+   "codigo_esperado": "AGR",
+   "codigos_resueltos": [
+    "AGR"
+   ],
+   "region": "PAMPA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Evalué las condiciones para AGR (ALTA GRACIA / COMANDANTE EDMUNDO OSVALDO WEISS, Córdoba). \n\nEl veredicto para volar ahora es **GO**.\nEl factor dominante es el *crosswind* y el dato proviene de un pronóstico numérico NWP (no es una observación directa).",
+   "herramientas": [
+    "evaluar_meteo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 3.94,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "me sirve el clima en Alto Rio Senguer para un Diamond DA40?",
+   "intent_esperado": "evaluar_meteo",
+   "intent_obtenido": "evaluar_meteo",
+   "codigo_esperado": "SAVR",
+   "codigos_resueltos": [
+    "SAVR"
+   ],
+   "region": "PATAGONIA",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "SAVR (ALTO RÍO SENGUER / D.C. SZLAPELIS): **GO**\n\n* **Factor dominante:** crosswind\n* **Fuente:** pronostico numerico NWP (no es una observacion directa)",
+   "herramientas": [
+    "evaluar_meteo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 16.76,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "cual es la capital de Francia?",
+   "intent_esperado": "fuera_de_alcance",
+   "intent_obtenido": "fuera_de_alcance",
+   "codigo_esperado": null,
+   "codigos_resueltos": [],
+   "region": "-",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Eso no está en mi alcance. Puedo buscarte aeródromos, darte teléfonos y servicios, decirte dónde hay combustible o evaluar las condiciones meteorológicas VFR para tu vuelo. ¿Te puedo ayudar con algo de eso?",
+   "herramientas": [],
+   "grounded": false,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 1.91,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "hay NOTAM activos en Cordoba?",
+   "intent_esperado": "fuera_de_alcance",
+   "intent_obtenido": "fuera_de_alcance",
+   "codigo_esperado": null,
+   "codigos_resueltos": [],
+   "region": "-",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "No tengo alcance para informar NOTAM. \n\nPuedo buscar aerodromos, darte servicios y pistas, ver contactos, buscar dónde cargar combustible o correr la evaluación meteorológica GO/CAUTION/NO GO. ¿Te sirve alguna de estas opciones para Córdoba?",
+   "herramientas": [],
+   "grounded": false,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 1.7,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "calculame el peso y balance de un PA-28",
+   "intent_esperado": "fuera_de_alcance",
+   "intent_obtenido": "fuera_de_alcance",
+   "codigo_esperado": null,
+   "codigos_resueltos": [],
+   "region": "-",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Eso está fuera de mi alcance. No puedo calcular peso y balance. \n\nPuedo buscar aerodromos, darte información de servicios y pistas, buscar dónde repostar, darte teléfonos de contacto o correr la evaluación meteorológica GO/CAUTION/NO GO. ¿Te sirve alguna de esas opciones?",
+   "herramientas": [],
+   "grounded": false,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 1.98,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "interpretame este METAR: SACO 121200Z 18010KT 9999 SCT030 24/12 Q1013",
+   "intent_esperado": "fuera_de_alcance",
+   "intent_obtenido": "fuera_de_alcance",
+   "codigo_esperado": null,
+   "codigos_resueltos": [],
+   "region": "-",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Eso está fuera de mi alcance. No interpreto METAR crudos. \n\nSi querés saber si se puede volar desde un aerodromo, decime el aerodromo, la aeronave y la hora del vuelo, y te corro la evaluación meteorológica VFR.",
+   "herramientas": [],
+   "grounded": false,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 2.36,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "como hago un aterrizaje con viento cruzado fuerte?",
+   "intent_esperado": "fuera_de_alcance",
+   "intent_obtenido": "fuera_de_alcance",
+   "codigo_esperado": null,
+   "codigos_resueltos": [],
+   "region": "-",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Eso no está dentro de mi alcance. Como asistente de planificación, puedo ayudarte a consultar servicios de aeródromos, verificar si hay combustible, buscar aeródromos o realizar la evaluación meteorológica GO/NO GO para tu vuelo.\n\nPara temas de técnica de pilotaje, te sugiero consultar la documentación oficial de tu aeronave o a un instructor certificado. ¿Necesitás ayuda con alguna consulta sobre un aeródromo en particular?",
+   "herramientas": [],
+   "grounded": false,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 17.16,
+   "modelo": "gemini-3.1-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "cambiame la ruta para pasar por arriba de Rosario",
+   "intent_esperado": "fuera_de_alcance",
+   "intent_obtenido": "fuera_de_alcance",
+   "codigo_esperado": null,
+   "codigos_resueltos": [],
+   "region": "-",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Eso está fuera de mi alcance: no puedo modificar rutas ni planificar navegación. \n\nSí puedo buscarte aeródromos, darte servicios y pistas, buscar dónde cargar combustible, darte los teléfonos de contacto o evaluar las condiciones meteorológicas (GO/CAUTION/NO GO) para volar. Decime si necesitás alguna de esas cosas para Rosario o cualquier otro aeródromo.",
+   "herramientas": [],
+   "grounded": false,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 2.0,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "que dice la RAAC parte 91 sobre altura minima?",
+   "intent_esperado": "fuera_de_alcance",
+   "intent_obtenido": "fuera_de_alcance",
+   "codigo_esperado": null,
+   "codigos_resueltos": [],
+   "region": "-",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Eso no está en mi alcance. No puedo informar normativa general ni reglamentación aeronáutica que no figure en las normas particulares de un aeródromo. \n\nPuedo ayudarte a buscar aeródromos, consultar servicios, pistas, teléfonos de contacto, buscar dónde cargar combustible o evaluar las condiciones meteorológicas (GO / CAUTION / NO GO) para un vuelo. ¿Te sirve algo de eso?",
+   "herramientas": [],
+   "grounded": false,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 1.65,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "escribime un poema sobre volar",
+   "intent_esperado": "fuera_de_alcance",
+   "intent_obtenido": "fuera_de_alcance",
+   "codigo_esperado": null,
+   "codigos_resueltos": [],
+   "region": "-",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Eso está fuera de mi alcance. Como asistente de planificación VFR, solo puedo ayudarte con datos de aeródromos, teléfonos, servicios, búsqueda de combustible y evaluación meteorológica GO/CAUTION/NO GO. ¿Querés que busquemos algún aeródromo o chequeemos el tiempo para un vuelo?",
+   "herramientas": [],
+   "grounded": false,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 1.89,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "cuanto sale un Cessna 152 usado?",
+   "intent_esperado": "fuera_de_alcance",
+   "intent_obtenido": "fuera_de_alcance",
+   "codigo_esperado": null,
+   "codigos_resueltos": [],
+   "region": "-",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Eso no está en mi alcance. Puedo buscarte aeródromos, darte sus servicios y pistas, ver teléfonos de contacto, ubicar dónde repostar combustible o correr una evaluación meteorológica GO/CAUTION/NO GO para tu vuelo. ¿Te ayudo con algo de eso?",
+   "herramientas": [],
+   "grounded": false,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 8.92,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "necesito el plan de vuelo presentado ante ANAC",
+   "intent_esperado": "fuera_de_alcance",
+   "intent_obtenido": "fuera_de_alcance",
+   "codigo_esperado": null,
+   "codigos_resueltos": [],
+   "region": "-",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Eso está fuera de mi alcance. No puedo gestionar ni consultar planes de vuelo presentados ante ANAC.\n\nLo que sí puedo hacer es buscar aerodromos, darte sus servicios y teléfonos, ver dónde repostar combustible o evaluar las condiciones meteorológicas GO/CAUTION/NO GO para tu vuelo. ¿Te ayudo con algo de eso?",
+   "herramientas": [],
+   "grounded": false,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 2.2,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "a quien llamo en Aerodromo San Fantasma?",
+   "intent_esperado": "contacto_aerodromo",
+   "intent_obtenido": "contacto_aerodromo",
+   "codigo_esperado": null,
+   "codigos_resueltos": [],
+   "region": "-",
+   "sin_dato": true,
+   "prohibido": "\\(\\s*\\d{3,5}\\s*\\)\\s*[\\d\\s\\-]{6,}|\\b\\d{2,4}\\s*-\\s*\\d{6,}\\b|\\b\\d{4}\\s*-\\s*\\d{4}\\b",
+   "texto": "El aerodromo \"San Fantasma\" no figura en el registro MADHEL/ANAC. Revisá el nombre o probá buscando por ciudad o zona para ver si tiene otra denominación.",
+   "herramientas": [
+    "contacto_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 2.82,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "que pista tiene el aeropuerto de Wakanda?",
+   "intent_esperado": "servicios_aerodromo",
+   "intent_obtenido": "buscar_aerodromo",
+   "codigo_esperado": null,
+   "codigos_resueltos": [],
+   "region": "-",
+   "sin_dato": true,
+   "prohibido": null,
+   "texto": "El aeródromo de Wakanda no figura en el registro MADHEL/ANAC. Revisá el nombre o la localidad para buscarlo de nuevo.",
+   "herramientas": [
+    "buscar_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 2.95,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "telefono de Los Cardales",
+   "intent_esperado": "contacto_aerodromo",
+   "intent_obtenido": "contacto_aerodromo",
+   "codigo_esperado": null,
+   "codigos_resueltos": [],
+   "region": "PAMPA",
+   "sin_dato": true,
+   "prohibido": "\\(\\s*\\d{3,5}\\s*\\)\\s*[\\d\\s\\-]{6,}|\\b\\d{2,4}\\s*-\\s*\\d{6,}\\b|\\b\\d{4}\\s*-\\s*\\d{4}\\b",
+   "texto": "No hay ningún aeródromo llamado \"Los Cardales\" en el registro MADHEL/ANAC. Revisá el nombre o probá con otra referencia cercana.",
+   "herramientas": [
+    "contacto_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 2.64,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "cual es el codigo de Chilecito?",
+   "intent_esperado": "buscar_aerodromo",
+   "intent_obtenido": "buscar_aerodromo",
+   "codigo_esperado": "SANO",
+   "codigos_resueltos": [
+    "SANO"
+   ],
+   "region": "CUYO",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "El aeródromo de Chilecito es **SANO** (CHILECITO / BRIG. MY. JUAN FACUNDO QUIROGA, La Rioja).",
+   "herramientas": [
+    "buscar_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 2.71,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "a quien llamo en Chamical?",
+   "intent_esperado": "contacto_aerodromo",
+   "intent_obtenido": "contacto_aerodromo",
+   "codigo_esperado": "SACT",
+   "codigos_resueltos": [
+    "SACT"
+   ],
+   "region": "CUYO",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Para el aeródromo SACT (Chamical / Gobernador Gordillo), los teléfonos publicados son:\n\n* (03826) 429608\n* (03826) 429609\n* (03826) 429610\n* (011) 43176000 - (Conmutador) Int. 39810",
+   "herramientas": [
+    "contacto_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 2.72,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "telefono de Tilisarao",
+   "intent_esperado": "contacto_aerodromo",
+   "intent_obtenido": "contacto_aerodromo",
+   "codigo_esperado": "TLS",
+   "codigos_resueltos": [
+    "TLS"
+   ],
+   "region": "CUYO",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "TLS (TILISARAO), San Luis:\n\n* (02652) 15-298046 - Eduardo Plaza (Jefe de Aeródromo)\n* (0266) 4865012\n* (0358) 15-6543449",
+   "herramientas": [
+    "contacto_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 2.85,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "que pista tiene Chilecito?",
+   "intent_esperado": "servicios_aerodromo",
+   "intent_obtenido": "servicios_aerodromo",
+   "codigo_esperado": "SANO",
+   "codigos_resueltos": [
+    "SANO"
+   ],
+   "region": "CUYO",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "El aeródromo **SANO** (CHILECITO / BRIG. MY. JUAN FACUNDO QUIROGA) cuenta con dos cabeceras de pista pavimentadas (ASPH) de 2100 metros de largo por 34 metros de ancho:\n\n* **Pista 17** (rumbo magnético 170°)\n* **Pista 35** (rumbo magnético 350°)",
+   "herramientas": [
+    "servicios_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 2.26,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "hay normas particulares en Chamical?",
+   "intent_esperado": "servicios_aerodromo",
+   "intent_obtenido": "servicios_aerodromo",
+   "codigo_esperado": "SACT",
+   "codigos_resueltos": [
+    "SACT"
+   ],
+   "region": "CUYO",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "Sí, el aeródromo **SACT (CHAMICAL / GOBERNADOR GORDILLO)** cuenta con normas particulares publicadas: su uso es **exclusivo para operaciones militares**. Otras aeronaves pueden operar siempre que cuenten con autorización expresa de la Fuerza Aérea Argentina, solicitada con una antelación de 24 horas.",
+   "herramientas": [
+    "servicios_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 5.14,
+   "modelo": "gemini-3.1-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "donde reposto cerca de Chamical?",
+   "intent_esperado": "combustible_cercano",
+   "intent_obtenido": "combustible_cercano",
+   "codigo_esperado": "SACT",
+   "codigos_resueltos": [
+    "SACT"
+   ],
+   "region": "CUYO",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "SACT (CHAMICAL / GOBERNADOR GORDILLO). El registro MADHEL/ANAC no publica combustible para este aerodromo y no hay aerodromos con combustible publicado en un radio de 150 km.\n\n*Recordá:* Esta lista sale del registro MADHEL/ANAC, donde solo 110 de 561 aerodromos declaran combustible. Que un aerodromo no aparezca NO significa que no tenga: puede ser que no lo publique. Hay que confirmar por teléfono antes de planificar la etapa.",
+   "herramientas": [
+    "combustible_cercano"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 2.93,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "puedo volar manana desde Chilecito?",
+   "intent_esperado": "evaluar_meteo",
+   "intent_obtenido": "evaluar_meteo",
+   "codigo_esperado": "SANO",
+   "codigos_resueltos": [
+    "SANO"
+   ],
+   "region": "CUYO",
+   "sin_dato": false,
+   "prohibido": null,
+   "texto": "SANO (Chilecito / Brig. My. Juan Facundo Quiroga, La Rioja).\n\nVeredicto: **GO**.\nFactor dominante: *crosswind*.\nFuente: pronóstico numérico NWP (no es una observación directa).",
+   "herramientas": [
+    "evaluar_meteo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 4.92,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  },
+  {
+   "pregunta": "telefono de San Rafael",
+   "intent_esperado": "contacto_aerodromo",
+   "intent_obtenido": "contacto_aerodromo",
+   "codigo_esperado": "SAMR",
+   "codigos_resueltos": [
+    "SAMR"
+   ],
+   "region": "CUYO",
+   "sin_dato": true,
+   "prohibido": "\\(\\s*\\d{3,5}\\s*\\)\\s*[\\d\\s\\-]{6,}|\\b\\d{2,4}\\s*-\\s*\\d{6,}\\b|\\b\\d{4}\\s*-\\s*\\d{4}\\b",
+   "texto": "Para **SAMR (SAN RAFAEL / S. A. SANTIAGO GERMANO)**, Mendoza: el registro MADHEL no publica teléfonos (es un aeródromo controlado y sus datos suelen estar en el AIP/AIS). Que no figure acá no significa que no existan.",
+   "herramientas": [
+    "contacto_aerodromo"
+   ],
+   "grounded": true,
+   "verdict_enforced": false,
+   "code_corrected": false,
+   "latencia_s": 3.97,
+   "modelo": "gemini-3.5-flash-lite",
+   "error": null
+  }
+ ]
+}

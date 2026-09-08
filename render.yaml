@@ -9,3 +9,8 @@ services:
     envVars:
       - key: PYTHONUNBUFFERED
         value: "1"
+      # Credencial del copiloto (Google AI Studio). `sync: false` hace que
+      # Render la pida por panel y NO la guarde en el repositorio.
+      # Sin ella la app arranca igual y el asistente queda no disponible.
+      - key: GEMINI_API_KEY
+        sync: false

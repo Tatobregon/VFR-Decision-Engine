@@ -1642,3 +1642,102 @@ async def evaluate(req: EvaluateRequest):
         route           = route_card,
         briefing        = briefing_text,
     )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# COPILOTO — asistente de planificacion en lenguaje natural
+# ══════════════════════════════════════════════════════════════════════════════
+# El LLM no decide, no calcula y no aporta conocimiento propio: interpreta la
+# pregunta, llama a las herramientas deterministas de copilot/tools.py y
+# redacta con lo que ellas devolvieron. Ver copilot/__init__.py.
+
+class CopilotRequest(BaseModel):
+    message: str = Field(..., max_length=600)
+    history: Optional[List[Dict]] = None
+
+
+class CopilotResponse(BaseModel):
+    text             : str
+    intent           : str
+    tools_used       : List[str]
+    grounded         : bool
+    verdict_enforced : bool
+    code_corrected   : bool
+    latency_s        : float
+    model_version    : str
+    history          : List[Dict]
+    available        : bool = True
+
+
+# El agente se construye una sola vez y se reusa. Se hace perezosamente para
+# que la app arranque igual si no hay credencial: el copiloto queda no
+# disponible y el resto del sistema sigue funcionando.
+_copilot_agent = None
+_copilot_error = ""
+
+
+def _get_copilot():
+    global _copilot_agent, _copilot_error
+    if _copilot_agent is None and not _copilot_error:
+        try:
+            from copilot.agent import CopilotAgent
+            from copilot.client import GeminiClient
+            _copilot_agent = CopilotAgent(GeminiClient())
+            logger.info("Copiloto inicializado")
+        except Exception as e:
+            _copilot_error = str(e)
+            logger.warning(f"Copiloto no disponible: {e}")
+    return _copilot_agent
+
+
+# Limitador crudo por proceso. El endpoint queda expuesto en internet y la
+# cuota gratuita es finita: sin cota, cualquiera la agota.
+_COPILOT_MAX_PER_MIN = 12
+_copilot_hits: List[float] = []
+
+
+@app.get("/api/copilot/status")
+async def copilot_status():
+    """Informa si el asistente esta disponible, para que el frontend se adapte."""
+    return {"available": _get_copilot() is not None, "detail": _copilot_error or None}
+
+
+@app.post("/api/copilot", response_model=CopilotResponse)
+def copilot(req: CopilotRequest):
+    """
+    Consulta en lenguaje natural sobre aerodromos y condiciones de vuelo.
+
+    Se define como `def` y no `async def` a proposito: el agente hace llamadas
+    de red bloqueantes, y asi FastAPI lo corre en su threadpool en vez de
+    trabar el bucle de eventos del resto de la API.
+    """
+    agente = _get_copilot()
+    if agente is None:
+        return CopilotResponse(
+            text="El asistente no está configurado en este servidor. "
+                 "El resto del sistema funciona normalmente.",
+            intent="fuera_de_alcance", tools_used=[], grounded=False,
+            verdict_enforced=False, code_corrected=False, latency_s=0.0,
+            model_version="", history=[], available=False,
+        )
+
+    ahora = time.time()
+    _copilot_hits[:] = [t for t in _copilot_hits if ahora - t < 60]
+    if len(_copilot_hits) >= _COPILOT_MAX_PER_MIN:
+        raise HTTPException(429, "Demasiadas consultas al asistente. "
+                                 "Esperá un minuto e intentá de nuevo.")
+    _copilot_hits.append(ahora)
+
+    ans = agente.ask(req.message, history=req.history)
+
+    return CopilotResponse(
+        text             = ans.text,
+        intent           = ans.intent,
+        tools_used       = [i.name for i in ans.invocations],
+        grounded         = ans.grounded,
+        verdict_enforced = ans.verdict_enforced,
+        code_corrected   = ans.code_corrected,
+        latency_s        = round(ans.latency_s, 2),
+        model_version    = ans.model_version,
+        history          = ans.history,
+    )

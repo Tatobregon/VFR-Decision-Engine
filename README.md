@@ -31,6 +31,8 @@ con briefing, ruta, perfil vertical del terreno y plan de vuelo OACI exportable.
   meteorológicamente apto.
 - **Perfil vertical**: terreno SRTM contra la altitud de crucero, con aviso cuando el
   relieve supera lo que un VFR puede librar.
+- **Responde en lenguaje natural**: un asistente que consulta el mismo motor y el mismo
+  registro, sin decidir ni inventar nada por su cuenta (ver [El copiloto](#el-copiloto)).
 
 ## Alcance
 
@@ -84,6 +86,67 @@ web/app.py (FastAPI)  ──►  decision/engine.py  ──►  risk/  ──►
 | `decision/` | Orquestar el pipeline completo |
 | `route/` | Ruta, aerovías, corredores visuales, combustible |
 | `output/` | Briefing en español y plan de vuelo OACI |
+| `copilot/` | Interfaz de lenguaje natural sobre todo lo anterior |
+
+## El copiloto
+
+Asistente de planificación **en tierra** al que se le pregunta en lenguaje natural:
+*"¿a quién llamo en Cruz Alta?"*, *"¿dónde cargo combustible cerca de La Cumbre?"*,
+*"¿puedo volar mañana a las 9?"*.
+
+Es una **arquitectura neurosimbólica**, y el reparto de tareas es estricto:
+
+> El modelo de lenguaje no sabe nada. No decide, no calcula y no aporta conocimiento
+> propio. Interpreta la pregunta, elige qué herramienta determinista llamar, y redacta
+> con lo que esa herramienta devolvió. Si el dato no está, lo dice.
+
+```
+piloto ─► [LLM: entender] ─► [motor determinista: buscar/calcular] ─► [LLM: redactar] ─► piloto
+```
+
+No agrega ninguna fuente de datos. Hace consultable lo que el sistema ya relevaba y
+nadie podía usar: nadie navega 561 fichas para encontrar un teléfono.
+
+Dos reglas no se confían al *prompt*, se **verifican en código** después de generar:
+
+- **El veredicto se transcribe, no se parafrasea.** Si el texto no contiene el veredicto
+  que devolvió el motor, o menciona otro, se descarta y se emite una plantilla
+  determinista. La integridad es del 100 % por construcción.
+- **No se fabrican códigos de aeródromo.** Un código con forma OACI que no salió de las
+  herramientas ni existe en el registro se detecta y se corrige.
+
+Y la regla más importante, porque la cobertura del registro es **inversa a la
+intuición** — los aeródromos grandes controlados tienen los campos vacíos porque se
+publican en el AIP, los rurales chicos los tienen completos:
+
+> **Que un dato no esté publicado no significa que no exista.** El asistente dice
+> *"el registro no publica el combustible de ese aeródromo"*, nunca *"no tiene
+> combustible"*. La diferencia entre esas dos frases es un piloto que se queda sin
+> nafta en el aire.
+
+El asistente es **accesorio**: si no hay credencial o el proveedor no responde, el panel
+no aparece y el resto del sistema funciona igual.
+
+### Cómo se lo evaluó
+
+Sobre un conjunto de **71 preguntas etiquetadas**, con 6 intenciones y aeródromos de las
+cinco regiones del país:
+
+| | |
+|---|---|
+| Clasificación de intención | **95,8 %** (F1 macro 0,958) |
+| Resolución del aeródromo correcto | **98,2 %** |
+| **Invención sobre datos ausentes** | **0 %** |
+| Latencia (mediana / p95) | 3,1 s / 7,6 s |
+
+La métrica que importa es la tercera. Once de las preguntas piden a propósito un dato
+que **no existe** en el registro, y la detección es objetiva: si la respuesta a un
+aeródromo sin teléfono publicado contiene algo con forma de teléfono, lo fabricó.
+Ninguna lo hizo.
+
+```bash
+.venv/Scripts/python -m copilot.evaluate     # reproduce la evaluación
+```
 
 ## Cómo decide
 
