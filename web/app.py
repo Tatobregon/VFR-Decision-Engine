@@ -134,6 +134,11 @@ class WeatherCard(BaseModel):
     r_taf: Optional[float] = None
     dominant_factor: Optional[str] = None
     guardrail_reason: str = ""          # motivo del piso conjuntivo (showstopper individual)
+    # Momento de la muestra que produjo el veredicto. En el camino NWP se evalua
+    # el peor caso de TODA la ventana de vuelo, que rara vez coincide con la hora
+    # que muestra la tarjeta (`obs_time`): sin esto el piloto lee "Xwind 1.1 kt"
+    # y un cartel que dice "viento cruzado 10 kt", y no puede reconciliarlos.
+    worst_obs_time: Optional[int] = None
     next_go_from: Optional[int] = None
     # Luz diurna (bloqueo nocturno)
     is_night: bool = False
@@ -386,6 +391,7 @@ def _to_card(result, runway_heading: int, ap: AirportInfo, notams: list = None) 
         r_taf           = round(sb.r_taf, 3)   if sb else None,
         dominant_factor = sb.dominant_factor   if sb else None,
         guardrail_reason= sb.guardrail_reason  if sb else "",
+        worst_obs_time  = getattr(result, 'worst_obs_time', None),
         next_go_from    = result.next_go_from,
         fetch_ok        = result.fetch_ok,
         error_message   = result.error_message,

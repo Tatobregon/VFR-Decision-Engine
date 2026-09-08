@@ -821,6 +821,15 @@
           <div x-show="card.guardrail_reason && !card.hard_blocked"
                class="bg-caution/10 border border-caution/30 rounded-lg px-3 py-2 mb-3 text-sm text-caution">
             🚧 Factor limitante (no se compensa con el resto): <span class="font-semibold" x-text="card.guardrail_reason"></span>
+            <!-- El veredicto sale del PEOR momento de la ventana de vuelo, que
+                 casi nunca es la hora que muestran los datos de abajo. Sin
+                 decirlo, los dos numeros parecen contradecirse. -->
+            <template x-if="card.worst_obs_time && card.worst_obs_time !== card.obs_time">
+              <span class="block mt-1 text-[11px] opacity-80">
+                Ocurre a las <span class="font-semibold" x-text="formatEta(card.worst_obs_time)"></span>,
+                no en las condiciones que se muestran abajo (peor momento de la ventana de vuelo).
+              </span>
+            </template>
           </div>
 
           <!-- Sin datos -->

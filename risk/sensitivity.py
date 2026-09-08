@@ -278,7 +278,7 @@ def shape_analysis(battery, base_w, base_v):
 # Cada frontera se perturba -30%, -20%, +20% y +30% respecto de SU base, para
 # que las tres sean comparables entre si aunque partan de valores distintos.
 _BARRERAS = (
-    ("XWIND_CAUTION_FRACTION", (0.35, 0.40, 0.60, 0.65)),   # base 0.50
+    ("XWIND_CAUTION_FRACTION", (0.60, 0.68, 1.02, 1.11)),   # base 0.85
     ("GUST_CAUTION_FRACTION",  (0.60, 0.68, 1.02, 1.11)),   # base 0.85
     ("GUST_NOGO_FACTOR",       (1.05, 1.20, 1.80, 1.95)),   # base 1.50
 )

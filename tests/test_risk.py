@@ -145,12 +145,28 @@ def test_cruzado_sobre_el_limite_del_avion_veta():
     assert "cruzado" in motivo
 
 
-def test_cruzado_a_mitad_del_limite_es_precaucion():
+@pytest.mark.parametrize("xw_eff,esperado", [
+    (6.0,  "GO"),        # 50% del limite: ya no basta para advertir
+    (10.1, "GO"),        # 84%: por debajo del corte
+    (10.2, "CAUTION"),   # 85% justo
+    (11.9, "CAUTION"),
+    (12.0, "NO GO"),     # alcanza el maximo demostrado
+])
+def test_la_escalera_de_viento_cruzado(xw_eff, esperado):
+    """
+    El corte de CAUTION esta en el 85% del maximo DEMOSTRADO, no en la mitad.
+
+    La razon es que `xw_eff_kt` ya se calcula con la RAFAGA: es el peor valor
+    instantaneo que el avion va a encontrar, no el del viento sostenido. Pedir
+    ademas que ese peor valor se quede por debajo de la mitad del maximo
+    certificado aplica el margen dos veces, y producia CAUTION en dias de viento
+    sostenido de 2 kt.
+    """
     piso, _ = conjunctive_floor(
-        xw_eff_kt=6.0, xw_limit_kt=12.0, gust_kt=None, spd_kt=None,
+        xw_eff_kt=xw_eff, xw_limit_kt=12.0, gust_kt=None, spd_kt=None,
         gust_max_kt=20.0, r_fog=0.0, r_taf=0.0,
     )
-    assert piso == "CAUTION"
+    assert piso == esperado
 
 
 def test_condiciones_buenas_no_imponen_piso():
@@ -256,8 +272,25 @@ def _piso_por_rafaga(delta_kt, gust_max_kt=20.0):
     return piso
 
 
-def test_la_rafaga_usa_una_escala_mas_permisiva_que_el_cruzado():
-    assert GUST_CAUTION_FRACTION > XWIND_CAUTION_FRACTION
+def test_la_rafaga_tolera_superar_su_referencia_y_el_cruzado_no():
+    """
+    Cruzado y rafaga comparten el corte de CAUTION pero NO el de NO GO, y eso
+    refleja el distinto estatus de cada limite: `crosswind_max_kt` es un maximo
+    DEMOSTRADO en certificacion —alcanzarlo es NO GO— mientras que
+    `gust_max_kt` es una referencia de operacion normal, que se puede superar
+    con margen antes de vetar el vuelo.
+    """
+    assert GUST_NOGO_FACTOR > 1.0, (
+        "la rafaga tiene que poder superar su referencia sin ser NO GO"
+    )
+    # El cruzado veta AL alcanzar su limite; la rafaga recien a 1.5x el suyo.
+    piso_xw, _ = conjunctive_floor(
+        xw_eff_kt=12.0, xw_limit_kt=12.0, gust_kt=None, spd_kt=None,
+        gust_max_kt=20.0, r_fog=0.0, r_taf=0.0,
+    )
+    piso_gust = _piso_por_rafaga(20.0)          # 100% de la referencia
+    assert piso_xw == "NO GO"
+    assert piso_gust == "CAUTION"
 
 
 @pytest.mark.parametrize("fraccion,esperado", [

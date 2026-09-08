@@ -185,8 +185,11 @@ def normative_label(sc: Scenario) -> str:
     # 2. Viento cruzado (efectivo = con rafaga si la hay), relativo al limite
     cw = compute_crosswind_from_weather(build_weather(sc), sc.runway_heading)
     xw_eff = cw.crosswind_gust_kt if cw.crosswind_gust_kt is not None else cw.crosswind_kt
+    # ⚠ Igual que el voto de rafaga: estos cortes REPLICAN los del motor
+    # (XWIND_CAUTION_FRACTION). No es una referencia independiente; ver la nota
+    # de alcance en el encabezado de este modulo.
     xw_ratio = xw_eff / prof.crosswind_max_kt if prof.crosswind_max_kt > 0 else 1.0
-    vote_xw = "NO GO" if xw_ratio >= 1.0 else "CAUTION" if xw_ratio >= 0.5 else "GO"
+    vote_xw = "NO GO" if xw_ratio >= 1.0 else "CAUTION" if xw_ratio >= 0.85 else "GO"
 
     # 3. Rafagas (delta rafaga - sostenida) relativo al gust_max
     #

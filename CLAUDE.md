@@ -83,9 +83,9 @@ automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a
 | `risk/ahp_weights.py` | **COMPLETO** | Derivacion AHP de los pesos. Los juicios de a pares NO son a ojo: se derivan de accidentologia con la operacion explicita `a_ij = redondeo_Saaty(I_i/I_j)`, con `I = prob x severidad` (Doc 9859 OACI). Cada entrada declara su procedencia (E evidencia / N norma / D derivada / J juicio). CR=0.069. |
 | `risk/weights.py` | **COMPLETO** | Pesos AHP W_VIS=0.357 W_CEIL=0.357 W_XWIND=0.099 W_FOG=0.071 W_GUST=0.050 W_WX=0.044 W_TAF=0.022. Funciones r_i. Thresholds **calibrados**: t_go=0.22, t_caution=0.59. Los **parametros de forma** de las rampas son constantes nombradas con procedencia declarada (N norma / J juicio): los quiebres de riesgo MAXIMO son la frontera IFR de la norma; los de riesgo NULO son juicio. `r_fog` de este modulo NO corre en runtime (la rampa real esta en `features/fog_risk.py`). |
 | `risk/hard_blockers.py` | **COMPLETO** | Tokens TS/TSRA/TSGR/GR/FC/VA/FZRA/FZDZ + vis<1.5km + ceil<500ft → NO GO inmediato. |
-| `risk/soft_scoring.py` | **COMPLETO** | `compute_soft_score(...)` → `SoftScoreResult`. Score compensatorio + **barrera no-compensatoria** (`conjunctive_floor`): `decision = worst(umbral(R), piso)`. Expone `guardrail_floor`/`guardrail_reason`. Las fronteras del piso son constantes nombradas con procedencia declarada: `XWIND_CAUTION_FRACTION=0.5` (J), `GUST_CAUTION_FRACTION=0.85` (J, revisado por piloto) y `GUST_NOGO_FACTOR=1.5` (J). **Cruzado y rafaga NO comparten escala** a proposito. Efecto medido en sensitivity [5]: <=1/38 flips ante +/-30% en cualquiera de las tres. |
+| `risk/soft_scoring.py` | **COMPLETO** | `compute_soft_score(...)` → `SoftScoreResult`. Score compensatorio + **barrera no-compensatoria** (`conjunctive_floor`): `decision = worst(umbral(R), piso)`. Expone `guardrail_floor`/`guardrail_reason`. Las fronteras del piso son constantes nombradas con procedencia declarada: `XWIND_CAUTION_FRACTION=0.85` (J), `GUST_CAUTION_FRACTION=0.85` (J) y `GUST_NOGO_FACTOR=1.5` (J). Comparten el corte de CAUTION pero **NO el de NO GO**: el cruzado veta AL alcanzar el maximo demostrado, la rafaga recien a 1.5x su referencia. Efecto medido en sensitivity [5]: <=3/38 flips ante +/-30%. |
 | `risk/scenarios.py` | **COMPLETO** | Bateria de 38 escenarios de referencia con etiqueta normativa ANAC/OACI (`normative_label`). Fuente compartida por calibracion y sensibilidad. **Declara en su encabezado el ALCANCE de la independencia de la referencia**: vale para vis/techo/wx/TAF, NO para cruzado ni rafaga, donde la etiqueta replica los cortes del motor y la concordancia es por construccion. |
-| `risk/calibration.py` | **COMPLETO** | Calibracion de umbrales por anclaje normativo (grid search + costo asimetrico). Resultado: t_go=0.22, t_caution=0.59 (37/38 = 97% concordancia, 0 sub-avisos). Reporta ademas la concordancia **por nivel de minimos personales** (sin minimos 97%, Avanzado 97%, PPL 89%, Alumno 68%) y verifica que en ninguno hay sub-avisos: el desvio es siempre por sobre-aviso. Validez de constructo, no empirica. |
+| `risk/calibration.py` | **COMPLETO** | Calibracion de umbrales por anclaje normativo (grid search + costo asimetrico). Resultado: t_go=0.22, t_caution=0.59 (36/38 = 95% concordancia, 0 sub-avisos, 2 sobre-avisos). Reporta ademas la concordancia **por nivel de minimos personales** (sin minimos 95%, PPL 89%, Alumno 74%) y verifica que en ninguno hay sub-avisos: el desvio es siempre por sobre-aviso. Validez de constructo, no empirica. |
 | `risk/sensitivity.py` | **COMPLETO** | Sensibilidad en 5 ejes: [1] OAT ±20% por peso, [2] Monte Carlo 7 pesos, [3] umbrales, [4] **parametros de forma de las r_i**, [5] **fraccion de CAUTION de la barrera**. Estabilidad del veredicto 99%; 35/36 escenarios nunca cambian. **Hallazgo clave**: los parametros de forma pesan MAS que los pesos (5.6% de flips contra 0.8%). |
 
 ### INTEGRACION
@@ -297,7 +297,7 @@ pasar showstoppers de bajo peso (un cruzado SOBRE el limite del avion aportaria
 solo 0.099 y daria GO). La barrera impone un PISO por factor y
 `decision = worst(umbral(R), piso)`:
 ```
-cruzado efectivo >= limite avion       → NO GO   cruzado >= 50%  del limite  → CAUTION
+cruzado efectivo >= limite avion       → NO GO   cruzado >= 85%  del limite  → CAUTION
 delta rafaga >= 1.5 x gust_max avion   → NO GO   delta   >= 85%  del gust_max → CAUTION
 niebla probable (r_fog >= 0.9)     → CAUTION     deterioro TAF (r_taf >= 0.6) → CAUTION
 ```
@@ -364,6 +364,22 @@ Bell Ville, 08/09 12:00 — medido contra la API
 > MUESTRA ya es correcta y esta etiquetada; el scoring no cambio. Moverlo a la
 > nubosidad del nivel alteraria veredictos de ruta y exigiria recalibrar: es una
 > decision pendiente, no un olvido.
+
+### El veredicto sale del PEOR momento de la ventana, y hay que decirlo
+
+En el camino NWP el motor evalua **toda la ventana de vuelo** y se queda con el peor
+caso. La tarjeta, en cambio, muestra la hora de referencia (la mas cercana a la salida).
+Casi nunca son la misma hora, y sin decirlo los dos numeros parecen contradecirse:
+
+```
+SACC — la tarjeta mostraba          17:00  viento 302/3.5 G15  →  Xwind 1.1 kt
+       el cartel de factor limitante decia  "viento cruzado 10 kt"
+       porque el peor caso estaba en 21:00  viento 093/1.8 G13.8 → 10.09 kt
+```
+
+El piloto no tiene forma de reconciliarlo mirando la pantalla, y parece un error del
+sistema aunque la logica sea correcta. `DecisionResult.worst_obs_time` informa ahora de
+que muestra salio el veredicto, y la interfaz lo dice cuando difiere de lo mostrado.
 
 ### Copiloto en lenguaje natural — arquitectura neurosimbolica
 

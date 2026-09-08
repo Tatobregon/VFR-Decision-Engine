@@ -107,6 +107,12 @@ class DecisionResult:
     density_altitude: Optional[DensityAltitudeResult] = None  # None si sin temperatura
     runway_heading  : int = 0                   # pista usada (favorable si fue auto)
 
+    # Momento de la muestra que PRODUJO el veredicto. En el camino NWP se evalua
+    # el peor caso de toda la ventana de vuelo, que rara vez es la hora que se
+    # muestra en pantalla (`obs_time`). Sin este dato el piloto ve "Xwind 1.1 kt"
+    # junto a un cartel que dice "viento cruzado 10 kt" y no puede reconciliarlos.
+    worst_obs_time  : Optional[int] = None
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Motor principal
@@ -321,9 +327,14 @@ class DecisionEngine:
                                 wind_variable = site.wind_variable)
                 candidates.append(w)
 
-        scores  = [compute_soft_score(w, rwy, self.aircraft, taf_r_taf=r_taf,
-                                      personal_minima=self.personal_minima) for w in candidates]
-        worst   = max(scores, key=lambda s: s.r_total)
+        # Se conserva la muestra junto a su puntaje: hace falta saber DE QUE HORA
+        # salio el peor caso para poder informarlo.
+        evaluadas = [
+            (w, compute_soft_score(w, rwy, self.aircraft, taf_r_taf=r_taf,
+                                   personal_minima=self.personal_minima))
+            for w in candidates
+        ]
+        peor_wx, worst = max(evaluadas, key=lambda par: par[1].r_total)
 
         logger.info(f"NWP {sid}: R_total={worst.r_total:.3f} [{worst.decision}] pista={rwy} "
                     f"(peor de {len(candidates)} muestras; {len(upslope)+1} de {len(ring)} "
@@ -345,6 +356,7 @@ class DecisionEngine:
             error_message    = "",
             density_altitude = self._compute_da(sid, ref_wx),
             runway_heading   = rwy,
+            worst_obs_time   = peor_wx.obs_time,
         )
 
     # ── Path METAR (SACO, SAVY, etc.) ─────────────────────────────────────────
@@ -438,6 +450,10 @@ class DecisionEngine:
             error_message    = "",
             density_altitude = self._compute_da(sid, weather),
             runway_heading   = rwy,
+            # Con METAR se evalua UNA observacion, asi que el peor caso y lo
+            # mostrado son lo mismo. Se completa igual para que el consumidor
+            # no tenga que distinguir de que camino vino el resultado.
+            worst_obs_time   = weather.obs_time,
         )
 
     # ── Helpers ───────────────────────────────────────────────────────────────

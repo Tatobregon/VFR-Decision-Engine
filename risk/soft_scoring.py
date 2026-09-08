@@ -119,12 +119,23 @@ def _worst_verdict(a: str, b: str) -> str:
 # una referencia de 20 kt en un aerodromo con cruzado efectivo de 0.2 kt).
 
 # ── Viento cruzado ────────────────────────────────────────────────────────────
-# PROCEDENCIA: (J) JUICIO DECLARADO. La regulacion no fija escalones intermedios
-# de cruzado y la accidentologia no distingue el cruzado subumbral. Expresa que
-# la mitad del maximo demostrado es donde la maniobra deja de ser rutinaria para
-# un piloto de aviacion general.
-XWIND_CAUTION_FRACTION = 0.5      # >= esta fraccion del limite -> CAUTION
-                                  # >= el limite                -> NO GO
+# PROCEDENCIA: (J) JUICIO DECLARADO, revisado por piloto.
+#
+# La regulacion no fija escalones intermedios de cruzado y la accidentologia no
+# distingue el cruzado subumbral, asi que no hay arbitro externo. El criterio
+# que sostiene el valor es este: `xw_eff_kt` NO es el cruzado del viento
+# sostenido, es el que resulta de la RAFAGA, o sea el peor valor instantaneo que
+# el avion va a encontrar. Exigir ademas que ese peor valor se quede por debajo
+# de la mitad del maximo demostrado es conservadurismo aplicado dos veces: si el
+# cruzado de rafaga ya esta por debajo del maximo certificado, el avion lo
+# aguanta y la maniobra es normal.
+#
+# TRAZABILIDAD DEL CAMBIO (septiembre 2026): el valor anterior era 0.50. Caso
+# que lo motivo: SACC con viento 093/1.8 kt racheado a 13.8 sobre la pista 320
+# daba un cruzado efectivo de 10.1 kt contra un limite de 12, y por lo tanto
+# CAUTION, en un dia de viento sostenido de menos de 2 kt.
+XWIND_CAUTION_FRACTION = 0.85     # >= 0.85 del limite -> CAUTION
+                                  # >= el limite       -> NO GO
 
 # ── Rafagas ───────────────────────────────────────────────────────────────────
 # PROCEDENCIA: (J) JUICIO DECLARADO, revisado por piloto sobre el criterio
