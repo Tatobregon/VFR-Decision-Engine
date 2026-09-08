@@ -89,7 +89,7 @@ class AircraftProfile:
 
 ALPHA_TRAINER = AircraftProfile(
     name             = "Pipistrel Alpha Trainer",
-    crosswind_max_kt = 12.0,
+    crosswind_max_kt = 18.0,
     gust_max_kt      = 20.0,
     vis_min_km       = 5.0,
     ceiling_min_ft   = 1000,
@@ -112,7 +112,7 @@ CESSNA_172 = AircraftProfile(
     ceiling_min_ft   = 1000,
     vs0_kt           = 40.0,
     cruise_kt        = 110.0,
-    cruise_alt_ft    = 10000,
+    cruise_alt_ft    = 8000,
     service_ceiling_ft = 14000,
     fuel_flow_lph    = 32.0,   # ~8.5 gal/hr (Lycoming O-360, 75% potencia)
     fuel_capacity_l  = 212.0,  # 56 gal (tanques estandar)
@@ -163,7 +163,7 @@ DIAMOND_DA40 = AircraftProfile(
     ceiling_min_ft   = 1000,
     vs0_kt           = 48.0,
     cruise_kt        = 130.0,
-    cruise_alt_ft    = 16500,
+    cruise_alt_ft    = 10500,
     service_ceiling_ft = 16500,
     fuel_flow_lph    = 20.0,   # ~5.3 gal/hr (Lycoming IO-360, 75% potencia)
     fuel_capacity_l  = 148.0,  # 39.1 gal (DA40-180)
