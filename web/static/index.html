@@ -768,10 +768,13 @@
               <div class="flex items-center gap-2 mt-1">
                 <span class="font-mono text-xs text-accent font-bold" x-text="card.station_id"></span>
                 <span class="text-xs text-muted" x-text="`${card.elev_ft} ft MSL`"></span>
+                <!-- Tres fuentes posibles, no dos: la observación, el pronóstico de
+                     aeródromo (TAF) y el modelo numérico. Cuál mandó depende de para
+                     qué momento se preguntó, así que la insignia lo dice. -->
                 <span class="text-[10px] font-mono px-1.5 py-0.5 rounded"
-                      :style="card.weather_source === 'metar' ? 'background:#3fb95022;color:#3fb950' : 'background:#58a6ff22;color:#58a6ff'"
-                      :title="card.weather_source === 'metar' ? 'Observación real de estación' : 'Pronóstico numérico (modelo)'"
-                      x-text="card.weather_source === 'metar' ? 'METAR · obs.' : 'NWP · pronóstico'"></span>
+                      :style="fuenteBadge(card).style"
+                      :title="card.conditions_source || fuenteBadge(card).title"
+                      x-text="fuenteBadge(card).label"></span>
               </div>
             </div>
             <div class="flex flex-col items-end gap-2">
@@ -792,6 +795,18 @@
             <div class="text-[9px] text-muted uppercase tracking-widest mb-1">METAR observado</div>
             <div class="font-mono text-[11px] text-[#e6edf3] bg-surface border border-border rounded-lg px-3 py-2 break-words leading-relaxed"
                  x-text="card.raw_metar"></div>
+          </div>
+
+          <!-- TAF crudo. Si el veredicto sale del pronóstico, el pronóstico tiene
+               que poder verificarse igual que se verifica la observación. -->
+          <div x-show="card.raw_taf" class="mb-3">
+            <div class="text-[9px] uppercase tracking-widest mb-1"
+                 :class="card.weather_source === 'metar+taf' ? 'text-accent' : 'text-muted'">
+              TAF vigente<span x-show="card.weather_source === 'metar+taf'"> · fuente de las condiciones evaluadas</span>
+            </div>
+            <div class="font-mono text-[11px] text-[#e6edf3] bg-surface border rounded-lg px-3 py-2 break-words leading-relaxed"
+                 :class="card.weather_source === 'metar+taf' ? 'border-accent/40' : 'border-border'"
+                 x-text="card.raw_taf"></div>
           </div>
 
           <!-- NOTAMs activos -->
@@ -822,26 +837,47 @@
             <span>
               <template x-if="!card.forecast_out_of_range">
                 <!-- NWP: el pronostico tiene una hora para ese momento. -->
-                <template x-if="card.weather_source !== 'metar'">
+                <template x-if="card.weather_source === 'nwp'">
                   <span>Condiciones para
                     <span class="font-semibold text-[#e6edf3]"
                           x-text="(card.moment === 'llegada' ? 'la llegada' : 'la salida') + ', ' + horaLocalDe(card.obs_time)"></span>
                     <span class="text-muted" x-text="'(' + formatEta(card.obs_time) + ')'"></span>
+                    <span class="text-muted"> · pronóstico numérico</span>
                   </span>
                 </template>
-                <!-- METAR: es una OBSERVACION del pasado reciente. No existe el
-                     METAR de una hora futura, asi que se dice cuando se observo
-                     Y para que momento se evaluo. Presentarla como "las
-                     condiciones de la llegada" seria enganoso. -->
+                <!-- TAF: el pronóstico DE AERÓDROMO para ese momento. No es una
+                     observación y no puede presentarse como tal: la visibilidad,
+                     el techo, el viento y los fenómenos son los pronosticados, y
+                     la temperatura y el punto de rocío los completa el modelo,
+                     porque el TAF no los trae. -->
+                <template x-if="card.weather_source === 'metar+taf'">
+                  <span>Condiciones <span class="font-semibold text-[#e6edf3]">pronosticadas por el TAF</span> para
+                    <span class="font-semibold text-[#e6edf3]"
+                          x-text="(card.moment === 'llegada' ? 'la llegada' : 'la salida') + ', ' + horaLocalDe(card.obs_time)"></span>
+                    <span class="text-muted" x-text="'(' + formatEta(card.obs_time) + ')'"></span>.
+                    <span class="text-muted">Visibilidad, techo, viento y fenómenos salen del TAF;
+                      temperatura y punto de rocío, del modelo numérico, que el TAF no los publica.</span>
+                  </span>
+                </template>
+                <!-- METAR: es una OBSERVACION, y el motor la usa como condiciones
+                     del momento sólo mientras siga vigente. Se dice cuándo se
+                     observó Y para qué momento se evaluó: presentarla como "las
+                     condiciones de la llegada" sería engañoso. -->
                 <template x-if="card.weather_source === 'metar'">
                   <span>Observación de las
                     <span class="font-semibold text-[#e6edf3]" x-text="horaLocalDe(card.obs_time)"></span>
                     <span class="text-muted" x-text="'(' + formatEta(card.obs_time) + ')'"></span>
                     <template x-if="card.window_start">
-                      <span> · evaluado para <span class="font-semibold text-[#e6edf3]"
+                      <span> · evaluada para <span class="font-semibold text-[#e6edf3]"
                             x-text="(card.moment === 'llegada' ? 'la llegada' : 'la salida') + ' de las ' + horaLocalDe(card.window_start)"></span>
-                        <span class="text-muted">con el pronóstico TAF</span>
                       </span>
+                    </template>
+                    <!-- Guarda: hoy el motor sólo llega acá con la observación
+                         vigente, así que esto no se dibuja. Si alguna vez devuelve
+                         METAR con otra procedencia, la pantalla la muestra en vez
+                         de callarla, que es como nacieron los bugs anteriores. -->
+                    <template x-if="card.conditions_source && card.conditions_source !== 'observacion METAR'">
+                      <span class="text-caution" x-text="' · ' + card.conditions_source"></span>
                     </template>
                   </span>
                 </template>
@@ -1453,8 +1489,9 @@
                     :style="`background:${catColor(airportInfo.weather?.flight_category)}22;color:${catColor(airportInfo.weather?.flight_category)}`"
                     x-text="airportInfo.weather?.flight_category"></span>
               <span class="text-[10px] font-mono px-1.5 py-0.5 rounded"
-                    :style="airportInfo.weather?.weather_source==='metar' ? 'background:#3fb95022;color:#3fb950' : 'background:#58a6ff22;color:#58a6ff'"
-                    x-text="airportInfo.weather?.weather_source==='metar' ? 'METAR · obs.' : 'NWP · pronóstico'"></span>
+                    :style="fuenteBadge(airportInfo.weather).style"
+                    :title="airportInfo.weather?.conditions_source || fuenteBadge(airportInfo.weather).title"
+                    x-text="fuenteBadge(airportInfo.weather).label"></span>
             </div>
           </div>
           <div x-show="airportInfo.weather?.raw_metar" class="font-mono text-[11px] text-[#e6edf3] bg-surface border border-border rounded-lg px-3 py-2 mb-3 break-words" x-text="airportInfo.weather?.raw_metar"></div>
@@ -2955,6 +2992,30 @@ function app() {
       if (cat === 'VFR') return '#3fb950';
       if (cat === 'VFR marginal') return '#d29922';
       return '#f85149';  // IFR / IFR bajo mínimos
+    },
+
+    // Insignia de fuente. Hay TRES, no dos: la observación de estación, el
+    // pronóstico de aeródromo (TAF) y el modelo numérico. Mostrar "METAR" sobre
+    // condiciones pronosticadas haría leer un pronóstico como si fuera un dato
+    // medido, que es la confusión que este proyecto viene corrigiendo.
+    fuenteBadge(card) {
+      const f = card && card.weather_source;
+      if (f === 'metar') return {
+        label: 'METAR · obs.',
+        title: 'Observación real de estación',
+        style: 'background:#3fb95022;color:#3fb950',
+      };
+      if (f === 'metar+taf') return {
+        label: 'TAF · pronóstico',
+        title: 'Pronóstico de aeródromo (TAF) para el momento evaluado, ' +
+               'con temperatura y punto de rocío del modelo numérico',
+        style: 'background:#a371f722;color:#a371f7',
+      };
+      return {
+        label: 'NWP · pronóstico',
+        title: 'Pronóstico numérico (modelo)',
+        style: 'background:#58a6ff22;color:#58a6ff',
+      };
     },
 
     formatTime(h) {

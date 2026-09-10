@@ -38,8 +38,10 @@ try:
     from config import NWP_STATIONS, NWP_HOURS_AHEAD
     from data.fetcher_aviationweather import AviationWeatherFetcher
     from data.fetcher_openmeteo        import OpenMeteoFetcher
-    from parsers.metar_parser          import MetarParser, ParsedWeather
-    from parsers.taf_parser            import TafParser
+    from parsers.metar_parser          import (
+        MetarParser, ParsedWeather, _compute_flight_category,
+    )
+    from parsers.taf_parser            import TafParser, ParsedTaf
     from parsers.openmeteo_adapter     import OpenMeteoAdapter
     from features.taf_window           import TafAnalyzer, TafWindowResult, nwp_trend_r_taf
     from risk.hard_blockers            import (
@@ -58,8 +60,10 @@ except ImportError:
     from config import NWP_STATIONS, NWP_HOURS_AHEAD
     from data.fetcher_aviationweather import AviationWeatherFetcher
     from data.fetcher_openmeteo        import OpenMeteoFetcher
-    from parsers.metar_parser          import MetarParser, ParsedWeather
-    from parsers.taf_parser            import TafParser
+    from parsers.metar_parser          import (
+        MetarParser, ParsedWeather, _compute_flight_category,
+    )
+    from parsers.taf_parser            import TafParser, ParsedTaf
     from parsers.openmeteo_adapter     import OpenMeteoAdapter
     from features.taf_window           import TafAnalyzer, TafWindowResult, nwp_trend_r_taf
     from risk.hard_blockers            import (
@@ -86,6 +90,15 @@ logger = logging.getLogger(__name__)
 # Tope de horas que tiene sentido pedir. La fuente entrega dos dias desde la
 # medianoche local, asi que desde "ahora" quedan entre 24 y 48 h disponibles.
 MAX_FORECAST_HOURS = 48
+
+# Cuanto vale una observacion METAR como descripcion de un momento.
+#
+# Un METAR se emite cada hora (o cada media hora) y describe el instante en que
+# se tomo. Dentro de esa vigencia es el MEJOR dato disponible para ese momento:
+# una observacion real le gana a cualquier pronostico del mismo momento. Pasada
+# esa hora, el pronostico del TAF describe mejor lo que va a haber que una
+# observacion vieja.
+VIGENCIA_OBSERVACION_H = 1.0
 
 # Desvio maximo tolerable entre la hora pedida y la muestra evaluada, sin que se
 # considere que la salida quedo fuera de alcance. El pronostico es horario, asi
@@ -125,7 +138,7 @@ class DecisionResult:
     score_breakdown : Optional[SoftScoreResult]  # None si hard_blocked o sin datos
     taf_result      : Optional[TafWindowResult]  # None si no hay TAF disponible
 
-    weather_source  : str                       # "metar" | "nwp"
+    weather_source  : str                       # "metar" | "metar+taf" | "nwp"
     obs_time        : int                       # Unix UTC de la observacion usada
 
     next_go_from    : Optional[int]             # Unix UTC estimado proxima ventana GO
@@ -147,6 +160,19 @@ class DecisionResult:
     # y hubo que evaluar la hora disponible mas cercana. Sin esto el sistema
     # devolvia condiciones de otro momento como si fueran las pedidas.
     forecast_out_of_range : bool = False
+
+    # De donde salieron las condiciones que se evaluaron, en texto para el
+    # piloto. En un aerodromo con estacion hay TRES fuentes en juego —la
+    # observacion, el pronostico de aerodromo y el modelo numerico— y cual mando
+    # depende de para que momento se pregunte. Sin declararlo, la pantalla
+    # muestra una visibilidad pronosticada con el mismo aspecto que una
+    # observada, que es exactamente el error que este campo evita.
+    conditions_source : str = ""
+
+    # Texto crudo del TAF que se uso, cuando se uso. El METAR crudo ya se
+    # muestra para que el piloto pueda verificar la observacion; si el veredicto
+    # sale del pronostico, el pronostico tiene que poder verificarse igual.
+    raw_taf : Optional[str] = None
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -316,6 +342,7 @@ class DecisionEngine:
                     score_breakdown = None,
                     taf_result      = None,
                     weather_source  = "nwp",
+                    conditions_source = "pronostico NWP",
                     obs_time        = wx.obs_time,
                     next_go_from    = None,
                     weather         = wx,
@@ -413,6 +440,7 @@ class DecisionEngine:
             score_breakdown  = worst,
             taf_result       = None,
             weather_source   = "nwp",
+            conditions_source = "pronostico NWP",
             obs_time         = ref_wx.obs_time,
             next_go_from     = None,
             weather          = ref_wx,
@@ -440,17 +468,14 @@ class DecisionEngine:
             logger.info(f"{sid} sin METAR disponible — usando NWP")
             return self._evaluate_nwp(sid, runway_heading, departure_time, flight_duration_h)
 
-        weather = self._metar_parser.parse(raw_metar)
-
-        # Pista a usar (favorable si fue auto), segun el viento observado.
-        rwy = self._resolve_runway(sid, runway_heading, weather)
-
-        # ── Hard blockers: observacion actual ────────────────────────────────
-        blocker = check_hard_blockers_from_weather(weather)
+        metar_wx = self._metar_parser.parse(raw_metar)
 
         # ── TAF window ───────────────────────────────────────────────────────
+        # Se analiza ANTES de decidir las condiciones, porque el TAF es la
+        # fuente de verdad para todo momento que no cubra la observacion.
         taf_result       = None
         taf_hard_blocked = False
+        parsed_taf       = None
 
         if raw_taf is not None:
             try:
@@ -463,6 +488,38 @@ class DecisionEngine:
                 taf_hard_blocked = self._taf_window_has_hard_blocker(taf_result)
             except Exception as exc:
                 logger.warning(f"Error al analizar TAF de {sid}: {exc}")
+
+        # ── Condiciones DEL MOMENTO evaluado ─────────────────────────────────
+        # El METAR describe el instante en que se observo; el TAF, el momento
+        # que se va a volar. Para una salida dentro de tres horas, la
+        # observacion de hace un rato NO son las condiciones del vuelo.
+        weather, procedencia = self._condiciones_para_el_momento(
+            sid, departure_time, metar_wx, taf_result, parsed_taf)
+        logger.info(f"{sid}: condiciones del momento tomadas de {procedencia}")
+
+        # Si ninguna de las dos fuentes del aerodromo describe el momento —la
+        # observacion ya vencio y el TAF no llega hasta ahi— el modelo numerico
+        # SI lo describe, y es la unica fuente que lo hace. Entregar una
+        # observacion de veinte horas atras como "las condiciones del vuelo" es
+        # el mismo error que el motor ya evita cuando el aerodromo no tiene
+        # estacion: la regla es la misma, un nivel mas adentro.
+        #
+        # El TAF cubre entre 24 y 30 h; el pronostico numerico llega a 48. La
+        # franja entre ambos es real para quien planifica con un dia de
+        # anticipacion, que es cuando esta decision se toma.
+        if weather is metar_wx and                 abs(departure_time - metar_wx.obs_time) / 3600.0 > VIGENCIA_OBSERVACION_H:
+            logger.info(
+                f"{sid}: {procedencia}; la observacion tiene "
+                f"{abs(departure_time - metar_wx.obs_time) / 3600.0:.1f} h — se usa NWP"
+            )
+            return self._evaluate_nwp(sid, runway_heading, departure_time,
+                                      flight_duration_h)
+
+        # Pista a usar (favorable si fue auto), segun el viento del momento.
+        rwy = self._resolve_runway(sid, runway_heading, weather)
+
+        # ── Hard blockers: sobre las condiciones del momento ─────────────────
+        blocker = check_hard_blockers_from_weather(weather)
 
         # ── Decision con hard blocker ─────────────────────────────────────────
         if blocker.is_blocked or taf_hard_blocked:
@@ -482,13 +539,16 @@ class DecisionEngine:
                 blocker_summary = summary,
                 score_breakdown = None,
                 taf_result      = taf_result,
-                weather_source  = "metar",
+                weather_source  = weather.source,
                 obs_time        = weather.obs_time,
                 next_go_from    = next_go,
                 weather         = weather,
                 fetch_ok        = True,
                 error_message   = "",
                 runway_heading  = rwy,
+                worst_obs_time  = weather.obs_time,
+                conditions_source = procedencia,
+                raw_taf         = parsed_taf.raw_string if parsed_taf else None,
             )
 
         # ── Soft scoring ─────────────────────────────────────────────────────
@@ -507,7 +567,7 @@ class DecisionEngine:
             blocker_summary  = "",
             score_breakdown  = score,
             taf_result       = taf_result,
-            weather_source   = "metar",
+            weather_source   = weather.source,
             obs_time         = weather.obs_time,
             next_go_from     = next_go,
             weather          = weather,
@@ -515,10 +575,13 @@ class DecisionEngine:
             error_message    = "",
             density_altitude = self._compute_da(sid, weather),
             runway_heading   = rwy,
-            # Con METAR se evalua UNA observacion, asi que el peor caso y lo
-            # mostrado son lo mismo. Se completa igual para que el consumidor
-            # no tenga que distinguir de que camino vino el resultado.
+            # Por este camino se evalua UN estado —la observacion, o el peor
+            # caso del TAF para ese momento—, asi que el peor caso y lo mostrado
+            # son lo mismo. Se completa igual para que el consumidor no tenga
+            # que distinguir de que camino vino el resultado.
             worst_obs_time   = weather.obs_time,
+            conditions_source = procedencia,
+            raw_taf          = parsed_taf.raw_string if parsed_taf else None,
         )
 
     # ── Helpers ───────────────────────────────────────────────────────────────
@@ -556,6 +619,161 @@ class DecisionEngine:
             qnh_hpa             = weather.altimeter_hpa,
             elevation_estimated = elev_estimated,
         )
+
+    # ── Condiciones para el momento evaluado ──────────────────────────────────
+
+    def _nwp_para_el_momento(
+        self,
+        sid    : str,
+        momento: int,
+    ) -> Optional[ParsedWeather]:
+        """
+        Pronostico NWP del aerodromo para un momento dado.
+
+        Se usa para completar lo que el TAF NO trae: temperatura y punto de
+        rocio, y con ellos el spread termico del que depende el riesgo de
+        niebla y la altitud de densidad.
+        """
+        cfg = NWP_STATIONS.get(sid)
+        if cfg is None:
+            return None
+        try:
+            raw = self._nwp_fetch.get_forecast(
+                lat         = cfg["lat"],
+                lon         = cfg["lon"],
+                elevation_m = cfg["elev_m"],
+                hours_ahead = _horizonte_necesario(momento, 1.0),
+            )
+            if raw is None:
+                return None
+            horas = self._nwp_adapter.adapt_all(raw, station_id=sid)
+            if not horas:
+                return None
+            return min(horas, key=lambda w: abs(w.obs_time - momento))
+        except Exception as exc:
+            logger.warning(f"No se pudo completar con NWP en {sid}: {exc}")
+            return None
+
+    def _condiciones_para_el_momento(
+        self,
+        sid       : str,
+        momento   : int,
+        metar_wx  : ParsedWeather,
+        taf_result: Optional[TafWindowResult],
+        parsed_taf: Optional[ParsedTaf] = None,
+    ) -> tuple:
+        """
+        Arma las condiciones del MOMENTO evaluado combinando las tres fuentes.
+
+        Devuelve (ParsedWeather, procedencia).
+
+        Criterio, en orden:
+
+          1. Si el momento cae dentro de la vigencia de la observacion, gana el
+             METAR. Una observacion real del momento es mejor dato que cualquier
+             pronostico para ese mismo momento.
+
+          2. Si no, y el TAF esta VIGENTE para ese momento, el TAF es la verdad
+             para lo que pronostica —visibilidad, techo, viento, fenomenos— y el
+             NWP completa lo que el TAF no trae: temperatura y punto de rocio.
+             El QNH se arrastra del METAR porque es la unica fuente que lo tiene
+             y cambia despacio.
+
+          3. Si no hay TAF vigente para ese momento, se devuelve el METAR y se
+             declara, para que el llamador sepa que mira una observacion vieja.
+
+        Se toma `worst_case` y no `effective_base`: incluye los transitorios
+        (TEMPO/PROB) ademas de la base, que es el mismo criterio con el que este
+        modulo ya evalua los bloqueos duros del TAF y la misma filosofia de peor
+        caso que usa el camino NWP.
+
+        Cada MAGNITUD se toma entera de una sola fuente. Mezclar la velocidad
+        pronosticada con la direccion del modelo, o el techo del TAF con las
+        capas de la observacion, produce un estado que ninguna fuente predijo:
+        seria informacion inventada por el promedio de dos pronosticos.
+        """
+        edad_h = abs(momento - metar_wx.obs_time) / 3600.0
+        if edad_h <= VIGENCIA_OBSERVACION_H:
+            return metar_wx, "observacion METAR"
+
+        if taf_result is None or taf_result.worst_case is None:
+            return metar_wx, "observacion METAR (sin TAF)"
+
+        # La vigencia del TAF es la del TAF, no la de la ventana de vuelo: la
+        # ventana ES el momento pedido, asi que compararlo contra si mismo no
+        # verifica nada. Si el TAF no cubre el momento, no hay pronostico.
+        if parsed_taf is not None and not (
+                parsed_taf.valid_from <= momento <= parsed_taf.valid_to):
+            return metar_wx, "observacion METAR (el TAF no cubre ese momento)"
+
+        taf = taf_result.worst_case
+        nwp = self._nwp_para_el_momento(sid, momento)
+
+        # ── Viento: bloque completo de una sola fuente ────────────────────────
+        # Una direccion sin su velocidad, o al reves, no describe ningun viento.
+        # `wind_dir=None` con `wind_variable=True` es como el TAF dice VRB, y es
+        # informacion: no es un hueco que haya que rellenar con el modelo.
+        if taf.wind_spd_kt is not None or taf.wind_variable:
+            w_dir, w_spd  = taf.wind_dir, taf.wind_spd_kt
+            w_gust, w_var = taf.wind_gust_kt, taf.wind_variable
+        elif nwp is not None and nwp.wind_spd_kt is not None:
+            w_dir, w_spd  = nwp.wind_dir, nwp.wind_spd_kt
+            w_gust, w_var = nwp.wind_gust_kt, nwp.wind_variable
+        else:
+            w_dir, w_spd  = metar_wx.wind_dir, metar_wx.wind_spd_kt
+            w_gust, w_var = metar_wx.wind_gust_kt, metar_wx.wind_variable
+
+        # ── Visibilidad ──────────────────────────────────────────────────────
+        if taf.visibility_km is not None:
+            vis = taf.visibility_km
+        elif nwp is not None and nwp.visibility_km is not None:
+            vis = nwp.visibility_km
+        else:
+            vis = metar_wx.visibility_km
+
+        # ── Nubosidad: capas y techo son la misma magnitud ────────────────────
+        # En el TAF, "sin capa BKN/OVC" significa SIN TECHO, no "dato ausente":
+        # NSC y SKC son afirmaciones del pronostico. Por eso, si el TAF describe
+        # el cielo, su techo vale aunque sea None.
+        if taf.sky_layers:
+            capas, ceiling = list(taf.sky_layers), taf.ceiling_ft
+        elif nwp is not None and nwp.sky_layers:
+            capas, ceiling = list(nwp.sky_layers), nwp.ceiling_ft
+        else:
+            capas, ceiling = list(metar_wx.sky_layers or []), metar_wx.ceiling_ft
+
+        # ── Fenomenos: el TAF los pronostica; lista vacia es "no se esperan" ──
+        wx_codes = list(taf.wx_codes or [])
+
+        # ── Lo que el TAF NO trae: temperatura y punto de rocio ───────────────
+        if nwp is not None and nwp.temp_c is not None:
+            temp, rocio, spread = nwp.temp_c, nwp.dewpoint_c, nwp.spread_c
+            complemento = " + NWP (temperatura y rocio)"
+        else:
+            temp, rocio, spread = metar_wx.temp_c, metar_wx.dewpoint_c, metar_wx.spread_c
+            complemento = " (sin NWP: temperatura de la observacion)"
+
+        combinado = replace(
+            metar_wx,
+            source          = "metar+taf",
+            obs_time        = momento,
+            nwp_estimated   = True,          # es un pronostico, no una observacion
+            wind_dir        = w_dir,
+            wind_spd_kt     = w_spd,
+            wind_gust_kt    = w_gust,
+            wind_variable   = w_var,
+            visibility_km   = vis,
+            ceiling_ft      = ceiling,
+            sky_layers      = capas,
+            wx_codes        = wx_codes,
+            temp_c          = temp,
+            dewpoint_c      = rocio,
+            spread_c        = spread,
+            # QNH: la unica fuente que lo publica es el METAR, y cambia despacio.
+            altimeter_hpa   = metar_wx.altimeter_hpa,
+            flight_category = _compute_flight_category(vis, ceiling),
+        )
+        return combinado, "pronostico TAF" + complemento
 
     def _taf_window_has_hard_blocker(self, taf_result: TafWindowResult) -> bool:
         """

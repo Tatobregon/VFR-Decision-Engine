@@ -101,7 +101,14 @@ class WeatherCard(BaseModel):
     decision: str
     r_total: float
     weather_source: str
-    raw_metar: Optional[str] = None    # texto crudo del METAR (si la fuente es metar)
+    raw_metar: Optional[str] = None    # texto crudo del METAR (si hay estacion)
+    raw_taf: Optional[str] = None      # texto crudo del TAF (si el aerodromo lo emite)
+    # De donde salieron las condiciones evaluadas, en texto para el piloto. En
+    # un aerodromo con estacion hay TRES fuentes en juego —la observacion, el
+    # pronostico de aerodromo y el modelo numerico— y cual mando depende de para
+    # que momento se pregunte. Sin decirlo, una visibilidad pronosticada se lee
+    # igual que una observada.
+    conditions_source: str = ""
     notams: List[Notam] = []           # NOTAMs activos del aeródromo
     hard_blocked: bool
     blocker_summary: str
@@ -460,7 +467,10 @@ def _to_card(result, runway_heading: int, ap: AirportInfo, notams: list = None,
         decision        = result.decision,
         r_total         = round(result.r_total, 3),
         weather_source  = result.weather_source,
-        raw_metar       = (wx.raw_string if (wx and result.weather_source == "metar") else None),
+        raw_metar       = (wx.raw_string
+                           if (wx and result.weather_source.startswith("metar")) else None),
+        raw_taf         = getattr(result, "raw_taf", None),
+        conditions_source = getattr(result, "conditions_source", ""),
         notams          = notam_models,
         hard_blocked    = result.hard_blocked,
         blocker_summary = result.blocker_summary,

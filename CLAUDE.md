@@ -94,7 +94,7 @@ automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a
 |---|---|---|
 | `config.py` | **COMPLETO** | Constantes globales: `NWP_STATIONS` (derivado de los 561 aerodromos de `AIRPORTS`), `METAR_STATIONS` (vacio, vestigio v1.0), `NWP_HOURS_AHEAD`. |
 | `decision/enroute.py` | **COMPLETO** | `evaluate_nwp_at_coord()` devuelve **cinco** valores: `(r_total, decision, ref_wx, score, level_hour)`. `ref_wx` es superficie; `level_hour` trae las condiciones DEL NIVEL. Se entregan separados a proposito. Ademas `nwp_series_at_coord()`. **Extraidas de `web/app.py`** (septiembre 2026) porque el copiloto tambien las necesita y que la capa de lenguaje importara de `web/` invertiria las dependencias. En crucero **anulan el viento cruzado** (el piloto crabea; el cruzado es concepto de pista) y aplican el minimo VFR de 8 km sobre FL100. |
-| `decision/engine.py` | **COMPLETO** | `DecisionEngine.evaluate()` → `DecisionResult`. Pipeline: fetch→parse→hard_blockers→soft_score+taf_window→decision. **Regla de fuente**: con codigo ICAO intenta METAR+TAF y cae a NWP si no hay METAR; sin ICAO va directo a NWP. El camino NWP usa **muestreo en anillo** (peor caso en tiempo Y espacio). |
+| `decision/engine.py` | **COMPLETO** | `DecisionEngine.evaluate()` → `DecisionResult`. Pipeline: fetch→parse→**condiciones del momento**→hard_blockers→soft_score+taf_window→decision. **Regla de fuente**: con codigo ICAO intenta METAR+TAF y cae a NWP si no hay METAR; sin ICAO va directo a NWP. **Regla de momento** (`_condiciones_para_el_momento`): dentro de `VIGENCIA_OBSERVACION_H` manda el METAR; despues manda el TAF y el NWP completa temperatura y rocio; si ninguno cubre el momento, NWP entero. El camino NWP usa **muestreo en anillo** (peor caso en tiempo Y espacio). |
 | `output/briefing.py` | **COMPLETO** | `generate_briefing(...)` → briefing meteorologico multi-linea para el piloto (origen, destino, ruta, NOTAMs). 100% reglas, sin IA. |
 | `output/flight_plan.py` | **COMPLETO** | `build_flight_plan(...)` → plan de vuelo OACI (casillas 7-19 + mensaje FPL). **No radica** el plan: lo presenta el piloto. |
 | `web/app.py` | **COMPLETO** | Backend FastAPI + frontend HTML (`web/static`). **Entry point unico del sistema.** Endpoints: `/api/evaluate`, `/api/profile`, `/api/timeline`, `/api/flightplan`, `/api/airport/{code}`, `/api/airports`, `/api/airports/map`, `/api/aircraft`, `/api/vfr_corridors`, `/api/airspace`, `/api/copilot`, `/api/copilot/status`. Switch VFR/IFR, corredores VFR, perfil vertical, panel del copiloto. |
@@ -133,7 +133,7 @@ layer y el risk engine. Tanto `MetarParser` como `OpenMeteoAdapter` lo producen.
 @dataclass
 class ParsedWeather:
     # Identificacion
-    source        : str               # "metar" | "nwp"
+    source        : str               # "metar" | "metar+taf" | "nwp"
     station_id    : str               # ICAO o identificador del punto
     obs_time      : int               # Unix timestamp UTC
     nwp_estimated : bool = False      # True si es NWP (no observacion directa)
@@ -536,6 +536,102 @@ El piloto no tiene forma de reconciliarlo mirando la pantalla, y parece un error
 sistema aunque la logica sea correcta. `DecisionResult.worst_obs_time` informa ahora de
 que muestra salio el veredicto, y la interfaz lo dice cuando difiere de lo mostrado.
 
+### El TAF decide el momento evaluado; el METAR solo mientras siga vigente
+
+Un aerodromo con estacion tiene **tres** fuentes, y cual describe el momento del
+vuelo depende de para **que momento** se pregunte. Hasta septiembre de 2026 el
+motor puntuaba siempre la OBSERVACION y usaba el TAF solo como un componente de
+tendencia de peso 0.022: una salida planificada para dentro de seis horas se
+decidia con el estado del aire de hace un rato.
+
+```
+Fuente             Que aporta                                    Cuando manda
+observacion METAR  todo, medido                                  |momento - obs| <= 1 h
+TAF                visibilidad, techo, viento, fenomenos          el TAF cubre el momento
+NWP                temperatura y punto de rocio                   siempre que haya TAF
+NWP (completo)     todo, modelado                                 ni la obs ni el TAF llegan
+```
+
+- **`VIGENCIA_OBSERVACION_H = 1.0`**. El METAR se emite cada hora y describe el
+  instante en que se tomo. Dentro de esa vigencia es el mejor dato posible: una
+  medicion real le gana a cualquier pronostico del mismo momento. Pasada esa
+  hora, el pronostico describe mejor lo que va a haber que una observacion vieja.
+- **El TAF es la verdad, no una tendencia.** Es el pronostico oficial DEL
+  AERODROMO, emitido por el mismo servicio que el METAR y con la misma autoridad
+  normativa. Si existe y cubre el momento, sus valores SON las condiciones que
+  se puntuan.
+- **El NWP completa lo que el TAF no publica**: temperatura y punto de rocio, y
+  con ellos el spread del que depende `r_fog` y la altitud de densidad. Sin ese
+  complemento el spread quedaria en el de la observacion — en SACO, 13 °C
+  observados contra **1.9 °C pronosticados** para seis horas despues, que es la
+  diferencia entre no ver la niebla y verla.
+- **El QNH lo sigue aportando el METAR**: es la unica fuente que lo publica y
+  cambia despacio.
+
+> **Cada MAGNITUD se toma entera de una sola fuente.** El viento es direccion y
+> velocidad juntas; el cielo son las capas y el techo juntos. Combinar la
+> velocidad pronosticada con la direccion del modelo produce un viento que
+> ninguna de las dos fuentes predijo — informacion inventada por el promedio.
+> Por eso `VRB` del TAF (`wind_dir=None`, `wind_variable=True`) **no** se
+> completa con la direccion del NWP: VRB es una afirmacion, no un hueco. Lo
+> mismo con `NSC`/`SKC`: en el TAF, "sin capa significativa" significa SIN TECHO,
+> no "dato ausente", y tiene que borrar el techo que se observo horas antes.
+
+**Se toma el peor caso de la ventana** (`worst_case`: base efectiva + TEMPO/PROB),
+no la base sola. Es el mismo criterio con el que el motor ya evaluaba los
+fenomenos peligrosos del TAF y la misma filosofia del camino NWP (peor caso en
+tiempo y en espacio). Medido sobre los 36 aerodromos argentinos que hoy emiten
+METAR y TAF, x 5 aeronaves x 6 horarios = **1070 evaluaciones**: incluir los
+transitorios cambia el veredicto en **10 casos (0.9 %)**, todos CAUTION → NO GO
+y todos por TEMPO, ninguno por PROB.
+
+**Si ninguna fuente del aerodromo describe el momento, se va a NWP.** El TAF
+cubre entre 24 y 30 h; el pronostico numerico llega a 48. Para quien planifica
+con un dia de anticipacion —que es cuando esta decision se toma— la observacion
+puede tener veinte horas. Entregarla como "las condiciones del vuelo" es el
+mismo error que el motor ya evita cuando el aerodromo no tiene estacion: la
+regla es la misma, un nivel mas adentro. Afecta tambien a los **12 aerodromos
+que emiten METAR pero no TAF** (SAAG, SAMR, SAZG, SAOU y otros ocho).
+
+**Efecto medido contra el motor anterior** (mismas 1070 evaluaciones, replicando
+el viejo con su bloqueo por fenomeno peligroso del TAF ya incluido, para no
+atribuirle al cambio bloqueos que ya existian):
+
+| viejo → nuevo | casos | |
+|---|---|---|
+| coincide | 715 / 1070 | **66.8 %** |
+| GO → CAUTION | 210 | endurece |
+| GO → NO GO | 80 | endurece |
+| CAUTION → NO GO | 11 | endurece |
+| NO GO → GO / CAUTION | 44 | **ablanda** |
+| CAUTION → GO | 10 | ablanda |
+
+Los 101 NO GO nuevos se explican uno por uno: 40 por **niebla probable** (spread
+del NWP, que antes no existia), 37 por **cruzado con rafaga** pronosticado que la
+observacion no tenia, 13 por deterioro de visibilidad o techo, 11 por barrera de
+cruzado sostenido. Ninguno es un fenomeno peligroso nuevo: esos ya bloqueaban. Y
+en 54 casos el cambio **ablanda**, porque el TAF pronostica una mejora que la
+observacion vieja no mostraba.
+
+**La pantalla declara cual mando.** `DecisionResult.conditions_source` lleva la
+procedencia en texto y `weather_source` pasa a tener tres valores
+(`metar` | `metar+taf` | `nwp`), con insignia propia cada uno. Se muestra ademas
+el **TAF crudo** junto al METAR crudo: si el veredicto sale del pronostico, el
+pronostico tiene que poder verificarse igual que se verifica la observacion.
+Sin esto la tarjeta decia "Observación de las 19:00" sobre una visibilidad
+pronosticada — el mismo modo de falla que este proyecto viene corrigiendo.
+
+**Verificado contra la API real**, no sobre el mock: 6 aerodromos de las 5
+regiones, 3 aeronaves, 4 momentos cada uno, comparando **campo por campo** el
+resultado contra el TAF, contra el NWP y contra el METAR. Un campo que no
+coincide con ninguna fuente seria un valor inventado por la combinacion; no hubo
+ninguno. Fijado por 13 tests en `tests/test_engine_data.py`.
+
+> **Hallazgo del parser, de paso**: la API de AWC **normaliza los fenomenos
+> compuestos**. El TAF de SARI dice `TSRAGR` en el texto crudo y la API entrega
+> `wx_string: "TSRA TSGR"`. El parser hace bien en confiar en el campo
+> estructurado; era la verificacion la que estaba mal escrita.
+
 ### Copiloto en lenguaje natural — arquitectura neurosimbolica
 
 Asistente de planificacion **previo al vuelo, en tierra**. No asiste vuelo en curso
@@ -688,10 +784,19 @@ Nunca basar tests solo en el Alpha Trainer o en un aerodromo unico (ej. SACC).
 ### Modulo TAF — ventana temporal
 
 - Input usuario: hora estimada de despegue (UTC) + duracion del vuelo (horas).
-- Ventana = [ETA_dep, ETA_dep + duration].
+- Ventana = [ETA_dep, ETA_dep + duration]. En la web cada extremo se evalua con
+  su propia ventana de 1 h (`VENTANA_EXTREMO_H`): el origen alrededor del
+  despegue, el destino alrededor del aterrizaje.
 - Extraer periodos TAF que intersectan la ventana.
-- Periodo mas restrictivo = worst-case para el score.
+- Periodo mas restrictivo = worst-case.
 - TEMPO/PROB en ventana → elevar componente de riesgo TAF.
+
+El `worst_case` **ya no es solo un componente de score**: es la fuente de las
+condiciones que se puntuan cuando la observacion vencio (ver *El TAF decide el
+momento evaluado*). El componente `r_taf` (peso 0.022) sigue existiendo y mide
+otra cosa: la INESTABILIDAD del pronostico —que haya TEMPO o PROB en la
+ventana—, no el nivel de deterioro, que ahora entra por `r_vis`, `r_ceil`,
+`r_xwind` y `r_wx` como cualquier otra condicion.
 
 ---
 
@@ -729,7 +834,7 @@ Sin la variable la app arranca igual: `/api/copilot/status` responde
 `available: false`, el panel del frontend no se muestra y **el resto del sistema
 funciona normalmente**. El copiloto es accesorio y su caida no arrastra a nadie.
 
-Suite de regresion (201 tests, sin red, < 1 s):
+Suite de regresion (322 tests, sin red, ~4 s):
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
@@ -776,8 +881,10 @@ class DecisionResult:
     blocker_summary  : str             # descripcion si hard_blocked
     score_breakdown  : SoftScoreResult # None si hard_blocked
     taf_result       : TafWindowResult # None si no hay TAF
-    weather_source   : str             # "metar" | "nwp"
-    obs_time         : int             # Unix UTC de la observacion
+    weather_source   : str             # "metar" | "metar+taf" | "nwp"
+    conditions_source: str             # procedencia en texto, para la pantalla
+    raw_taf          : Optional[str]   # TAF crudo usado, para que se pueda verificar
+    obs_time         : int             # Unix UTC del momento evaluado
     next_go_from     : Optional[int]   # del TAF o None
 ```
 

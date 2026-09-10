@@ -722,3 +722,315 @@ def test_con_metar_el_dato_es_una_observacion_y_no_el_momento_evaluado():
     assert 'moment="salida"' in fuente and 'moment="llegada"' in fuente
     assert "window_start=dep_time" in fuente
     assert "window_start=arr_time" in fuente
+
+
+# ── El TAF como fuente de las condiciones del momento evaluado ────────────────
+#
+# Un aerodromo con estacion tiene TRES fuentes y hay que elegir una por
+# magnitud, segun para QUE MOMENTO se pregunte:
+#
+#   la observacion   describe el instante en que se tomo
+#   el TAF           pronostica visibilidad, techo, viento y fenomenos
+#   el modelo (NWP)  aporta temperatura y punto de rocio, que el TAF no publica
+#
+# Lo que estos tests fijan es la PROCEDENCIA de cada numero, no el veredicto:
+# el modo de falla que importa es mostrar un pronostico con cara de observacion.
+
+from decision.engine import VIGENCIA_OBSERVACION_H
+from parsers.metar_parser import ParsedWeather
+from parsers.taf_parser import ParsedTaf, ParsedTafPeriod
+
+_H = 3600
+
+
+def _obs(ts, **kw):
+    """Observacion METAR de referencia: dia despejado, calmo y templado."""
+    base = dict(
+        source="metar", station_id="SAXX", obs_time=ts,
+        wind_dir=180, wind_spd_kt=5.0, wind_gust_kt=None, wind_variable=False,
+        visibility_km=10.0, ceiling_ft=None, sky_layers=[],
+        temp_c=20.0, dewpoint_c=4.0, spread_c=16.0,
+        altimeter_hpa=1013.0, wx_codes=[], flight_category="VFR",
+        raw_string="METAR SAXX 101600Z 18005KT CAVOK 20/04 Q1013",
+    )
+    base.update(kw)
+    return ParsedWeather(**base)
+
+
+def _periodo(desde, hasta, *, indicador=None, transitorio=False, **kw):
+    base = dict(
+        time_from=desde, time_to=hasta,
+        change_indicator=indicador, probability=None, is_transient=transitorio,
+        wind_dir=270, wind_spd_kt=12.0, wind_gust_kt=None, wind_variable=False,
+        visibility_km=4.0, ceiling_ft=900,
+        sky_layers=[{"cover": "BKN", "base_ft": 900}],
+        wx_codes=["-RA"],
+    )
+    base.update(kw)
+    return ParsedTafPeriod(**base)
+
+
+def _taf(desde, hasta, periodos, sid="SAXX"):
+    return ParsedTaf(
+        station_id=sid, raw_string="TAF SAXX 101100Z", issue_time="",
+        valid_from=desde, valid_to=hasta, periods=periodos,
+    )
+
+
+def _nwp(ts, temp_c=8.0, dewpoint_c=7.0):
+    return ParsedWeather(
+        source="nwp", station_id="SAXX", obs_time=ts, nwp_estimated=True,
+        wind_dir=45, wind_spd_kt=30.0, wind_variable=False,
+        visibility_km=2.0, ceiling_ft=300,
+        sky_layers=[{"cover": "OVC", "base_ft": 300}],
+        temp_c=temp_c, dewpoint_c=dewpoint_c,
+        spread_c=round(temp_c - dewpoint_c, 1),
+        altimeter_hpa=990.0, wx_codes=["BR"],
+    )
+
+
+def _motor_con_nwp(nwp_wx, avion=None):
+    """Motor con el complemento NWP fijado, para no depender de la red."""
+    eng = (DecisionEngine(mock=True, aircraft=get_profile(avion)) if avion
+           else DecisionEngine(mock=True))
+    eng._nwp_para_el_momento = lambda sid, momento: nwp_wx
+    return eng
+
+
+def _condiciones(eng, momento, obs, taf):
+    resultado = eng._taf_analyzer.analyze(
+        taf, departure_time=momento, flight_duration_h=1.0) if taf else None
+    return eng._condiciones_para_el_momento("SAXX", momento, obs, resultado, taf)
+
+
+def test_dentro_de_la_vigencia_gana_la_observacion():
+    """Un dato medido del momento le gana a cualquier pronostico del momento."""
+    t = 1_789_000_000
+    obs = _obs(t)
+    taf = _taf(t - 4 * _H, t + 20 * _H, [_periodo(t - 4 * _H, t + 20 * _H)])
+    eng = _motor_con_nwp(_nwp(t))
+
+    wx, procedencia = _condiciones(eng, t + int(0.5 * _H), obs, taf)
+
+    assert wx is obs, "dentro de la vigencia no se toca la observacion"
+    assert procedencia == "observacion METAR"
+
+
+def test_pasada_la_vigencia_las_condiciones_salen_del_taf():
+    """Visibilidad, techo, viento y fenomenos: los pronosticados, no los observados."""
+    t = 1_789_000_000
+    momento = t + 5 * _H
+    obs = _obs(t)
+    taf = _taf(t - 4 * _H, t + 20 * _H, [_periodo(t - 4 * _H, t + 20 * _H)])
+    eng = _motor_con_nwp(_nwp(momento))
+
+    wx, procedencia = _condiciones(eng, momento, obs, taf)
+
+    assert wx.visibility_km == 4.0          # el TAF, no los 10 km observados
+    assert wx.ceiling_ft == 900             # el TAF, no el cielo despejado
+    assert wx.wind_dir == 270 and wx.wind_spd_kt == 12.0
+    assert wx.wx_codes == ["-RA"]
+    assert wx.source == "metar+taf"
+    assert wx.obs_time == momento
+    assert wx.nwp_estimated is True, "es un pronostico: no puede pasar por observacion"
+    # Recalculada con los valores del TAF: vis 4 km y techo 900 ft es
+    # "VFR marginal" por la vis; la observacion daba "VFR".
+    assert wx.flight_category == "VFR marginal"
+    assert obs.flight_category == "VFR"
+    assert procedencia.startswith("pronostico TAF")
+
+
+def test_la_temperatura_y_el_rocio_los_completa_el_nwp():
+    """El TAF no publica termodinamica; sin el NWP el spread quedaria en el del METAR."""
+    t = 1_789_000_000
+    momento = t + 5 * _H
+    obs = _obs(t, temp_c=20.0, dewpoint_c=4.0, spread_c=16.0)
+    taf = _taf(t - 4 * _H, t + 20 * _H, [_periodo(t - 4 * _H, t + 20 * _H)])
+    eng = _motor_con_nwp(_nwp(momento, temp_c=8.0, dewpoint_c=7.0))
+
+    wx, procedencia = _condiciones(eng, momento, obs, taf)
+
+    assert wx.temp_c == 8.0
+    assert wx.dewpoint_c == 7.0
+    assert wx.spread_c == 1.0, "spread de 1 C es riesgo de niebla; el del METAR era 16"
+    assert "NWP" in procedencia
+
+
+def test_sin_nwp_la_temperatura_se_declara_como_de_la_observacion():
+    """Si el modelo no responde se degrada, pero se dice de donde salio el dato."""
+    t = 1_789_000_000
+    momento = t + 5 * _H
+    obs = _obs(t)
+    taf = _taf(t - 4 * _H, t + 20 * _H, [_periodo(t - 4 * _H, t + 20 * _H)])
+    eng = DecisionEngine(mock=True)
+    eng._nwp_para_el_momento = lambda sid, m: None
+
+    wx, procedencia = _condiciones(eng, momento, obs, taf)
+
+    assert wx.temp_c == 20.0
+    assert "sin NWP" in procedencia
+
+
+def test_el_taf_fuera_de_su_vigencia_no_se_usa():
+    """
+    Regresion: el corte tiene que mirar la vigencia DEL TAF.
+
+    Compararlo contra la ventana de vuelo no verifica nada, porque la ventana
+    ES el momento pedido: la condicion se cumple siempre y un TAF vencido se
+    usaria como si cubriera el momento.
+    """
+    t = 1_789_000_000
+    obs = _obs(t)
+    taf = _taf(t - 4 * _H, t + 6 * _H, [_periodo(t - 4 * _H, t + 6 * _H)])
+    eng = _motor_con_nwp(_nwp(t + 30 * _H))
+
+    wx, procedencia = _condiciones(eng, t + 30 * _H, obs, taf)
+
+    assert wx is obs
+    assert "no cubre" in procedencia
+
+
+def test_sin_taf_se_devuelve_la_observacion_declarada():
+    t = 1_789_000_000
+    obs = _obs(t)
+    eng = _motor_con_nwp(_nwp(t + 5 * _H))
+
+    wx, procedencia = _condiciones(eng, t + 5 * _H, obs, None)
+
+    assert wx is obs
+    assert "sin TAF" in procedencia
+
+
+def test_el_viento_se_toma_entero_de_una_sola_fuente():
+    """
+    VRB en el TAF es informacion, no un hueco.
+
+    Rellenar la direccion ausente con la del modelo produce un viento que
+    ninguna de las dos fuentes pronostico.
+    """
+    t = 1_789_000_000
+    momento = t + 5 * _H
+    obs = _obs(t)
+    taf = _taf(t - 4 * _H, t + 20 * _H, [
+        _periodo(t - 4 * _H, t + 20 * _H,
+                 wind_dir=None, wind_spd_kt=3.0, wind_variable=True),
+    ])
+    eng = _motor_con_nwp(_nwp(momento))   # el NWP trae 45/30
+
+    wx, _ = _condiciones(eng, momento, obs, taf)
+
+    assert wx.wind_variable is True
+    assert wx.wind_dir is None, "la direccion del modelo no completa un VRB del TAF"
+    assert wx.wind_spd_kt == 3.0
+
+
+def test_el_cielo_sin_capa_significativa_del_taf_borra_el_techo_observado():
+    """
+    NSC en el TAF significa SIN TECHO, no "dato ausente".
+
+    Si se tratara como hueco, el techo observado horas antes sobreviviria al
+    pronostico que dice que ya no esta.
+    """
+    t = 1_789_000_000
+    momento = t + 5 * _H
+    obs = _obs(t, ceiling_ft=800, sky_layers=[{"cover": "OVC", "base_ft": 800}],
+               visibility_km=3.0, flight_category="IFR")
+    taf = _taf(t - 4 * _H, t + 20 * _H, [
+        _periodo(t - 4 * _H, t + 20 * _H, visibility_km=10.0, ceiling_ft=None,
+                 sky_layers=[{"cover": "NSC", "base_ft": None}], wx_codes=[]),
+    ])
+    eng = _motor_con_nwp(_nwp(momento))
+
+    wx, _ = _condiciones(eng, momento, obs, taf)
+
+    assert wx.ceiling_ft is None
+    assert wx.sky_layers == [{"cover": "NSC", "base_ft": None}]
+    assert wx.flight_category == "VFR"
+
+
+def test_el_qnh_sigue_saliendo_de_la_observacion():
+    """Es el unico dato que solo publica el METAR, y cambia despacio."""
+    t = 1_789_000_000
+    momento = t + 5 * _H
+    obs = _obs(t, altimeter_hpa=1013.0)
+    taf = _taf(t - 4 * _H, t + 20 * _H, [_periodo(t - 4 * _H, t + 20 * _H)])
+    eng = _motor_con_nwp(_nwp(momento))   # el NWP trae 990
+
+    wx, _ = _condiciones(eng, momento, obs, taf)
+
+    assert wx.altimeter_hpa == 1013.0
+
+
+def test_el_deterioro_transitorio_del_taf_entra_en_las_condiciones():
+    """
+    Peor caso de la ventana, igual que en el camino NWP y que en el chequeo de
+    fenomenos peligrosos del TAF: un TEMPO que degrada cuenta.
+    """
+    t = 1_789_000_000
+    momento = t + 5 * _H
+    obs = _obs(t)
+    taf = _taf(t - 4 * _H, t + 20 * _H, [
+        _periodo(t - 4 * _H, t + 20 * _H, visibility_km=10.0, ceiling_ft=None,
+                 sky_layers=[{"cover": "NSC", "base_ft": None}], wx_codes=[]),
+        _periodo(momento - _H, momento + _H, indicador="TEMPO", transitorio=True,
+                 visibility_km=1.2, ceiling_ft=400,
+                 sky_layers=[{"cover": "OVC", "base_ft": 400}], wx_codes=["BR"]),
+    ])
+    eng = _motor_con_nwp(_nwp(momento))
+
+    wx, _ = _condiciones(eng, momento, obs, taf)
+
+    assert wx.visibility_km == 1.2
+    assert wx.ceiling_ft == 400
+
+
+@pytest.mark.parametrize("horas,espera_taf", [
+    (VIGENCIA_OBSERVACION_H - 0.1, False),
+    (VIGENCIA_OBSERVACION_H + 0.1, True),
+])
+def test_la_frontera_de_vigencia_de_la_observacion(horas, espera_taf):
+    """El corte es la vigencia declarada, no un umbral implicito."""
+    t = 1_789_000_000
+    momento = t + int(horas * _H)
+    obs = _obs(t)
+    taf = _taf(t - 4 * _H, t + 20 * _H, [_periodo(t - 4 * _H, t + 20 * _H)])
+    eng = _motor_con_nwp(_nwp(momento))
+
+    wx, procedencia = _condiciones(eng, momento, obs, taf)
+
+    assert (wx.source == "metar+taf") is espera_taf, procedencia
+
+
+@pytest.mark.parametrize("avion", [
+    "Pipistrel Alpha Trainer", "Cessna 152", "Cessna 172 Skyhawk",
+    "Piper PA-28 Cherokee", "Diamond DA40",
+])
+def test_la_eleccion_de_fuente_no_depende_de_la_aeronave(avion):
+    """
+    REGLA DE ALCANCE: que fuente describe el momento es una cuestion de datos.
+    Lo que cambia con la aeronave es el veredicto, no la procedencia.
+    """
+    t = 1_789_000_000
+    momento = t + 5 * _H
+    obs = _obs(t)
+    taf = _taf(t - 4 * _H, t + 20 * _H, [_periodo(t - 4 * _H, t + 20 * _H)])
+    eng = _motor_con_nwp(_nwp(momento), avion=avion)
+
+    wx, procedencia = _condiciones(eng, momento, obs, taf)
+
+    assert wx.source == "metar+taf"
+    assert wx.visibility_km == 4.0
+    assert procedencia.startswith("pronostico TAF")
+
+
+def test_el_resultado_declara_de_donde_salieron_las_condiciones():
+    """
+    El campo existe para que la pantalla pueda decirlo. Un numero sin su
+    procedencia es exactamente el modo de falla que este trabajo corrige.
+    """
+    eng = DecisionEngine(mock=True)
+    res = eng.evaluate("SACO", runway_heading=180,
+                       departure_time=int(time.time()) + 3600,
+                       flight_duration_h=1.0)
+    assert res.conditions_source
+    assert res.weather_source in {"metar", "metar+taf", "nwp"}
