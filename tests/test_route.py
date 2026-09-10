@@ -279,3 +279,65 @@ def test_los_puntos_de_paso_funcionan_en_cualquier_region():
         r = optimize(origen, destino, aircraft=ac, via=_via(paso))
         assert r.found, f"{origen}->{paso}->{destino}: {r.error}"
         assert paso in r.path
+
+
+# ── La escala es un aterrizaje: se evalua, y a la hora en que se llega ────────
+# Hueco detectado despues de implementar `via`: el punto de escala es el DESTINO
+# de su segmento, asi que nunca caia en el `path[1:-1]` que mira
+# `evaluate_intermediate`. Quedaba sin evaluar justamente el aerodromo donde el
+# piloto va a aterrizar.
+
+def test_la_escala_se_evalua_como_aerodromo():
+    import time as _t
+    ac = get_profile("Cessna 172 Skyhawk")
+    r = optimize("SACO", "SAEZ", aircraft=ac, via=_via("SAAR", escala=True),
+                 evaluate_intermediate=True, mock=True,
+                 dep_time=int(_t.time()) + 3600)
+    assert r.found
+    escalas = [i for i in r.intermediate_results if i.code == "SAAR"]
+    assert escalas, "el aerodromo de escala tiene que evaluarse: se aterriza ahi"
+    assert escalas[0].is_stop is True
+    assert escalas[0].decision in ("GO", "CAUTION", "NO GO", "SIN DATOS")
+
+
+def test_el_sobrevuelo_no_se_evalua_como_aterrizaje():
+    """No se aterriza, asi que no corresponde exigirle condiciones de pista."""
+    import time as _t
+    ac = get_profile("Cessna 172 Skyhawk")
+    r = optimize("SACO", "SAEZ", aircraft=ac, via=_via("SAAR", escala=False),
+                 evaluate_intermediate=True, mock=True,
+                 dep_time=int(_t.time()) + 3600)
+    assert r.found
+    assert not [i for i in r.intermediate_results
+                if i.code == "SAAR" and i.is_stop]
+
+
+def test_la_escala_se_evalua_a_la_hora_de_llegada_no_a_la_de_salida():
+    """
+    Si la escala esta a dos horas de vuelo, su meteorologia a la hora de
+    despegue es la de otro momento. Es el mismo error que ya costo caro en el
+    motor de decision, y no puede repetirse aca.
+    """
+    import time as _t
+    ac = get_profile("Cessna 172 Skyhawk")
+    dep = int(_t.time()) + 3600
+    r = optimize("SACO", "SAEZ", aircraft=ac, via=_via("SAAR", escala=True),
+                 evaluate_intermediate=True, mock=True, dep_time=dep)
+    escala = next(i for i in r.intermediate_results if i.code == "SAAR")
+    assert escala.evaluated_at > dep, (
+        "la escala se evaluo a la hora de despegue, no a la de llegada"
+    )
+
+
+def test_los_intermedios_de_una_ruta_normal_tambien_llevan_su_hora():
+    """La ruta sin puntos de paso no puede quedar menos correcta que la que si."""
+    import time as _t
+    ac = get_profile("Cessna 172 Skyhawk")
+    dep = int(_t.time()) + 3600
+    r = optimize("SASA", "SAEZ", aircraft=ac, evaluate_intermediate=True,
+                 mock=True, dep_time=dep)
+    if not r.intermediate_results:
+        pytest.skip("la ruta no tiene aerodromos intermedios")
+    horas = [i.evaluated_at for i in r.intermediate_results]
+    assert all(h > dep for h in horas)
+    assert horas == sorted(horas), "se pasa por ellos en orden"

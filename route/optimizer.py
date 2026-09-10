@@ -213,6 +213,14 @@ class IntermediateResult:
     decision   : str    # "GO" | "CAUTION" | "NO GO" | "SIN DATOS"
     r_total    : float
     dist_from_prev_km: float
+    # True si el piloto pidio ATERRIZAR aca. Un aerodromo de paso solo se
+    # sobrevuela; uno de escala tiene que ser operable, y su veredicto pesa
+    # sobre el vuelo igual que el del origen y el del destino.
+    is_stop    : bool = False
+    # Momento para el que se evaluo (Unix UTC). En una ruta con escalas los
+    # tramos no salen todos a la misma hora: el segundo arranca cuando termina
+    # el primero, y evaluarlo a la hora de despegue seria mirar otro momento.
+    evaluated_at: int = 0
 
 
 @dataclass
@@ -577,15 +585,24 @@ def _optimize_via(
                       f"el origen o el destino.",
             )
 
+    # Hora de salida de CADA segmento. El segundo tramo no despega a la misma
+    # hora que el primero: arranca cuando el primero termina. Evaluar todo a la
+    # hora de despegue seria mirar la meteorologia de otro momento, que es
+    # exactamente el error que ya costo caro en el motor de decision.
+    escalas = {v.code for v in via if v.is_stop}
     segmentos: List[OptimizeResult] = []
+    salida_seg = dep_time
+    salidas: List[int] = []
+
     for a, b in zip(orden, orden[1:]):
+        salidas.append(salida_seg)
         seg = optimize(
             origin=a, dest=b, mode=mode, r_map=r_map,
             wind_dir=wind_dir, wind_spd_kt=wind_spd_kt,
             avoid_restricted_zones=avoid_restricted_zones, airports=airports,
             aircraft=ac, evaluate_intermediate=evaluate_intermediate,
             suggest_alternate=False,     # el alternativo es del destino final
-            mock=mock, dep_time=dep_time,
+            mock=mock, dep_time=salida_seg,
         )
         if not seg.found:
             return OptimizeResult(
@@ -596,6 +613,8 @@ def _optimize_via(
                 error=f"No hay ruta de {a} a {b}: {seg.error}",
             )
         segmentos.append(seg)
+        if salida_seg > 0:
+            salida_seg += int(seg.total_time_h * 3600)
 
     # ── Camino y tramos: concatenar sin duplicar los empalmes ────────────────
     path: List[str] = list(segmentos[0].path)
@@ -605,7 +624,6 @@ def _optimize_via(
         legs.extend(seg.legs)
 
     # ── Combustible: agrupar los tramos en ETAPAS separadas por las escalas ──
-    escalas = {v.code for v in via if v.is_stop}
     etapas: List[List[dict]] = [[]]
     for leg in legs:
         etapas[-1].append({
@@ -631,6 +649,41 @@ def _optimize_via(
     intermedios: List[IntermediateResult] = []
     for seg in segmentos:
         intermedios.extend(seg.intermediate_results)
+
+    # ── Las ESCALAS se evaluan como aerodromos ───────────────────────────────
+    # Un punto de escala es el DESTINO de su segmento, asi que nunca cae en el
+    # path[1:-1] que mira `evaluate_intermediate`: sin esto quedaba sin evaluar
+    # justamente el aerodromo donde el piloto va a aterrizar.
+    #
+    # Se evalua a la hora de LLEGADA, no a la de despegue: si la escala esta a
+    # dos horas de vuelo, su meteorologia a la hora de salida es la de otro
+    # momento. `salidas[i+1]` es exactamente cuando se despega DESDE esa escala,
+    # o sea cuando se estuvo ahi.
+    aps_ref = airports if airports is not None else dict(AIRPORTS_PUBLIC)
+    ya_evaluados = {i.code for i in intermedios}
+    for idx, punto in enumerate(via):
+        if not punto.is_stop or punto.code in ya_evaluados:
+            continue
+        ap_escala = aps_ref.get(punto.code) or AIRPORTS.get(punto.code)
+        if ap_escala is None:
+            continue
+        cuando = salidas[idx + 1] if idx + 1 < len(salidas) else dep_time
+        decision, r_val = _evaluate_airport(punto.code, ac, mock=mock,
+                                            when_unix=cuando)
+        prev = orden[idx]
+        ap_prev = aps_ref.get(prev) or AIRPORTS.get(prev)
+        dist = (haversine_km(ap_prev.lat, ap_prev.lon,
+                             ap_escala.lat, ap_escala.lon)
+                if ap_prev else 0.0)
+        intermedios.append(IntermediateResult(
+            code              = punto.code,
+            name              = ap_escala.name,
+            decision          = decision,
+            r_total           = round(r_val, 3),
+            dist_from_prev_km = round(dist, 1),
+            is_stop           = True,
+            evaluated_at      = cuando,
+        ))
 
     # El alternativo es el del DESTINO FINAL, no el de cada segmento.
     alternate = None
@@ -717,6 +770,12 @@ def optimize(
     # ANTES de tocar nada para no duplicar la logica de un tramo suelto: cada
     # segmento se resuelve con esta misma funcion, sin `via`.
     if via:
+        if weather_reroute:
+            # El rerouteo automatico reescribe el camino, lo que dejaria sin
+            # efecto los puntos que el piloto pidio expresamente. Se declara en
+            # vez de ignorarse en silencio.
+            _logger.warning("weather_reroute no se aplica cuando hay puntos de paso: "
+                         "el piloto fijo la ruta expresamente")
         return _optimize_via(
             origin=origin, dest=dest, via=via, mode=mode, r_map=r_map,
             wind_dir=wind_dir, wind_spd_kt=wind_spd_kt,
@@ -902,11 +961,21 @@ def optimize(
     intermediate_results: List[IntermediateResult] = []
     if evaluate_intermediate and len(path) > 2:
         intermediates = path[1:-1]
+        # Cada intermedio se evalua para el momento en que se PASA por el, no
+        # para la hora de despegue: en una ruta larga puede haber horas de
+        # diferencia, y devolver la meteorologia de otro momento como si fuera
+        # la del punto es el mismo error que ya costo caro en el motor.
+        # (Se replica el criterio que este archivo ya usaba para el alternativo,
+        # que se evalua a la hora estimada de arribo.)
+        acumulado_h = 0.0
         for i, code in enumerate(intermediates):
+            acumulado_h += legs[i].time_hours if i < len(legs) else 0.0
+            cuando = dep_time + int(acumulado_h * 3600) if dep_time > 0 else 0
             ap = aps.get(code)
             if ap is None:
                 continue
-            decision, r_val = _evaluate_airport(code, ac, mock=mock)
+            decision, r_val = _evaluate_airport(code, ac, mock=mock,
+                                                when_unix=cuando)
             prev_code = path[i]   # en la lista path, el previo es path[i] porque intermediates[i] = path[i+1]
             prev_ap = aps.get(prev_code)
             dist_prev = haversine_km(prev_ap.lat, prev_ap.lon, ap.lat, ap.lon) if prev_ap else 0.0
@@ -916,6 +985,7 @@ def optimize(
                 decision         = decision,
                 r_total          = round(r_val, 3),
                 dist_from_prev_km= round(dist_prev, 1),
+                evaluated_at     = cuando,
             ))
 
     # ── Alternativo automatico ───────────────────────────────────────────────
