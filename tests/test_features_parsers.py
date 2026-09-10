@@ -193,8 +193,68 @@ def test_no_se_usan_las_siglas_de_la_faa():
 def test_visibilidad_metar():
     assert _parse_visibility_km("9999") == 10.0        # CAVOK
     assert _parse_visibility_km("6000") == 6.0
-    assert _parse_visibility_km("10SM") == pytest.approx(18.52, abs=0.01)
+    # Milla TERRESTRE (1.609 km), no nautica. El valor anterior de este test
+    # era 18.52, que sale de 1.852 —la nautica— y sobreestimaba un 15 %.
+    assert _parse_visibility_km("10SM") == pytest.approx(16.09, abs=0.01)
     assert _parse_visibility_km(None) is None
+
+
+# ── La API entrega la visibilidad en MILLAS TERRESTRES, sin sufijo ────────────
+# Bug real: un TAF que dice "4000" (metros) llega como "2.49" (millas), y el
+# parser lo tomaba como metros -> 0.002 km -> por debajo del bloqueo duro de
+# 1.5 km -> NO GO falso. Medido: 8 bloqueos espurios en 28 periodos TAF de 7
+# aerodromos. Los valores esperados se verificaron uno a uno contra el texto
+# crudo del TAF, que si viene en metros.
+
+@pytest.mark.parametrize("api,metros_del_taf", [
+    ("2.49", 4000),
+    ("3.73", 6000),
+    ("4.35", 7000),
+    ("1.86", 3000),
+    ("3.11", 5000),
+])
+def test_un_numero_suelto_de_la_api_son_millas_terrestres(api, metros_del_taf):
+    km = _parse_visibility_km(api)
+    assert km == pytest.approx(metros_del_taf / 1000.0, abs=0.02), (
+        f"la API dice {api} SM y el TAF crudo {metros_del_taf} m"
+    )
+
+
+def test_el_valor_con_mas_es_el_cavok_de_la_api():
+    """'6+' significa "mas de 6 SM": es como aviationweather codifica el CAVOK."""
+    assert _parse_visibility_km("6+") == 10.0
+
+
+def test_un_numero_grande_sigue_siendo_metros():
+    """
+    El formato OACI en metros tiene que seguir funcionando. No hay ambiguedad:
+    la API tope la escala en "6+", asi que una visibilidad en millas nunca pasa
+    de ~10 y una en metros nunca baja de las centenas.
+    """
+    assert _parse_visibility_km("800")  == pytest.approx(0.8,  abs=0.01)
+    assert _parse_visibility_km("1500") == pytest.approx(1.5,  abs=0.01)
+    assert _parse_visibility_km("4000") == pytest.approx(4.0,  abs=0.01)
+
+
+def test_una_visibilidad_operable_no_puede_disparar_un_bloqueo_duro():
+    """
+    El sintoma que delato el bug: 4 km de visibilidad —marginal pero legal—
+    terminaba bloqueando el vuelo como si fueran 4 metros.
+    """
+    from risk.hard_blockers import check_hard_blockers
+
+    km = _parse_visibility_km("2.49")          # 4000 m en el TAF crudo
+    assert km > 1.5
+    assert not check_hard_blockers(km, None, []).is_blocked
+
+
+def test_una_visibilidad_realmente_baja_sigue_bloqueando():
+    """El arreglo no puede volverse permisivo con lo que si es peligroso."""
+    from risk.hard_blockers import check_hard_blockers
+
+    km = _parse_visibility_km("0.5")           # media milla = 0.8 km
+    assert km < 1.5
+    assert check_hard_blockers(km, None, []).is_blocked
 
 
 def test_solo_bkn_ovc_constituyen_techo():

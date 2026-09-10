@@ -43,7 +43,15 @@ logger = logging.getLogger(__name__)
 CEILING_COVERS = {"BKN", "OVC", "VV"}
 
 # Factor de conversion: millas nauticas → km
-SM_TO_KM = 1.852
+# Milla TERRESTRE (statute mile), que es la unidad en que aviationweather.gov
+# reporta la visibilidad. NO confundir con la nautica (1.852 km), que es la que
+# estaba aca y sobreestimaba toda visibilidad en SM un 15 %.
+SM_TO_KM = 1.609344
+
+# Por encima de este valor, un numero suelto no puede ser millas: son metros.
+# La visibilidad en SM que reporta la API llega hasta "6+"; una en metros
+# arranca en centenas. No hay solapamiento posible entre las dos escalas.
+_UMBRAL_SM_VS_METROS = 15.0
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -189,13 +197,27 @@ def _parse_visibility_km(vis_str: Optional[str]) -> Optional[float]:
     """
     Convierte el campo de visibilidad (string) a kilometros (float).
 
+    aviationweather.gov entrega la visibilidad en MILLAS TERRESTRES, como texto
+    y SIN sufijo: un TAF que dice "4000" (metros) llega como "2.49", y un CAVOK
+    llega como "6+". Interpretar ese numero como metros lo divide por mil y
+    produce visibilidades de milimetros, que caen por debajo del bloqueo duro de
+    1.5 km y generan NO GO falsos. Medido en un muestreo de 28 periodos TAF de 7
+    aerodromos: 8 bloqueos espurios.
+
     Formatos soportados:
+        "6+"        → 10.0 km  (AWC: "mas de 6 SM"; es como reporta el CAVOK)
+        "2.49"      → 4.01 km  (statute miles sin sufijo, formato AWC)
+        "10SM"      → 16.09 km (statute miles con sufijo)
+        "1/4SM"     → 0.40 km  (fraccion de SM)
+        "1 1/4SM"   → 2.01 km  (entero + fraccion)
+        "M1/4SM"    → 0.40 km  (M = menos de, se trata igual)
         "9999"      → 10.0 km  (OACI: >= 10 km, techo de reporte)
         "6000"      → 6.0 km   (metros numericos, formato ICAO)
-        "10SM"      → 18.52 km (statute miles, formato FAA/AWC)
-        "1/4SM"     → 0.46 km  (fraccion de SM)
-        "1 1/4SM"   → 2.31 km  (entero + fraccion)
-        "M1/4SM"    → 0.46 km  (M = menos de, se trata igual)
+
+    La distincion entre millas y metros para un numero suelto es por MAGNITUD, y
+    no hay ambiguedad posible: la API tope la escala en "6+", asi que una
+    visibilidad en millas nunca pasa de ~10, y una en metros nunca baja de las
+    centenas.
     """
     if vis_str is None:
         return None
@@ -208,12 +230,27 @@ def _parse_visibility_km(vis_str: Optional[str]) -> Optional[float]:
     if "SM" in s:
         return _parse_sm_visibility(s)
 
+    # "6+" = mas de 6 SM (9.66 km). Es como la API codifica el CAVOK, asi que se
+    # devuelve el mismo techo de reporte que "9999": por encima de 10 km la
+    # distincion no cambia ninguna decision (la rampa de riesgo ya es 0 sobre
+    # los 8 km) y mantiene una sola convencion para "sin restriccion".
+    if s.endswith("+"):
+        try:
+            sm = float(s[:-1])
+        except ValueError:
+            logger.warning(f"Visibilidad con formato no reconocido: '{vis_str}'")
+            return None
+        return max(10.0, round(sm * SM_TO_KM, 3))
+
     try:
-        meters = float(s)
-        return round(meters / 1000.0, 3)
+        valor = float(s)
     except ValueError:
         logger.warning(f"Visibilidad con formato no reconocido: '{vis_str}'")
         return None
+
+    if valor >= _UMBRAL_SM_VS_METROS:
+        return round(valor / 1000.0, 3)          # metros (formato OACI)
+    return round(valor * SM_TO_KM, 3)            # millas terrestres (formato AWC)
 
 
 def _parse_sm_visibility(s: str) -> Optional[float]:

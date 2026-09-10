@@ -423,6 +423,36 @@ hora del formulario decia `"Hora local UTC"` —una contradiccion— y mostraba 
 equivalencia de ninguna: ahora dice `06:00 UTC = 03:00 hora local argentina` mientras
 se escribe.
 
+### La visibilidad de aviationweather viene en MILLAS TERRESTRES
+
+Bug critico y preexistente (septiembre 2026). La API entrega la visibilidad como texto
+y en millas terrestres, SIN sufijo; el parser la tomaba como metros:
+
+```
+TAF SAEZ: "... 4000 BR ..."        la API devuelve  '2.49'  (millas)
+    parser:  2.49 / 1000 = 0.002 km   -> debajo del bloqueo duro de 1.5 km -> NO GO
+    real  :  2.49 x 1.609 = 4.01 km   -> perfectamente operable
+```
+
+Medido sobre 28 periodos TAF de 7 aerodromos controlados: **8 bloqueos duros falsos**.
+Tres aerodromos (SACO, SAAR, SAME) daban NO GO por esto en el momento de la prueba.
+Peor todavia, el sintoma era indistinguible de un bloqueo legitimo: SACO y SANC
+bloqueaban por TSRA real y los otros por nada.
+
+Tres defectos de la misma familia, todos corregidos:
+- Un numero suelto es **milla terrestre**, no metros. La distincion con el formato OACI
+  en metros es por MAGNITUD y no tiene ambiguedad: la API tope la escala en "6+", asi
+  que una visibilidad en millas nunca pasa de ~10 y una en metros nunca baja de las
+  centenas (`_UMBRAL_SM_VS_METROS`).
+- **`'6+'` no se reconocia** y devolvia `None`: es como la API codifica el CAVOK, asi
+  que el sistema estaba CIEGO a la visibilidad en todos los aerodromos con METAR
+  (los 17 muestreados reportaban `'6+'`).
+- **`SM_TO_KM` era 1.852**, la milla NAUTICA. La terrestre son 1.609344 km, asi que
+  toda visibilidad en SM se sobreestimaba un 15 %.
+
+Verificado que el arreglo no vuelve permisivo lo que si es peligroso: en SACO, la
+franja con `TSRA` sigue dando NO GO y las de CAVOK y `SHRA` dan GO.
+
 ### Cada extremo del vuelo se evalua PARA SU MOMENTO
 
 El origen importa cuando se despega; el destino, cuando se aterriza. `web/app.py`
