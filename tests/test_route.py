@@ -145,3 +145,137 @@ def test_la_heuristica_es_admisible_en_los_otros_modos(modo):
     for nodo in graph.nodes:
         if nodo in real:
             assert _heuristic(nodo, dest, graph) <= real[nodo] + 1e-9
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Puntos de paso: sobrevuelo y escala NO son lo mismo
+# ══════════════════════════════════════════════════════════════════════════════
+# La geometria de la ruta es identica en los dos casos, pero la autonomia no:
+# sobrevolar es un vuelo continuo y hay que llegar de una; hacer escala parte el
+# vuelo en etapas y cada una se mide por separado. Tratarlos igual daria por
+# viable una ruta que no lo es, o al reves.
+
+from route.optimizer import ViaPoint, detour_cost, optimize
+
+
+def _via(codigo, escala=False):
+    return [ViaPoint(codigo, is_stop=escala)]
+
+
+def test_el_punto_de_paso_aparece_en_la_ruta():
+    ac = get_profile("Cessna 172 Skyhawk")
+    r = optimize("SACO", "SAEZ", aircraft=ac, via=_via("SAAR"))
+    assert r.found
+    assert "SAAR" in r.path
+    assert r.path[0] == "SACO" and r.path[-1] == "SAEZ"
+
+
+def test_el_desvio_nunca_acorta_la_ruta():
+    """Pasar por un punto solo puede agregar distancia, jamas quitarla."""
+    ac = get_profile("Cessna 172 Skyhawk")
+    directo = optimize("SACO", "SAEZ", aircraft=ac)
+    con_via = optimize("SACO", "SAEZ", aircraft=ac, via=_via("SAAR"))
+    assert directo.found and con_via.found
+    assert con_via.total_dist_km >= directo.total_dist_km
+
+
+def test_la_escala_parte_la_autonomia_en_etapas():
+    """
+    El caso que justifica la distincion. Con el Alpha, SACO-SAEZ no entra en el
+    tanque de un tirón; con escala en Rosario cada etapa si. La ruta es la misma
+    linea en los dos casos: lo que cambia es si se aterriza en el medio.
+    """
+    alpha = get_profile("Pipistrel Alpha Trainer")
+    sobrevuelo = optimize("SACO", "SAEZ", aircraft=alpha, via=_via("SAAR", False))
+    escala     = optimize("SACO", "SAEZ", aircraft=alpha, via=_via("SAAR", True))
+
+    assert sobrevuelo.found and escala.found
+    assert sobrevuelo.path == escala.path          # misma geometria
+    assert sobrevuelo.total_dist_km == escala.total_dist_km
+    assert sobrevuelo.fuel_ok is False             # vuelo continuo: no llega
+    assert escala.fuel_ok is True                  # por etapas: si
+
+
+def test_un_punto_repetido_no_arma_ruta():
+    """Un tramo de longitud cero rompe el calculo de rumbo."""
+    ac = get_profile("Cessna 172 Skyhawk")
+    for via in (_via("SACO"), _via("SAEZ"),
+                [ViaPoint("SAAR"), ViaPoint("SAAR")]):
+        r = optimize("SACO", "SAEZ", aircraft=ac, via=via)
+        assert r.found is False
+        assert "repetido" in r.error
+
+
+def test_un_punto_inexistente_falla_con_mensaje_claro():
+    ac = get_profile("Cessna 172 Skyhawk")
+    r = optimize("SACO", "SAEZ", aircraft=ac, via=_via("XXXX"))
+    assert r.found is False
+    assert r.error
+
+
+def test_varios_puntos_de_paso_se_respetan_en_orden():
+    ac = get_profile("Cessna 172 Skyhawk")
+    r = optimize("SACO", "SAEZ", aircraft=ac,
+                 via=[ViaPoint("SAAR"), ViaPoint("SAAJ")])
+    assert r.found
+    assert r.path.index("SAAR") < r.path.index("SAAJ")
+
+
+def test_los_tramos_encadenan_sin_huecos():
+    """El destino de cada tramo tiene que ser el origen del siguiente."""
+    ac = get_profile("Cessna 172 Skyhawk")
+    r = optimize("SACO", "SAEZ", aircraft=ac,
+                 via=[ViaPoint("SAAR"), ViaPoint("SAAJ")])
+    assert r.found
+    for a, b in zip(r.legs, r.legs[1:]):
+        assert a.dest == b.origin
+
+
+def test_el_total_es_la_suma_de_los_tramos():
+    ac = get_profile("Cessna 172 Skyhawk")
+    r = optimize("SACO", "SAEZ", aircraft=ac, via=_via("SAAR"))
+    assert r.found
+    assert r.total_dist_km == pytest.approx(
+        sum(l.distance_km for l in r.legs), abs=0.2)
+
+
+def test_el_costo_del_desvio_se_informa():
+    ac = get_profile("Cessna 172 Skyhawk")
+    base = optimize("SACO", "SAEZ", aircraft=ac)
+    c = detour_cost(base, optimize("SACO", "SAEZ", aircraft=ac, via=_via("SAAR")))
+    assert c.found
+    assert c.dist_km_extra >= 0
+    assert c.time_min_extra >= 0
+    assert c.path_despues != c.path_antes
+
+
+def test_un_desvio_que_rompe_la_autonomia_se_declara_aparte():
+    """
+    Que un desvio deje la ruta sin combustible no es un detalle de magnitud:
+    es un cambio de viabilidad y se informa por separado de los kilometros.
+    """
+    from route.optimizer import DetourCost
+
+    c = DetourCost(
+        found=True, dist_km_extra=50.0, time_min_extra=30.0, fuel_l_extra=8.0,
+        path_antes=["A", "B"], path_despues=["A", "V", "B"],
+        fuel_ok_antes=True, fuel_ok_despues=False,
+        needs_stop_antes=False, needs_stop_despues=True,
+    )
+    assert c.rompe_la_autonomia is True
+
+
+def test_los_puntos_de_paso_funcionan_en_cualquier_region():
+    """Regla de alcance: no puede depender de la Pampa."""
+    ac = get_profile("Cessna 172 Skyhawk")
+    casos = [
+        ("SASA", "SANC", "SANT"),   # NOA
+        ("SAAR", "SAEZ", "SAAJ"),   # Pampa
+        ("SAZN", "SAZS", "SAZY"),   # Patagonia
+    ]
+    for origen, destino, paso in casos:
+        if not all(c in AIRPORTS for c in (origen, destino, paso)):
+            continue
+        r = optimize(origen, destino, aircraft=ac, via=_via(paso))
+        assert r.found, f"{origen}->{paso}->{destino}: {r.error}"
+        assert paso in r.path

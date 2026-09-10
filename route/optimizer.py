@@ -172,6 +172,27 @@ def _build_corridor_graph(
 # Tipos de datos
 # ────────────────────────────────────────────────────────────────────────────
 
+@dataclass(frozen=True)
+class ViaPoint:
+    """
+    Punto de paso intermedio pedido por el piloto.
+
+    `is_stop` distingue dos cosas que NO son lo mismo, aunque den la misma
+    geometria de ruta:
+
+      * SOBREVUELO (is_stop=False) — "quiero pasar por Rosario". Vuelo continuo:
+        el combustible se calcula sobre todo el trayecto y el aerodromo es solo
+        un punto de forma de la ruta.
+
+      * ESCALA (is_stop=True) — "quiero hacer escala en Rosario". Se aterriza
+        ahi, y de eso se siguen dos consecuencias que el sistema tiene que
+        respetar: el aerodromo debe ser ATERRIZABLE (su veredicto cuenta) y el
+        combustible se evalua POR ETAPA entre escalas, no sobre el total.
+    """
+    code    : str
+    is_stop : bool = False
+
+
 @dataclass
 class LegDetail:
     """Detalle de un tramo de la ruta."""
@@ -438,6 +459,207 @@ def _filter_restricted_edges(graph: "RouteGraph", airports: Dict) -> "RouteGraph
 # Optimizador principal
 # ────────────────────────────────────────────────────────────────────────────
 
+# ────────────────────────────────────────────────────────────────────────────
+# Costo de un desvio
+# ────────────────────────────────────────────────────────────────────────────
+
+@dataclass
+class DetourCost:
+    """
+    Lo que cuesta pasar por un punto, comparado con la ruta directa.
+
+    Existe para que una propuesta de desvio sea una decision informada y no un
+    boton a ciegas: el piloto ve cuanto agrega antes de aceptar.
+
+    `fuel_ok_antes` y `fuel_ok_despues` se informan por separado a proposito:
+    un desvio que deja la ruta sin autonomia suficiente NO es un detalle de
+    magnitud, es un cambio de viabilidad, y merece decirse aparte de los
+    kilometros.
+    """
+    found            : bool
+    dist_km_extra    : float
+    time_min_extra   : float
+    fuel_l_extra     : float
+    path_antes       : List[str]
+    path_despues     : List[str]
+    fuel_ok_antes    : bool
+    fuel_ok_despues  : bool
+    needs_stop_antes : bool
+    needs_stop_despues: bool
+    error            : str = ""
+
+    @property
+    def rompe_la_autonomia(self) -> bool:
+        """El desvio convierte una ruta viable en una que no cierra."""
+        return self.fuel_ok_antes and not self.fuel_ok_despues
+
+
+def detour_cost(base: OptimizeResult, con_via: OptimizeResult) -> DetourCost:
+    """Compara la ruta directa contra la que pasa por los puntos pedidos."""
+    if not base.found or not con_via.found:
+        return DetourCost(
+            found=False, dist_km_extra=0.0, time_min_extra=0.0, fuel_l_extra=0.0,
+            path_antes=list(base.path), path_despues=list(con_via.path),
+            fuel_ok_antes=base.fuel_ok, fuel_ok_despues=con_via.fuel_ok,
+            needs_stop_antes=base.needs_fuel_stop,
+            needs_stop_despues=con_via.needs_fuel_stop,
+            error=con_via.error or base.error or "No se pudo calcular la ruta.",
+        )
+    return DetourCost(
+        found              = True,
+        dist_km_extra      = round(con_via.total_dist_km - base.total_dist_km, 1),
+        time_min_extra     = round((con_via.total_time_h - base.total_time_h) * 60, 0),
+        fuel_l_extra       = round(con_via.total_fuel_l - base.total_fuel_l, 1),
+        path_antes         = list(base.path),
+        path_despues       = list(con_via.path),
+        fuel_ok_antes      = base.fuel_ok,
+        fuel_ok_despues    = con_via.fuel_ok,
+        needs_stop_antes   = base.needs_fuel_stop,
+        needs_stop_despues = con_via.needs_fuel_stop,
+    )
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Ruta con puntos de paso
+# ────────────────────────────────────────────────────────────────────────────
+# La ruta se resuelve por segmentos —origen->via1->via2->destino— y se fusiona.
+# Cada segmento usa `optimize()` sin `via`, de modo que no hay una segunda
+# implementacion del ruteo que pueda divergir de la primera.
+#
+# Lo unico que NO se puede fusionar sumando es el combustible, y ahi esta la
+# diferencia entre sobrevuelo y escala:
+#
+#   * Sin escalas el vuelo es continuo: la autonomia se mide sobre el trayecto
+#     COMPLETO. Dos tramos que por separado entran en el tanque pueden no
+#     entrar juntos, y sumar dos `fuel_ok=True` daria un falso positivo.
+#
+#   * Con escalas el vuelo se parte en ETAPAS. Cada etapa se mide por separado
+#     porque en el medio se aterriza (y eventualmente se reposta).
+
+
+def _merge_summaries(etapas: "List[dict]") -> dict:
+    """
+    Combina los resumenes de cada etapa en uno solo.
+
+    Distancia, tiempo y combustible se suman —son magnitudes del vuelo entero—
+    pero la FACTIBILIDAD no: basta con que UNA etapa no entre en el tanque para
+    que la ruta no sea viable, y basta con que UNA supere el umbral para que
+    haga falta parar a cargar.
+    """
+    return {
+        "total_distance_km": round(sum(e["total_distance_km"] for e in etapas), 1),
+        "total_time_hours" : round(sum(e["total_time_hours"]  for e in etapas), 3),
+        "total_fuel_liters": round(sum(e["total_fuel_liters"] for e in etapas), 1),
+        "needs_fuel_stop"  : any(e["needs_fuel_stop"] for e in etapas),
+        "fuel_ok"          : all(e["fuel_ok"] for e in etapas),
+    }
+
+
+def _optimize_via(
+    origin, dest, via, mode, r_map, wind_dir, wind_spd_kt,
+    avoid_restricted_zones, airports, aircraft, evaluate_intermediate,
+    suggest_alternate, mock, dep_time,
+) -> OptimizeResult:
+    """Arma la ruta pasando por los puntos pedidos y fusiona los segmentos."""
+    ac    = aircraft if aircraft is not None else ALPHA_TRAINER
+    orden = [origin] + [v.code for v in via] + [dest]
+
+    # Un punto repetido no agrega nada y puede generar un tramo de longitud
+    # cero, que rompe el calculo de rumbo.
+    for a, b in zip(orden, orden[1:]):
+        if a == b:
+            return OptimizeResult(
+                found=False, mode=mode, path=[], legs=[],
+                total_dist_km=0.0, total_time_h=0.0, total_fuel_l=0.0,
+                needs_fuel_stop=False, fuel_ok=False, airspace_conflicts=[],
+                aircraft=ac,
+                error=f"El punto de paso {a} esta repetido o coincide con "
+                      f"el origen o el destino.",
+            )
+
+    segmentos: List[OptimizeResult] = []
+    for a, b in zip(orden, orden[1:]):
+        seg = optimize(
+            origin=a, dest=b, mode=mode, r_map=r_map,
+            wind_dir=wind_dir, wind_spd_kt=wind_spd_kt,
+            avoid_restricted_zones=avoid_restricted_zones, airports=airports,
+            aircraft=ac, evaluate_intermediate=evaluate_intermediate,
+            suggest_alternate=False,     # el alternativo es del destino final
+            mock=mock, dep_time=dep_time,
+        )
+        if not seg.found:
+            return OptimizeResult(
+                found=False, mode=mode, path=[], legs=[],
+                total_dist_km=0.0, total_time_h=0.0, total_fuel_l=0.0,
+                needs_fuel_stop=False, fuel_ok=False, airspace_conflicts=[],
+                aircraft=ac,
+                error=f"No hay ruta de {a} a {b}: {seg.error}",
+            )
+        segmentos.append(seg)
+
+    # ── Camino y tramos: concatenar sin duplicar los empalmes ────────────────
+    path: List[str] = list(segmentos[0].path)
+    legs: List[LegDetail] = list(segmentos[0].legs)
+    for seg in segmentos[1:]:
+        path.extend(seg.path[1:])       # el primero ya esta como final del previo
+        legs.extend(seg.legs)
+
+    # ── Combustible: agrupar los tramos en ETAPAS separadas por las escalas ──
+    escalas = {v.code for v in via if v.is_stop}
+    etapas: List[List[dict]] = [[]]
+    for leg in legs:
+        etapas[-1].append({
+            "distance_km": leg.distance_km,
+            "time_hours" : leg.time_hours,
+            "fuel_liters": leg.fuel_liters,
+        })
+        if leg.dest in escalas:
+            etapas.append([])           # se aterriza aca: arranca otra etapa
+    etapas = [e for e in etapas if e]
+
+    summary = _merge_summaries([route_summary(e, aircraft=ac) for e in etapas])
+
+    # ── Espacio aereo: union sin repetir zonas ───────────────────────────────
+    conflicts: List[AirspaceZone] = []
+    vistas = set()
+    for seg in segmentos:
+        for z in seg.airspace_conflicts:
+            if z.name not in vistas:
+                conflicts.append(z)
+                vistas.add(z.name)
+
+    intermedios: List[IntermediateResult] = []
+    for seg in segmentos:
+        intermedios.extend(seg.intermediate_results)
+
+    # El alternativo es el del DESTINO FINAL, no el de cada segmento.
+    alternate = None
+    if suggest_alternate:
+        _eta = (dep_time + int(summary["total_time_hours"] * 3600)) if dep_time > 0 else 0
+        aps = airports if airports is not None else dict(AIRPORTS_PUBLIC)
+        for node in (origin, dest):
+            if node not in aps and node in AIRPORTS:
+                aps[node] = AIRPORTS[node]
+        alternate = _find_alternate(dest, origin, r_map or {}, ac, aps,
+                                    mock=mock, when_unix=_eta)
+
+    return OptimizeResult(
+        found              = True,
+        mode               = mode,
+        path               = path,
+        legs               = legs,
+        total_dist_km      = summary["total_distance_km"],
+        total_time_h       = summary["total_time_hours"],
+        total_fuel_l       = summary["total_fuel_liters"],
+        needs_fuel_stop    = summary["needs_fuel_stop"],
+        fuel_ok            = summary["fuel_ok"],
+        airspace_conflicts = conflicts,
+        aircraft           = ac,
+        intermediate_results = intermedios,
+        alternate          = alternate,
+    )
+
+
 def optimize(
     origin                : str,
     dest                  : str,
@@ -453,6 +675,7 @@ def optimize(
     mock                  : bool                         = False,
     dep_time              : int                          = 0,
     weather_reroute       : bool                         = False,
+    via                   : "Optional[List[ViaPoint]]"   = None,
 ) -> OptimizeResult:
     """
     Calcula la ruta optima entre dos aerodromos.
@@ -473,6 +696,10 @@ def optimize(
     evaluate_intermediate : si True, evalua meteo en aerodromos intermedios del path
     suggest_alternate     : si True, busca y evalua el mejor alternativo al destino
     mock                  : si True, usa datos mock para evaluaciones meteorologicas
+    via                   : puntos de paso intermedios pedidos por el piloto.
+                            Cada uno declara si es SOBREVUELO o ESCALA (ver
+                            ViaPoint): no es lo mismo pasar por encima que
+                            aterrizar, aunque la linea de ruta sea la misma.
 
     Retorna
     -------
@@ -484,6 +711,18 @@ def optimize(
             total_dist_km=0.0, total_time_h=0.0, total_fuel_l=0.0,
             needs_fuel_stop=False, fuel_ok=False, airspace_conflicts=[],
             error=f"Modo invalido: {mode!r}. Usar uno de {VALID_MODES}",
+        )
+
+    # Con puntos de paso la ruta se arma por segmentos y se fusiona. Se delega
+    # ANTES de tocar nada para no duplicar la logica de un tramo suelto: cada
+    # segmento se resuelve con esta misma funcion, sin `via`.
+    if via:
+        return _optimize_via(
+            origin=origin, dest=dest, via=via, mode=mode, r_map=r_map,
+            wind_dir=wind_dir, wind_spd_kt=wind_spd_kt,
+            avoid_restricted_zones=avoid_restricted_zones, airports=airports,
+            aircraft=aircraft, evaluate_intermediate=evaluate_intermediate,
+            suggest_alternate=suggest_alternate, mock=mock, dep_time=dep_time,
         )
 
     # Usar aerodromos publicos para routing; agregar origen/destino si son privados
