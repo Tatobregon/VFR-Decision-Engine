@@ -643,3 +643,82 @@ def test_si_falla_el_terreno_se_degrada_interpolando_los_aerodromos():
     assert all(a > 1500 for a in alts)
     # Interpola entre los dos aerodromos, asi que desciende como ellos
     assert alts[0] > alts[-1]
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Cada extremo del vuelo se evalua PARA SU MOMENTO
+# ══════════════════════════════════════════════════════════════════════════════
+# El origen importa cuando se despega; el destino, cuando se aterriza. Antes los
+# dos se evaluaban con la hora de salida y la ventana del vuelo entero, asi que
+# la tarjeta de destino mostraba temperatura y viento de la hora de SALIDA: en un
+# vuelo de tres horas, condiciones de un momento en el que el avion no esta ahi.
+# Es informacion de seguridad presentada como si fuera del momento pedido.
+
+def test_el_momento_se_redondea_al_slot_horario_mas_cercano():
+    """
+    El pronostico es horario. Una ventana que arranca exacto en el momento del
+    vuelo puede dejar afuera el slot mas cercano: para una llegada a las 14:49,
+    [14:49, 15:49] excluye las 14:00 y termina mostrando las 16:00. Redondeando
+    primero, el desvio maximo baja a MEDIA hora, que es el piso teorico.
+    """
+    from web.app import _hora_redonda
+
+    def ts(h, m):
+        return h * 3600 + m * 60
+
+    assert _hora_redonda(ts(14, 49)) == ts(15, 0)
+    assert _hora_redonda(ts(15, 1))  == ts(15, 0)
+    assert _hora_redonda(ts(15, 29)) == ts(15, 0)
+    assert _hora_redonda(ts(15, 31)) == ts(16, 0)
+    assert _hora_redonda(ts(16, 0))  == ts(16, 0)
+
+
+@pytest.mark.parametrize("minutos", list(range(0, 60, 7)))
+def test_el_redondeo_nunca_se_aleja_mas_de_media_hora(minutos):
+    """Cota dura: con datos horarios no se puede hacer mejor que 30 minutos."""
+    from web.app import _hora_redonda
+
+    momento = 12 * 3600 + minutos * 60
+    assert abs(_hora_redonda(momento) - momento) <= 30 * 60
+
+
+def test_la_ventana_de_cada_extremo_es_acotada():
+    """
+    Si la ventana fuera la del vuelo entero, el origen quedaria juzgado por
+    condiciones de horas despues de haberse ido y el destino por horas antes de
+    llegar. Una hora cubre la demora de un despegue o la espera de un
+    aterrizaje sin traer momentos ajenos al vuelo.
+    """
+    from web.app import VENTANA_EXTREMO_H
+
+    assert 0.5 <= VENTANA_EXTREMO_H <= 2.0
+
+
+def test_la_ficha_declara_que_momento_describe():
+    """
+    Dos tarjetas con horas distintas parecen inconsistentes si no dicen que
+    cada una habla de su punto del vuelo.
+    """
+    from web.app import WeatherCard
+
+    campos = WeatherCard.model_fields
+    assert "moment" in campos
+    assert "window_start" in campos
+
+
+def test_con_metar_el_dato_es_una_observacion_y_no_el_momento_evaluado():
+    """
+    Un METAR es una OBSERVACION del pasado reciente: no existe "el METAR de las
+    19:00". Por eso la ficha lleva los dos datos por separado — cuando se
+    observo y para cuando se evaluo— y no se puede presentar la observacion
+    como si fueran las condiciones del aterrizaje.
+    """
+    import inspect
+
+    from web import app as webapp
+
+    fuente = inspect.getsource(webapp)
+    # El endpoint pasa el momento de cada extremo por separado
+    assert 'moment="salida"' in fuente and 'moment="llegada"' in fuente
+    assert "window_start=dep_time" in fuente
+    assert "window_start=arr_time" in fuente

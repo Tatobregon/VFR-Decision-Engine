@@ -821,10 +821,30 @@
             <span x-text="card.forecast_out_of_range ? '⚠️' : '🕓'"></span>
             <span>
               <template x-if="!card.forecast_out_of_range">
-                <span>Condiciones pronosticadas para las
-                  <span class="font-semibold text-[#e6edf3]" x-text="horaLocalDe(card.obs_time)"></span>
-                  <span class="text-muted" x-text="'(' + formatEta(card.obs_time) + ')'"></span>
-                </span>
+                <!-- NWP: el pronostico tiene una hora para ese momento. -->
+                <template x-if="card.weather_source !== 'metar'">
+                  <span>Condiciones para
+                    <span class="font-semibold text-[#e6edf3]"
+                          x-text="(card.moment === 'llegada' ? 'la llegada' : 'la salida') + ', ' + horaLocalDe(card.obs_time)"></span>
+                    <span class="text-muted" x-text="'(' + formatEta(card.obs_time) + ')'"></span>
+                  </span>
+                </template>
+                <!-- METAR: es una OBSERVACION del pasado reciente. No existe el
+                     METAR de una hora futura, asi que se dice cuando se observo
+                     Y para que momento se evaluo. Presentarla como "las
+                     condiciones de la llegada" seria enganoso. -->
+                <template x-if="card.weather_source === 'metar'">
+                  <span>Observación de las
+                    <span class="font-semibold text-[#e6edf3]" x-text="horaLocalDe(card.obs_time)"></span>
+                    <span class="text-muted" x-text="'(' + formatEta(card.obs_time) + ')'"></span>
+                    <template x-if="card.window_start">
+                      <span> · evaluado para <span class="font-semibold text-[#e6edf3]"
+                            x-text="(card.moment === 'llegada' ? 'la llegada' : 'la salida') + ' de las ' + horaLocalDe(card.window_start)"></span>
+                        <span class="text-muted">con el pronóstico TAF</span>
+                      </span>
+                    </template>
+                  </span>
+                </template>
               </template>
               <template x-if="card.forecast_out_of_range">
                 <span>La hora de salida pedida está <strong>fuera del alcance del pronóstico</strong>.

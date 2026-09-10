@@ -423,6 +423,43 @@ hora del formulario decia `"Hora local UTC"` —una contradiccion— y mostraba 
 equivalencia de ninguna: ahora dice `06:00 UTC = 03:00 hora local argentina` mientras
 se escribe.
 
+### Cada extremo del vuelo se evalua PARA SU MOMENTO
+
+El origen importa cuando se despega; el destino, cuando se aterriza. `web/app.py`
+evaluaba los DOS con `dep_time` y la ventana del vuelo entero:
+
+```
+SACC -> Cruz Alta, salida 14:00, llegada 16:26
+    origen   ventana [14:00, 16:26]  mostraba 14:00   (ok)
+    destino  ventana [14:00, 16:26]  mostraba 14:00   <- 3 h antes de aterrizar
+```
+
+El piloto leia en la ficha de destino la temperatura y el viento de la hora de
+SALIDA. No es una imprecision de detalle: es informacion de seguridad presentada
+como si fuera del momento pedido.
+
+- El origen se evalua para `[salida, salida + VENTANA_EXTREMO_H]` y el destino para
+  `[llegada, llegada + VENTANA_EXTREMO_H]` (1 h). La ventana del vuelo entero metia
+  en el origen condiciones de horas despues de haberse ido.
+- La llegada no se conoce hasta calcular la ruta, asi que se usa la estimacion
+  rapida y se **reevalua el destino** si la ETA real cae en OTRO slot horario.
+  Es barato: el NWP se cachea por coordenada, no por hora, asi que solo se
+  vuelve a puntuar.
+- **El momento se REDONDEA al slot horario mas cercano** (`_hora_redonda`). Sin eso,
+  una ventana que arranca exacto en el momento deja afuera el slot mas cercano: para
+  una llegada a las 14:49, `[14:49, 15:49]` excluye las 14:00 y termina mostrando las
+  16:00 — 71 minutos despues. Con redondeo el desvio maximo es de **media hora**, que
+  es el piso teorico de un pronostico horario.
+
+> **Con METAR la pregunta es otra.** Un METAR es una OBSERVACION del pasado reciente:
+> no existe "el METAR de las 19:00". Por eso la ficha lleva `obs_time` (cuando se
+> observo) y `window_start` (para que momento se evaluo) por separado, y la interfaz
+> dice *"Observacion de las 11:00 · evaluado para la llegada de las 15:02 con el
+> pronostico TAF"*. Presentar la observacion como "las condiciones de la llegada"
+> seria enganoso.
+
+Verificado en las cinco regiones: desvio de 0 a 21 min en los extremos NWP.
+
 ### El veredicto sale del PEOR momento de la ventana, y hay que decirlo
 
 En el camino NWP el motor evalua **toda la ventana de vuelo** y se queda con el peor

@@ -144,6 +144,18 @@ class WeatherCard(BaseModel):
     # que muestra la tarjeta (`obs_time`): sin esto el piloto lee "Xwind 1.1 kt"
     # y un cartel que dice "viento cruzado 10 kt", y no puede reconciliarlos.
     worst_obs_time: Optional[int] = None
+    # Que momento del vuelo describe esta ficha: el despegue o el aterrizaje.
+    # Sin decirlo, dos tarjetas con horas distintas parecen inconsistentes
+    # cuando en realidad cada una habla de su punto del vuelo.
+    moment: str = "salida"            # "salida" | "llegada"
+    # Momento del vuelo PARA EL QUE se evaluo (Unix UTC): el despegue o el
+    # aterrizaje. Con fuente NWP coincide con `obs_time`, porque el pronostico
+    # tiene una hora para ese momento. Con METAR NO: un METAR es una
+    # OBSERVACION del pasado reciente y no existe "el METAR de las 19:00", asi
+    # que `obs_time` es cuando se observo y esto es para cuando se evaluo.
+    # Mostrar los dos evita que una observacion de hace horas se lea como si
+    # fueran las condiciones del aterrizaje.
+    window_start: Optional[int] = None
     # True si la hora de salida pedida cae fuera del horizonte del pronostico y
     # hubo que evaluar la mas cercana disponible.
     forecast_out_of_range: bool = False
@@ -298,6 +310,37 @@ def _parse_dep_time(s: str) -> int:
         return int(time.time()) + 3600
 
 
+# Margen de la ventana meteorologica en cada extremo del vuelo.
+#
+# El origen se evalua para [salida, salida + margen] y el destino para
+# [llegada, llegada + margen]. Antes los dos usaban la ventana del vuelo
+# COMPLETO, con dos consecuencias malas: el destino se mostraba con datos de la
+# hora de despegue, y el origen quedaba juzgado por condiciones de horas
+# despues de haberse ido, cuando el avion ya no esta ahi.
+#
+# Una hora, porque el pronostico es HORARIO: una ventana mas corta no agrega
+# resolucion, y una mas larga vuelve a meter momentos que no son los del vuelo.
+# Cubre ademas la demora razonable de un despegue y el circuito de espera o la
+# aproximacion frustrada de un aterrizaje.
+VENTANA_EXTREMO_H = 1.0
+
+def _hora_redonda(ts: int) -> int:
+    """
+    Redondea un momento al slot HORARIO mas cercano del pronostico.
+
+    El pronostico numerico viene por hora, asi que una ventana que arranca
+    exactamente en el momento del vuelo puede dejar afuera el slot que en
+    realidad esta mas cerca: para una llegada a las 14:49, la ventana
+    [14:49, 15:49] excluye las 14:00 y toma las 16:00 si las 15:00 tampoco
+    entran, con lo que se muestra un dato de mas de una hora despues.
+
+    Redondeando primero, el desvio maximo pasa a ser de MEDIA hora, que es el
+    piso teorico de un pronostico horario y no se puede mejorar sin cambiar la
+    fuente.
+    """
+    return int(round(ts / 3600.0) * 3600)
+
+
 def _clamp_vfr_alt(alt_ft, aircraft: AircraftProfile) -> Optional[int]:
     """
     Valida la altitud de crucero VFR elegida por el piloto.
@@ -370,7 +413,8 @@ def _corridor_alts_msl(corridor_wps: list, ap: AirportInfo,
     return salida
 
 
-def _to_card(result, runway_heading: int, ap: AirportInfo, notams: list = None) -> WeatherCard:
+def _to_card(result, runway_heading: int, ap: AirportInfo, notams: list = None,
+             moment: str = "salida", window_start: Optional[int] = None) -> WeatherCard:
     wx = result.weather
     notam_models = [
         Notam(
@@ -451,6 +495,8 @@ def _to_card(result, runway_heading: int, ap: AirportInfo, notams: list = None) 
         dominant_factor = sb.dominant_factor   if sb else None,
         guardrail_reason= sb.guardrail_reason  if sb else "",
         worst_obs_time  = getattr(result, 'worst_obs_time', None),
+        moment          = moment,
+        window_start    = window_start,
         forecast_out_of_range = getattr(result, 'forecast_out_of_range', False),
         next_go_from    = result.next_go_from,
         fetch_ok        = result.fetch_ok,
@@ -1532,10 +1578,24 @@ async def evaluate(req: EvaluateRequest):
     rough_duration = max(0.5, haversine_km(orig_ap.lat, orig_ap.lon, dest_ap.lat, dest_ap.lon)
                          / (aircraft.cruise_kt * 1.852) * 1.3)
 
-    # Fase 1: origin eval + dest eval en paralelo
+    # Fase 1: cada extremo se evalua PARA SU MOMENTO.
+    #
+    # El origen importa cuando se despega; el destino, cuando se aterriza. Antes
+    # los dos se evaluaban con `dep_time` y la ventana del vuelo entero, de modo
+    # que la tarjeta de destino mostraba la temperatura y el viento de la hora de
+    # SALIDA: en un vuelo de tres horas, el piloto leia condiciones de un momento
+    # en el que no iba a estar ahi. No es una imprecision de detalle — es
+    # informacion de seguridad presentada como si fuera del momento pedido.
+    #
+    # La llegada todavia no se conoce con exactitud (depende de la ruta, que
+    # necesita r_map, que necesita estas evaluaciones), asi que se usa la
+    # estimacion rapida y despues se corrige contra la ETA real.
+    eta_estimada = dep_time + int(rough_duration * 3600)
     with ThreadPoolExecutor(max_workers=2) as ex:
-        fut_o = ex.submit(engine.evaluate, origin, req.origin_runway, dep_time, rough_duration)
-        fut_d = ex.submit(engine.evaluate, dest,   req.dest_runway,   dep_time, rough_duration)
+        fut_o = ex.submit(engine.evaluate, origin, req.origin_runway,
+                          _hora_redonda(dep_time), VENTANA_EXTREMO_H)
+        fut_d = ex.submit(engine.evaluate, dest, req.dest_runway,
+                          _hora_redonda(eta_estimada), VENTANA_EXTREMO_H)
         origin_result = fut_o.result()
         dest_result   = fut_d.result()
 
@@ -1554,6 +1614,27 @@ async def evaluate(req: EvaluateRequest):
 
     # Duración real desde la ruta calculada
     actual_duration = route_result.total_time_h if (route_result.found and route_result.total_time_h > 0) else rough_duration
+
+    # La ruta ya da la ETA de verdad. Si se corrio respecto de la estimacion
+    # inicial lo suficiente como para caer en OTRA hora del pronostico, se
+    # reevalua el destino: es barato (el NWP esta cacheado por coordenada, no
+    # por hora, asi que solo se vuelve a puntuar) y es la diferencia entre
+    # mostrarle al piloto las condiciones de su aterrizaje o las de otro rato.
+    eta_real = dep_time + int(actual_duration * 3600)
+    # Se reevalua cuando la ETA real cae en OTRO slot horario del pronostico.
+    # Comparar por minutos sueltos seria arbitrario: lo que cambia el dato es
+    # cruzar a la hora siguiente, no moverse diez minutos dentro de la misma.
+    if _hora_redonda(eta_real) != _hora_redonda(eta_estimada):
+        logger.info(
+            f"ETA corregida ({(eta_real - eta_estimada) / 60:+.0f} min): "
+            f"cambia el slot horario, se reevalua {dest}"
+        )
+        try:
+            dest_result = engine.evaluate(dest, req.dest_runway,
+                                          _hora_redonda(eta_real),
+                                          VENTANA_EXTREMO_H)
+        except Exception as e:
+            logger.warning(f"No se pudo reevaluar {dest} a la ETA real: {e}")
 
     # Buscar aerovías para la ruta — SOLO en modo IFR.
     # En VFR el piloto no navega por aerovías: puede pasar por los mismos puntos
@@ -1609,8 +1690,10 @@ async def evaluate(req: EvaluateRequest):
     # El despegue se evalúa a la hora de salida; el aterrizaje, a la ETA (para
     # que un vuelo que aterriza de noche sea NO GO aunque despegue de día).
     arr_time = dep_time + int(actual_duration * 3600)
-    origin_card = _to_card(origin_result, origin_result.runway_heading, orig_ap, notams_orig)
-    dest_card   = _to_card(dest_result,   dest_result.runway_heading,   dest_ap, notams_dest)
+    origin_card = _to_card(origin_result, origin_result.runway_heading, orig_ap,
+                           notams_orig, moment="salida", window_start=dep_time)
+    dest_card   = _to_card(dest_result,   dest_result.runway_heading,   dest_ap,
+                           notams_dest,  moment="llegada", window_start=arr_time)
     _apply_operational_blockers(origin_card, orig_ap, dep_time, notams_orig, "despegue",
                                 flight_rules, aircraft.cruise_alt_ft, result=origin_result)
     _apply_operational_blockers(dest_card,   dest_ap, arr_time, notams_dest, "aterrizaje",
