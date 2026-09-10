@@ -186,9 +186,14 @@ def _mock_metar_saco() -> dict:
         "slp"         : None,
         "wxString"    : None,
         "presentWx"   : None,
-        "skyCondition": [
-            {"skyCover": "SCT", "cloudBase": 2500},
-            {"skyCover": "BKN", "cloudBase": 4000},
+        # Formato REAL de la API: la clave es "clouds" y los campos "cover" y
+        # "base". El mock usaba "skyCondition"/"skyCover"/"cloudBase", que la
+        # API no devuelve nunca: por eso los tests pasaban con el bug puesto
+        # —el sistema no veia ningun techo— en vez de atraparlo. Un mock que no
+        # imita a la fuente no es una red de seguridad, es una confirmacion.
+        "clouds": [
+            {"cover": "SCT", "base": 2500, "type": None},
+            {"cover": "BKN", "base": 4000, "type": None},
         ],
         "fltcat"      : "VFR",
         "rawOb"       : "SACO 271800Z 15012G20KT 9999 SCT025 BKN040 28/14 Q1011",
@@ -226,9 +231,11 @@ def _mock_taf_saco() -> dict:
                 "wdir"       : 150,
                 "wspd"       : 12,
                 "wgst"       : None,
-                "visib"      : "9999",
+                # La API entrega la visibilidad en MILLAS TERRESTRES: "6+" es
+                # como codifica el CAVOK / 9999 m.
+                "visib"      : "6+",
                 "wxString"   : None,
-                "skyCondition": [{"skyCover": "BKN", "cloudBase": 2500}],
+                "clouds"     : [{"cover": "BKN", "base": 2500, "type": None}],
             },
             {
                 "timeGroup"  : 1,
@@ -239,11 +246,11 @@ def _mock_taf_saco() -> dict:
                 "wdir"       : 150,
                 "wspd"       : 18,
                 "wgst"       : 28,
-                "visib"      : "3000",
+                "visib"      : "1.86",          # 3000 m expresados en millas
                 "wxString"   : "TSRA",
-                "skyCondition": [
-                    {"skyCover": "SCT", "cloudBase": 1500, "cloudType": "CB"},
-                    {"skyCover": "BKN", "cloudBase": 2000},
+                "clouds"     : [
+                    {"cover": "SCT", "base": 1500, "type": "CB"},
+                    {"cover": "BKN", "base": 2000, "type": None},
                 ],
             },
             {
@@ -255,9 +262,9 @@ def _mock_taf_saco() -> dict:
                 "wdir"       : 0,
                 "wspd"       : 3,
                 "wgst"       : None,
-                "visib"      : "9999",
+                "visib"      : "6+",
                 "wxString"   : None,
-                "skyCondition": [{"skyCover": "FEW", "cloudBase": 1500}],
+                "clouds"     : [{"cover": "FEW", "base": 1500, "type": None}],
             },
         ],
     }]
@@ -357,7 +364,14 @@ class AviationWeatherFetcher:
             logger.warning(f"Sin datos METAR para {icao}")
             return None
         d   = data[0]
-        sky = d.get("skyCondition") or []
+        # La API devuelve la nubosidad bajo la clave "clouds", NO "skyCondition".
+        # Leer la clave equivocada devolvia SIEMPRE una lista vacia, de modo que
+        # el sistema quedaba ciego al TECHO —el factor de mayor peso del modelo
+        # junto con la visibilidad— en todo aerodromo con METAR. Medido: 11 de
+        # 48 METAR argentinos tenian techo real y no se veia ninguno, incluido
+        # un OVC003 (300 ft) que esta por debajo del bloqueo duro de 500.
+        # Se acepta la clave vieja como respaldo por si la API la reintroduce.
+        sky = d.get("clouds") or d.get("skyCondition") or []
         return RawMetar(
             icao_id       = d.get("icaoId", icao).upper(),
             raw_string    = d.get("rawOb", ""),
@@ -386,7 +400,7 @@ class AviationWeatherFetcher:
         d       = data[0]
         periods = []
         for fcst in (d.get("fcsts") or []):
-            sky = fcst.get("skyCondition") or []
+            sky = fcst.get("clouds") or fcst.get("skyCondition") or []
             periods.append(RawTafPeriod(
                 time_from        = fcst.get("timeFrom", 0),
                 time_to          = fcst.get("timeTo", 0),

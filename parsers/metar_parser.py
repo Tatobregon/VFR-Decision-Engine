@@ -284,19 +284,29 @@ def _parse_sky_layers(sky_condition: list) -> list:
     """
     Normaliza la lista de capas de nubosidad del METAR.
 
-    Input (formato AWC):  [{"skyCover": "BKN", "cloudBase": 2500}, ...]
+    Input (formato AWC):  [{"cover": "BKN", "base": 2500}, ...]
     Output (formato interno): [{"cover": "BKN", "base_ft": 2500}, ...]
 
-    cloudBase en la API de AWC ya viene en pies (no en cientos de pies).
+    Los nombres de campo REALES de la API son `cover` y `base` — verificado
+    sobre 48 METAR y 36 TAF argentinos. Se aceptan tambien `skyCover` y
+    `cloudBase`, que es como los documentaba esta funcion, para no romper a
+    ningun llamador que todavia use esa forma.
+
+    `base` ya viene en pies (no en cientos de pies).
     Las capas se devuelven ordenadas de menor a mayor altura.
+
+    NSC ("No Significant Cloud") aparece solo en TAF y SIEMPRE sin base: es la
+    forma en que el pronostico dice que no hay nubes relevantes. Queda como
+    capa sin base y por lo tanto no constituye techo, que es el tratamiento
+    correcto (ver `_extract_ceiling_ft`, que exige base numerica).
     """
     if not sky_condition:
         return []
 
     layers = []
     for layer in sky_condition:
-        cover = (layer.get("skyCover") or "").upper().strip()
-        base  = layer.get("cloudBase")
+        cover = (layer.get("cover") or layer.get("skyCover") or "").upper().strip()
+        base  = layer.get("base") if layer.get("base") is not None else layer.get("cloudBase")
 
         if not cover:
             continue
@@ -304,7 +314,7 @@ def _parse_sky_layers(sky_condition: list) -> list:
         normalized = {"cover": cover, "base_ft": int(base) if base is not None else None}
 
         # Preservar tipo de nube si esta disponible (CB, TCU)
-        cloud_type = layer.get("cloudType")
+        cloud_type = layer.get("type") or layer.get("cloudType")
         if cloud_type:
             normalized["cloud_type"] = cloud_type.upper()
 

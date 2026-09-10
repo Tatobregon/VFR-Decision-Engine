@@ -423,6 +423,36 @@ hora del formulario decia `"Hora local UTC"` —una contradiccion— y mostraba 
 equivalencia de ninguna: ahora dice `06:00 UTC = 03:00 hora local argentina` mientras
 se escribe.
 
+### La nubosidad viene bajo la clave "clouds", no "skyCondition"
+
+Bug critico y preexistente (septiembre 2026), el mas grave encontrado en el proyecto.
+Los dos fetchers pedian `"skyCondition"`; la API devuelve `"clouds"`:
+
+```python
+sky = d.get("skyCondition") or []      # METAR — siempre []
+sky = fcst.get("skyCondition") or []   # TAF   — siempre []
+```
+
+Consecuencia: `sky_layers=[]` y `ceiling_ft=None` **siempre**, en todo aerodromo con
+METAR. El sistema estaba **ciego al TECHO**, que pesa 0.357 — tanto como la
+visibilidad, el maximo del modelo.
+
+Medido sobre los 48 METAR argentinos de una toma: **11 tenian techo real y no se veia
+ninguno**, incluido `SARI ... 8000 OVC003` — 300 ft, por debajo del bloqueo duro de
+500. El sistema lo clasificaba VFR con techo `None`.
+
+- Los nombres de campo reales son `cover` y `base` (no `skyCover`/`cloudBase`),
+  verificado sobre 48 METAR y 36 TAF. El parser acepta ambos por compatibilidad.
+- **`NSC`** ("No Significant Cloud") aparece solo en TAF y SIEMPRE sin base — 47 de 47
+  casos. Queda como capa sin base y por lo tanto no constituye techo, que es el
+  tratamiento correcto.
+
+> **Y el mock encodaba el formato equivocado.** Usaba `skyCondition`/`skyCover`/
+> `cloudBase` y visibilidad en metros, formatos que la API no devuelve nunca. Por eso
+> la suite pasaba con el bug puesto en vez de atraparlo. Es el mismo patron que el mock
+> del NWP: **un mock que no imita a la fuente no es una red de seguridad, es una
+> confirmacion del error**. Hay un test que verifica que el mock use las claves reales.
+
 ### La visibilidad de aviationweather viene en MILLAS TERRESTRES
 
 Bug critico y preexistente (septiembre 2026). La API entrega la visibilidad como texto

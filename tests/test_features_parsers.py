@@ -17,6 +17,7 @@ from features.vfr_altitude import hemispheric_vfr_altitude, true_to_magnetic
 from features.density_altitude import compute_density_altitude, advisory
 from features.taf_window import nwp_trend_r_taf
 from parsers.metar_parser import (
+    _parse_sky_layers,
     _compute_flight_category, _parse_visibility_km, _extract_ceiling_ft,
 )
 from parsers.openmeteo_adapter import estimate_cloud_base_ft, _pct_to_sky_cover
@@ -317,3 +318,84 @@ def test_deterioro_puntua_segun_severidad():
 
 def test_serie_vacia_no_rompe():
     assert nwp_trend_r_taf([], None) == 0.0
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# La nubosidad viene bajo la clave "clouds", con campos "cover" y "base"
+# ══════════════════════════════════════════════════════════════════════════════
+# Bug critico: los fetchers pedian "skyCondition", que la API no devuelve nunca.
+# El resultado era `sky_layers=[]` y `ceiling_ft=None` SIEMPRE, en todo
+# aerodromo con METAR — o sea que el sistema estaba ciego al TECHO, que pesa
+# 0.357, tanto como la visibilidad. Medido: 11 de 48 METAR argentinos tenian
+# techo real y no se veia ninguno, incluido un OVC003 (300 ft) que esta por
+# debajo del bloqueo duro de 500.
+
+def test_el_parser_lee_los_nombres_de_campo_reales_de_la_api():
+    """`cover` y `base`, verificados sobre 48 METAR y 36 TAF argentinos."""
+    capas = _parse_sky_layers([
+        {"cover": "OVC", "base": 300, "type": None},
+        {"cover": "SCT", "base": 2500, "type": None},
+    ])
+    # Se ordenan de menor a mayor altura
+    assert capas == [
+        {"cover": "OVC", "base_ft": 300},
+        {"cover": "SCT", "base_ft": 2500},
+    ]
+    assert _extract_ceiling_ft(capas) == 300
+
+
+def test_el_parser_sigue_aceptando_los_nombres_viejos():
+    """Compatibilidad: no romper a ningun llamador que use la forma anterior."""
+    capas = _parse_sky_layers([{"skyCover": "BKN", "cloudBase": 1200}])
+    assert capas == [{"cover": "BKN", "base_ft": 1200}]
+
+
+def test_nsc_no_constituye_techo():
+    """
+    NSC ("No Significant Cloud") aparece solo en TAF y SIEMPRE sin base: es la
+    forma en que el pronostico dice que no hay nubes relevantes. Tomarlo como
+    capa con techo desconocido seria inventar una restriccion.
+    """
+    capas = _parse_sky_layers([{"cover": "NSC", "base": None, "type": None}])
+    assert _extract_ceiling_ft(capas) is None
+
+
+def test_un_techo_bajo_del_metar_llega_hasta_el_veredicto():
+    """
+    El caso real que delato el bug: SARI reportaba OVC003 —300 ft, por debajo
+    del bloqueo duro— y el sistema lo veia como cielo despejado.
+    """
+    from risk.hard_blockers import check_hard_blockers
+
+    capas = _parse_sky_layers([{"cover": "OVC", "base": 300, "type": None}])
+    techo = _extract_ceiling_ft(capas)
+    assert techo == 300
+    assert check_hard_blockers(8.0, techo, []).is_blocked
+
+
+def test_el_mock_del_fetcher_usa_el_formato_REAL_de_la_api():
+    """
+    El mock usaba "skyCondition"/"skyCover"/"cloudBase" y visibilidad en metros,
+    formatos que la API no devuelve. Por eso la suite pasaba con el bug puesto
+    en vez de atraparlo: un mock que no imita a la fuente no es una red de
+    seguridad, es una confirmacion del error.
+    """
+    from data.fetcher_aviationweather import AviationWeatherFetcher
+    from parsers.metar_parser import MetarParser
+
+    raw_metar, raw_taf = AviationWeatherFetcher(mock=True).get_metar_and_taf("SACO")
+
+    assert raw_metar.sky_condition, "el mock tiene que traer nubosidad"
+    for capa in raw_metar.sky_condition:
+        assert "cover" in capa and "base" in capa, (
+            f"el mock usa un formato que la API no devuelve: {capa}"
+        )
+
+    # Y esa nubosidad tiene que llegar hasta el techo parseado
+    w = MetarParser().parse(raw_metar)
+    assert w.sky_layers, "las capas del mock no llegaron al ParsedWeather"
+    assert w.ceiling_ft is not None
+
+    for periodo in raw_taf.periods:
+        for capa in periodo.sky_condition:
+            assert "cover" in capa and "base" in capa
