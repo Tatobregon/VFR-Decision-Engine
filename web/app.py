@@ -17,7 +17,7 @@ import logging
 import copy
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Tuple
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -36,7 +36,7 @@ from parsers.openmeteo_adapter import OpenMeteoAdapter
 from decision.engine import DecisionEngine
 from decision.enroute import evaluate_nwp_at_coord, nwp_series_at_coord
 from route.optimizer import (optimize, ViaPoint, detour_cost,
-                             eta_por_aerodromo)
+                             eta_por_aerodromo, _merge_summaries)
 from route.airway_router import find_airways_for_leg, find_airways_for_route_legs
 from route.vfr_corridors import corridor_path_for_leg
 from output.briefing import generate_briefing
@@ -51,7 +51,9 @@ from features.density_altitude import advisory as da_advisory
 from features.vfr_altitude import hemispheric_vfr_altitude
 from features.daylight import daylight_status
 from features.notam_impact import assess_notam_impact, runway_designators
-from route.performance import haversine_km, bearing_deg, effective_groundspeed_kt, leg_time_hours, safe_altitude_ft
+from route.performance import (haversine_km, bearing_deg, effective_groundspeed_kt,
+                               leg_time_hours, leg_fuel_liters, route_summary,
+                               safe_altitude_ft)
 from data.terrain import get_elevations_m, M_TO_FT
 from config import NWP_HOURS_AHEAD
 
@@ -286,6 +288,10 @@ class RouteWaypoint(BaseModel):
     is_corridor_waypoint: bool = False
     corridor_id: Optional[str] = None
     corridor_name: Optional[str] = None       # nombre del corredor (ej. "BRANDSEN - CAÑUELAS")
+    # Nombre del PUNTO dentro del corredor (ej. "ASCOCHINGA"). El `code` de un
+    # waypoint de corredor es el id del CORREDOR y se repite en sus dos
+    # extremos: sin esto la tabla diría "VFR-COR-04 → VFR-COR-04".
+    point_name: Optional[str] = None
     corridor_region: Optional[str] = None     # "TMA Buenos Aires" | "TMA Córdoba"
     corridor_limit_ft: Optional[int] = None   # límite superior publicado
     corridor_limit_ref: Optional[str] = None  # "MSL" | "AGL"
@@ -870,9 +876,12 @@ def _generate_route_waypoints(
                 logger.warning(f"Error ruteando corredor VFR {code}->{path[i+1]}: {e}")
         corridor_alts = _corridor_alts_msl(corridor_wps, ap, next_ap, mock=mock)
         for ci, cw in enumerate(corridor_wps):
+            _pt = cw.get("point_name") or ""
             sequence.append(RouteWaypoint(
                 code=cw["corridor_id"] or "VFR-COR",
-                name=f"Corredor {cw['corridor_id']}",
+                name=(f"{_pt} · corredor {cw['corridor_id']}" if _pt
+                      else f"Corredor {cw['corridor_id']}"),
+                point_name=_pt or None,
                 lat=cw["lat"], lon=cw["lon"],
                 r_total=0.0, decision="GO",
                 is_checkpoint=False,
@@ -1087,6 +1096,103 @@ def _generate_route_waypoints(
         prev_pt        = (wp.lat, wp.lon)
 
     return final_wps
+
+
+# ── El camino que se vuela, no la recta entre aerodromos ──────────────────────
+
+# Que ES cada punto por el que se pasa. La tabla lo dice porque no todos son un
+# viraje: un checkpoint meteorologico esta SOBRE la linea y no cambia el rumbo,
+# mientras que un punto de corredor o de aerovia si.
+def _tipo_de_punto(wp: RouteWaypoint) -> str:
+    if wp.is_corridor_waypoint:
+        return "corredor"
+    if wp.is_airway_waypoint:
+        return "aerovia"
+    if wp.is_checkpoint:
+        return "checkpoint"
+    return "aerodromo"
+
+
+def _nombre_de_punto(wp: RouteWaypoint) -> str:
+    """
+    Como se nombra el punto en la tabla.
+
+    Los waypoints de corredor llevan como `code` el identificador del CORREDOR,
+    no del punto, asi que dos puntos consecutivos del mismo corredor mostrarian
+    el mismo texto ("VFR-COR-04 -> VFR-COR-04") y el piloto no sabria donde
+    virar. El nombre publicado del corredor si los distingue.
+    """
+    if wp.point_name:
+        return wp.point_name
+    if wp.is_airway_waypoint:
+        return wp.code
+    if wp.is_corridor_waypoint and wp.corridor_id:
+        # El corredor no declara sus puntos: se nombra por el corredor, que es
+        # lo unico cierto. No se inventa un nombre de punto.
+        return wp.corridor_id
+    return wp.code
+
+
+def _tramos_volados(
+    waypoints: List[RouteWaypoint],
+    aircraft : AircraftProfile,
+    escalas  : Optional[set] = None,
+) -> Tuple[List[Dict], Dict]:
+    """
+    Segmentos REALMENTE volados y el resumen de la ruta sobre ellos.
+
+    El optimizador mide la ruta como la recta entre aerodromos, pero el avion no
+    vuela esa recta: un corredor visual o una aerovia la doblan. En SACC-JES la
+    diferencia medida es 43.3 km declarados contra 45.3 volados —un 4.6 %—, y
+    con ella se subestiman tiempo, combustible y hora de llegada. Todo lo que se
+    informa tiene que describir el vuelo que se va a hacer.
+
+    Los aerodromos de emergencia quedan fuera: estan al costado de la ruta como
+    referencia, no se pasa por ellos. Es el mismo filtro con el que el mapa
+    dibuja la linea, asi que la tabla y el mapa no pueden discrepar.
+
+    `escalas` son los codigos donde se aterriza. El combustible NO se suma sobre
+    el vuelo entero: se agrupa en ETAPAS separadas por las escalas, porque en
+    cada una se vuelve a cargar. Es el mismo criterio de `_optimize_via`.
+    """
+    escalas = escalas or set()
+    espina = [w for w in waypoints if not w.is_emergency_airport]
+    if len(espina) < 2:
+        return [], {}
+
+    tramos: List[Dict] = []
+    for a, b in zip(espina, espina[1:]):
+        dist = haversine_km(a.lat, a.lon, b.lat, b.lon)
+        if dist <= 0.0:
+            continue
+        # Sin viento, igual que el optimizador: el tiempo y el combustible de la
+        # tabla tienen que salir de la misma formula que el resto del sistema.
+        # (El ETA por waypoint SI ajusta por viento; es una estimacion mas fina
+        # y vive aparte, en el paso 3 de `_generate_route_waypoints`.)
+        t = leg_time_hours(dist, aircraft.cruise_kt)
+        tramos.append({
+            "origin":      a.code,
+            "dest":        b.code,
+            "origin_name": _nombre_de_punto(a),
+            "dest_name":   _nombre_de_punto(b),
+            "dest_kind":   _tipo_de_punto(b),
+            "distance_km": round(dist, 1),
+            "bearing_deg": round(bearing_deg(a.lat, a.lon, b.lat, b.lon), 1),
+            "time_hours":  t,
+            "fuel_liters": round(leg_fuel_liters(t, aircraft.fuel_flow_lph), 1),
+            "eta_utc":     b.eta_utc,
+        })
+
+    # Etapas separadas por las escalas: en cada una se vuelve a cargar nafta.
+    etapas: List[List[Dict]] = [[]]
+    for tr in tramos:
+        etapas[-1].append(tr)
+        if tr["dest"] in escalas:
+            etapas.append([])
+    etapas = [e for e in etapas if e]
+
+    resumen = _merge_summaries([route_summary(e, aircraft=aircraft) for e in etapas])
+    return tramos, resumen
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -1766,30 +1872,6 @@ async def evaluate(req: EvaluateRequest):
             "error":              d.error,
         }
 
-    # Duración real desde la ruta calculada
-    actual_duration = route_result.total_time_h if (route_result.found and route_result.total_time_h > 0) else rough_duration
-
-    # La ruta ya da la ETA de verdad. Si se corrio respecto de la estimacion
-    # inicial lo suficiente como para caer en OTRA hora del pronostico, se
-    # reevalua el destino: es barato (el NWP esta cacheado por coordenada, no
-    # por hora, asi que solo se vuelve a puntuar) y es la diferencia entre
-    # mostrarle al piloto las condiciones de su aterrizaje o las de otro rato.
-    eta_real = dep_time + int(actual_duration * 3600)
-    # Se reevalua cuando la ETA real cae en OTRO slot horario del pronostico.
-    # Comparar por minutos sueltos seria arbitrario: lo que cambia el dato es
-    # cruzar a la hora siguiente, no moverse diez minutos dentro de la misma.
-    if _hora_redonda(eta_real) != _hora_redonda(eta_estimada):
-        logger.info(
-            f"ETA corregida ({(eta_real - eta_estimada) / 60:+.0f} min): "
-            f"cambia el slot horario, se reevalua {dest}"
-        )
-        try:
-            dest_result = engine.evaluate(dest, req.dest_runway,
-                                          _hora_redonda(eta_real),
-                                          VENTANA_EXTREMO_H)
-        except Exception as e:
-            logger.warning(f"No se pudo reevaluar {dest} a la ETA real: {e}")
-
     # Buscar aerovías para la ruta — SOLO en modo IFR.
     # En VFR el piloto no navega por aerovías: puede pasar por los mismos puntos
     # geográficos, pero no notifica en los fixes ni sigue el FL asignado a la
@@ -1830,6 +1912,69 @@ async def evaluate(req: EvaluateRequest):
                         airway_map[(leg_orig, leg_dest)] = aw_wps
                 except Exception as e:
                     logger.warning(f"Error buscando aerovia {leg_orig}->{leg_dest}: {e}")
+
+    # ── El camino que se VUELA, antes de fijar la hora de llegada ────────────
+    #
+    # El optimizador mide la ruta como la recta entre aerodromos. El avion no
+    # vuela esa recta: un corredor visual o una aerovia la doblan, y con ellas
+    # crecen distancia, tiempo y combustible. Por eso los waypoints —que son
+    # los que definen el camino real— se generan ANTES de calcular la ETA: si
+    # se hicieran despues, el destino quedaria evaluado para una hora a la que
+    # el avion todavia no llego.
+    #
+    # La generacion necesita una duracion para elegir a que hora consultar el
+    # pronostico de cada checkpoint, y ahi si se usa la estimacion en recta:
+    # es el unico dato disponible todavia y el desvio es menor que la
+    # resolucion horaria del pronostico.
+    duracion_estimada = (route_result.total_time_h
+                         if (route_result.found and route_result.total_time_h > 0)
+                         else rough_duration)
+
+    # Generar waypoints con checkpoints intermedios cada ~230 km
+    waypoints = _generate_route_waypoints(
+        path=route_result.path,
+        aircraft=aircraft,
+        dep_time=dep_time,
+        duration_hours=duracion_estimada,
+        r_map=r_map,
+        mock=False,
+        airway_map=airway_map,
+        flight_rules=flight_rules,
+        via_points=via_points,
+        vfr_cruise_alt_ft=_clamp_vfr_alt(req.cruise_alt_ft, aircraft)
+                          if flight_rules == "VFR" else None,
+    )
+
+    # Metricas del camino realmente volado. Reemplazan a las de la recta entre
+    # aerodromos en TODO lo que se informa: tabla de tramos, totales, ETA y
+    # viabilidad de combustible.
+    tramos_volados, resumen_volado = _tramos_volados(
+        waypoints, aircraft, escalas={v.code for v in via_points if v.is_stop})
+
+    # Duración real, medida sobre el camino volado
+    actual_duration = resumen_volado.get("total_time_hours") or duracion_estimada
+
+
+    # La ruta ya da la ETA de verdad. Si se corrio respecto de la estimacion
+    # inicial lo suficiente como para caer en OTRA hora del pronostico, se
+    # reevalua el destino: es barato (el NWP esta cacheado por coordenada, no
+    # por hora, asi que solo se vuelve a puntuar) y es la diferencia entre
+    # mostrarle al piloto las condiciones de su aterrizaje o las de otro rato.
+    eta_real = dep_time + int(actual_duration * 3600)
+    # Se reevalua cuando la ETA real cae en OTRO slot horario del pronostico.
+    # Comparar por minutos sueltos seria arbitrario: lo que cambia el dato es
+    # cruzar a la hora siguiente, no moverse diez minutos dentro de la misma.
+    if _hora_redonda(eta_real) != _hora_redonda(eta_estimada):
+        logger.info(
+            f"ETA corregida ({(eta_real - eta_estimada) / 60:+.0f} min): "
+            f"cambia el slot horario, se reevalua {dest}"
+        )
+        try:
+            dest_result = engine.evaluate(dest, req.dest_runway,
+                                          _hora_redonda(eta_real),
+                                          VENTANA_EXTREMO_H)
+        except Exception as e:
+            logger.warning(f"No se pudo reevaluar {dest} a la ETA real: {e}")
 
     notams_orig = notams_dest = []
     av = None
@@ -1918,21 +2063,6 @@ async def evaluate(req: EvaluateRequest):
     decisions = [origin_card.decision, dest_card.decision] + [c.decision for c in stop_cards]
     global_dec = "NO GO" if "NO GO" in decisions else "CAUTION" if "CAUTION" in decisions else "GO"
 
-    # Generar waypoints con checkpoints intermedios cada ~230 km
-    waypoints = _generate_route_waypoints(
-        path=route_result.path,
-        aircraft=aircraft,
-        dep_time=dep_time,
-        duration_hours=actual_duration,
-        r_map=r_map,
-        mock=False,
-        airway_map=airway_map,
-        flight_rules=flight_rules,
-        via_points=via_points,
-        vfr_cruise_alt_ft=_clamp_vfr_alt(req.cruise_alt_ft, aircraft)
-                          if flight_rules == "VFR" else None,
-    )
-
     # Aeródromos de desvío por waypoint (sin requests HTTP)
     divs = _find_diversions(waypoints)
     waypoints = [
@@ -1945,18 +2075,29 @@ async def evaluate(req: EvaluateRequest):
         flight_rules   = flight_rules,
         path           = route_result.path,
         waypoints      = waypoints,
-        total_dist_km  = round(route_result.total_dist_km, 1),
-        total_time_h   = round(route_result.total_time_h, 2),
-        total_fuel_l   = round(route_result.total_fuel_l, 1),
-        fuel_ok        = route_result.fuel_ok,
-        needs_fuel_stop= route_result.needs_fuel_stop,
-        legs=[{
+        # Todo lo que se informa describe el camino VOLADO, no la recta entre
+        # aerodromos: si el corredor dobla la ruta, la distancia, el tiempo y el
+        # combustible que se muestran son los del doblez. Si por algun motivo no
+        # se pudo derivar la espina, se cae a lo que dio el optimizador.
+        total_dist_km  = round(resumen_volado.get("total_distance_km",
+                                                  route_result.total_dist_km), 1),
+        total_time_h   = round(actual_duration, 2),
+        total_fuel_l   = round(resumen_volado.get("total_fuel_liters",
+                                                  route_result.total_fuel_l), 1),
+        fuel_ok        = resumen_volado.get("fuel_ok", route_result.fuel_ok),
+        needs_fuel_stop= resumen_volado.get("needs_fuel_stop",
+                                            route_result.needs_fuel_stop),
+        legs           = tramos_volados or [{
             "origin":      l.origin,
             "dest":        l.dest,
+            "origin_name": l.origin,
+            "dest_name":   l.dest,
+            "dest_kind":   "aerodromo",
             "distance_km": l.distance_km,
             "bearing_deg": l.bearing_deg,
             "time_hours":  l.time_hours,
             "fuel_liters": l.fuel_liters,
+            "eta_utc":     None,
         } for l in route_result.legs],
         alternate={
             "code":              route_result.alternate.code,

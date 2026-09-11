@@ -118,7 +118,7 @@ automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a
 | `route/graph.py` | **COMPLETO** | Grafo de aerodromos con `max_leg_km` + rechazo por bounding box. Modos shortest/fastest/safest. Expone `max_gs_kt` (cota superior de velocidad de tierra) para la heuristica de A*. El peso de arista NO se redondea: redondearlo violaba la desigualdad de admisibilidad. |
 | `route/astar.py` | **COMPLETO** | A* con heuristica haversine admisible en los tres modos. En `fastest` divide por `graph.max_gs_kt` (crucero de LA AERONAVE + viento), no por una constante: dividir por los 97 kt del Alpha rompia la admisibilidad para PA-28, C172 y DA40. Fijado por `tests/test_route.py`, que verifica h(n) <= costo real contra Dijkstra para los 5 perfiles. |
 | `route/airway_router.py` | **COMPLETO** | Dijkstra sobre aerovias filtrado por MEA de la aeronave. `find_airways_for_leg()`, `find_airways_for_route_legs()` (camino continuo end-to-end). |
-| `route/vfr_corridors.py` | **COMPLETO** | Ruteo VFR por corredores visuales de las TMA BA/Cordoba (grafo + Dijkstra por cluster). `corridor_path_for_leg()`. |
+| `route/vfr_corridors.py` | **COMPLETO** | Ruteo VFR por corredores visuales de las TMA BA/Cordoba (grafo + Dijkstra por cluster). `corridor_path_for_leg()` devuelve ademas el **nombre de cada punto**, derivado del `name` del corredor (que lista sus puntos en orden): sin eso los dos extremos comparten el id del corredor y no hay como decir donde se vira. |
 | `route/performance.py` | **COMPLETO** | Haversine, rumbo, groundspeed con viento, combustible, altitud segura. |
 | `route/weather_sampler.py` | **INACTIVO** ⚠️ | Muestreo meteo en ruta con rerouteo. Solo se activa con `weather_reroute=True`, que la web nunca pasa. |
 
@@ -647,6 +647,63 @@ manda ahora `avoid_airspace` y `proponer_cambio_de_ruta` lo propaga a
 restriccion puesta y daba un numero que no coincidia con el de la ficha de ruta:
 dos cifras para la misma cosa en la misma pantalla.
 
+### La tabla describe el camino que se VUELA, con un rumbo por tramo
+
+Bug real encontrado por el piloto (septiembre 2026): el mapa dibujaba SACC-JES
+como dos tramos con rumbos distintos —el corredor visual dobla la ruta en
+Ascochinga— y la tabla de abajo mostraba **un solo rumbo**, el directo. El
+piloto veia el viraje en el mapa y no tenia donde leer a que rumbo virar.
+
+Detras habia algo mas grande: el optimizador mide la ruta como la **recta entre
+aerodromos**, pero el avion no vuela esa recta. Distancia, tiempo, combustible y
+hora de llegada se estaban subestimando:
+
+```
+                                      recta    volado   diferencia
+SACC-JES     corredor TMA Cordoba      43.3      45.4      +2.1 km
+SADP-SAAG    corredor TMA Bs As       178.4     180.2      +1.8 km
+SASA-SACO    aerovias (IFR)           728.1     732.5      +4.4 km
+SAME-SACO    corredor + ruta larga    463.9     505.9     +42.0 km   (+9.1 %)
+SAZN-SAZS    sin doblez               353.9     353.9      +0.0 km
+```
+
+**Todo lo que se informa pasa a medir el camino volado** (`_tramos_volados`):
+una fila por cada segmento que dibuja el mapa, con su rumbo, y los totales,
+`fuel_ok` y la ETA derivados de ahi. La ETA se corre entre 0 y 16 min segun la
+ruta; en los cinco casos medidos no cambio la hora de pronostico que se consulta
+para el destino, pero puede hacerlo.
+
+- **La tabla y el mapa usan la MISMA espina** (waypoints menos los aerodromos de
+  emergencia, que estan al costado y no se sobrevuelan). No pueden discrepar
+  porque salen del mismo filtro; hay un test que lo fija contando segmentos.
+- **Un punto SOBRE la linea no alarga nada.** Los checkpoints meteorologicos se
+  interpolan sobre el tramo: partir una recta en dos no cambia su longitud. Que
+  SAZN-SAZS de +0.0 km con un checkpoint en el medio es la verificacion.
+- **Cada fila declara QUE es el punto** —aerodromo, corredor, aerovia o
+  checkpoint meteo—, porque no todos son un viraje: un checkpoint no cambia el
+  rumbo y leerlo como instruccion de navegacion seria un error.
+- **El combustible se sigue agrupando en ETAPAS** separadas por las escalas: en
+  cada una se vuelve a cargar, y el tanque no tiene que aguantar el vuelo entero.
+- **Los waypoints se generan ANTES de fijar la ETA.** Si se hicieran despues, el
+  destino quedaria evaluado para una hora a la que el avion todavia no llego.
+  Para elegir a que hora consultar el pronostico de cada checkpoint se usa la
+  estimacion en recta, que es el unico dato disponible en ese punto y desvia
+  menos que la resolucion horaria de la fuente.
+- El ETA por waypoint **ya** se calculaba sobre la espina real y ajustado por
+  viento (paso 3 de `_generate_route_waypoints`): lo que estaba mal era el
+  resumen, no el recorrido.
+
+> **El nombre de un punto de corredor no estaba en ningun lado.** El `code` de
+> un waypoint de corredor es el id del CORREDOR y se repite en sus dos extremos,
+> asi que la tabla decia `VFR-COR-04 -> VFR-COR-04`. La solucion no fue inventar
+> un nombre: el `name` publicado de cada corredor **lista sus puntos en orden**,
+> separados por " - " y uno por coordenada ("ASCOCHINGA - AD. LA CUMBRE" son sus
+> dos extremos; "RIO SEGUNDO - TOLEDO - AD CORONEL OLMEDO" sus tres). Verificado
+> sobre **los 22 corredores de las dos TMA: la convencion se cumple en todos**, y
+> los puntos compartidos entre corredores distintos reciben el mismo nombre. Un
+> corredor que no la cumpliera dejaria el punto SIN nombre, nunca mal nombrado, y
+> hay un test de integridad del dato que avisa.
+
 ### El TAF decide el momento evaluado; el METAR solo mientras siga vigente
 
 Un aerodromo con estacion tiene **tres** fuentes, y cual describe el momento del
@@ -1035,7 +1092,7 @@ Sin la variable la app arranca igual: `/api/copilot/status` responde
 `available: false`, el panel del frontend no se muestra y **el resto del sistema
 funciona normalmente**. El copiloto es accesorio y su caida no arrastra a nadie.
 
-Suite de regresion (367 tests, sin red, ~5 s):
+Suite de regresion (386 tests, sin red, ~5 s):
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt

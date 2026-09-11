@@ -1335,7 +1335,7 @@
         <table class="w-full text-xs font-mono">
           <thead>
             <tr class="text-muted border-b border-border">
-              <th class="text-left pb-2 pr-4">Tramo</th>
+              <th class="text-left pb-2 pr-4">Tramo <span class="normal-case font-normal">· cada fila es un rumbo</span></th>
               <th class="text-right pb-2 pr-4">Dist.</th>
               <th class="text-right pb-2 pr-4">Rumbo</th>
               <th class="text-right pb-2 pr-4">Tiempo</th>
@@ -1343,15 +1343,26 @@
             </tr>
           </thead>
           <tbody>
-            <template x-for="leg in result?.route?.legs" :key="leg.origin + leg.dest">
+            <!-- Una fila por cada segmento que dibuja el mapa: donde cambia el
+                 rumbo, hay que virar. Antes la tabla mostraba un solo rumbo por
+                 tramo entre aeródromos, aunque la línea se doblara en el medio
+                 por un corredor o una aerovía — el piloto veía dos tramos en el
+                 mapa y un solo rumbo abajo. -->
+            <template x-for="(leg, li) in result?.route?.legs" :key="li">
               <tr class="border-b border-border/40 hover:bg-surface/50">
                 <td class="py-1.5 pr-4 text-[#e6edf3]">
-                  <span class="text-accent" x-text="leg.origin"></span>
+                  <span class="text-accent" x-text="leg.origin_name || leg.origin"></span>
                   <span class="text-muted mx-1">→</span>
-                  <span class="text-accent" x-text="leg.dest"></span>
+                  <span class="text-accent" x-text="leg.dest_name || leg.dest"></span>
+                  <span class="text-[9px] px-1 py-0.5 rounded ml-1"
+                        x-show="leg.dest_kind && leg.dest_kind !== 'aerodromo'"
+                        :style="tipoPunto(leg.dest_kind).style"
+                        :title="tipoPunto(leg.dest_kind).title"
+                        x-text="tipoPunto(leg.dest_kind).label"></span>
                 </td>
                 <td class="py-1.5 pr-4 text-right" x-text="leg.distance_km + ' km'"></td>
-                <td class="py-1.5 pr-4 text-right" x-text="leg.bearing_deg + '°'"></td>
+                <td class="py-1.5 pr-4 text-right font-semibold"
+                    x-text="Math.round(leg.bearing_deg) + '°'"></td>
                 <td class="py-1.5 pr-4 text-right" x-text="formatTime(leg.time_hours)"></td>
                 <td class="py-1.5 text-right" x-text="leg.fuel_liters + ' L'"></td>
               </tr>
@@ -3196,6 +3207,26 @@ function app() {
       if (cat === 'VFR') return '#3fb950';
       if (cat === 'VFR marginal') return '#d29922';
       return '#f85149';  // IFR / IFR bajo mínimos
+    },
+
+    // Que ES el punto donde termina el tramo. No todos son un viraje: un
+    // checkpoint meteorológico está SOBRE la línea y el rumbo no cambia, pero
+    // un punto de corredor o de aerovía sí. Decirlo evita leer una fila de
+    // muestreo como si fuera una instrucción de navegación.
+    tipoPunto(kind) {
+      if (kind === 'corredor') return {
+        label: 'corredor', title: 'Punto publicado de un corredor VFR',
+        style: 'background:#a371f722;color:#a371f7',
+      };
+      if (kind === 'aerovia') return {
+        label: 'aerovía', title: 'Punto de notificación de una aerovía',
+        style: 'background:#58a6ff22;color:#58a6ff',
+      };
+      if (kind === 'checkpoint') return {
+        label: 'meteo', title: 'Punto de muestreo meteorológico en ruta: no es un viraje',
+        style: 'background:#8b949e22;color:#8b949e',
+      };
+      return { label: '', title: '', style: '' };
     },
 
     // Insignia de fuente. Hay TRES, no dos: la observación de estación, el

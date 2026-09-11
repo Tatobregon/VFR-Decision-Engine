@@ -64,6 +64,10 @@ class _CorridorGraph:
         self.nodes: List[Tuple[float, float]] = []          # (lat, lon) por nodo
         self.adj: Dict[int, List[Tuple[int, float]]] = {}   # nodo -> [(vecino, km)]
         self.edge_meta: Dict[Tuple[int, int], dict] = {}    # (a,b) -> {corridor_id, name, ...}
+        # Nombre publicado de cada PUNTO, derivado del nombre del corredor (que
+        # lista sus puntos en orden). El id del corredor se repite en sus dos
+        # extremos, asi que sin esto no hay como nombrar donde se vira.
+        self.point_names: Dict[int, str] = {}
         # Cada cluster (componente conexa) tiene su propio casco. La red de
         # corredores de una región puede estar fragmentada en varios clusters
         # (ej. BA: norte y sur, separados por los CTR centrales): rutear por
@@ -237,11 +241,27 @@ def _build_graphs() -> Dict[str, _CorridorGraph]:
                 "region":         region,
             }
             coords = ft.get("geometry", {}).get("coordinates", [])
+
+            # El `name` del corredor LISTA SUS PUNTOS EN ORDEN, uno por
+            # coordenada: "ASCOCHINGA - AD. LA CUMBRE" son sus dos extremos, y
+            # "RIO SEGUNDO - TOLEDO - AD CORONEL OLMEDO" sus tres. Verificado
+            # sobre los 22 corredores publicados de las dos TMA: en todos
+            # coincide la cantidad de partes con la de coordenadas.
+            #
+            # Importa porque sin esto el unico rotulo de un punto es el id del
+            # CORREDOR, que se repite en sus dos extremos: la tabla de tramos
+            # diria "VFR-COR-04 -> VFR-COR-04" y el piloto no sabria donde virar.
+            partes = [x.strip() for x in str(props.get("name", "")).split(" - ")]
+            if len(partes) != len(coords):
+                partes = []          # no cumple la convencion: no se inventa
+
             prev = None
-            for c in coords:
+            for idx_c, c in enumerate(coords):
                 lat, lon = c[1], c[0]
                 all_pts.append((lat, lon))
                 node = g._node_for(lat, lon)
+                if partes:
+                    g.point_names.setdefault(node, partes[idx_c])
                 if prev is not None:
                     g.add_edge(prev, node, meta)
                 prev = node
@@ -314,6 +334,9 @@ def corridor_path_for_leg(a_lat: float, a_lon: float,
                     "lat": round(lat, 5), "lon": round(lon, 5),
                     "corridor_id":    meta.get("corridor_id", ""),
                     "corridor_name":  meta.get("name", ""),
+                    # Nombre del PUNTO, no del corredor. Es lo que permite decir
+                    # donde se vira; vacio si el corredor no declara sus puntos.
+                    "point_name":     g.point_names.get(node, ""),
                     "region":         region,
                     "region_name":    _REGION_NAME.get(region, region),
                     "upper_limit_ft": meta.get("upper_limit_ft"),
