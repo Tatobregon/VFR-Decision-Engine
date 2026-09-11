@@ -165,11 +165,13 @@ def normative_label(sc: Scenario) -> str:
 
     Es el peor voto entre estas componentes:
       1. Visibilidad/techo : categoria ANAC/OACI del sistema.
-      2. Viento cruzado    : fraccion del maximo demostrado de la aeronave.
-      3. Rafagas           : fraccion del gust_max de la aeronave.
-      4. Niebla            : spread termico <= 2 C -> deterioro probable.
-      5. Fenomenos wx      : severidad tabulada (>=1.0 duro, >=0.6 moderado).
-      6. Tendencia TAF     : r_taf >= 0.6 -> deterioro pronosticado.
+      2. Viento cruzado    : fraccion del maximo demostrado de la aeronave,
+                             calculado sobre la RAFAGA (peor instante).
+      3. Niebla            : spread termico <= 2 C -> deterioro probable.
+      4. Fenomenos wx      : severidad tabulada (>=1.0 duro, >=0.6 moderado).
+      5. Tendencia TAF     : r_taf >= 0.6 -> deterioro pronosticado.
+
+    La RAFAGA no vota por separado: entra por el cruzado de rafaga (voto 2).
     """
     prof = get_profile(sc.aircraft)
 
@@ -191,32 +193,27 @@ def normative_label(sc: Scenario) -> str:
     xw_ratio = xw_eff / prof.crosswind_max_kt if prof.crosswind_max_kt > 0 else 1.0
     vote_xw = "NO GO" if xw_ratio >= 1.0 else "CAUTION" if xw_ratio >= 0.85 else "GO"
 
-    # 3. Rafagas (delta rafaga - sostenida) relativo al gust_max
+    # 3. Rafagas: SIN voto propio (septiembre 2026)
     #
-    # ⚠ ESTE VOTO NO ES INDEPENDIENTE DEL MOTOR. Los cortes replican los de
-    # risk/soft_scoring.py (GUST_CAUTION_FRACTION, GUST_NOGO_FACTOR). Se dejan
-    # escritos como literales, y no importados, para que quien lea vea la
-    # duplicacion en vez de que un import la disimule; un test verifica que no
-    # se desincronicen (test_risk.py). Ver la nota de alcance al final del
-    # encabezado de este modulo.
-    if sc.wind_gust_kt is not None and sc.wind_spd_kt is not None:
-        delta = sc.wind_gust_kt - sc.wind_spd_kt
-    else:
-        delta = 0.0
-    g_ratio = delta / prof.gust_max_kt if prof.gust_max_kt > 0 else 0.0
-    vote_gust = "NO GO" if g_ratio >= 1.5 else "CAUTION" if g_ratio >= 0.85 else "GO"
+    # La rafaga entra por el voto 2, que ya se calcula sobre el cruzado DE LA
+    # RAFAGA. Un voto adicional sobre el delta crudo medía cuanto varia el
+    # viento sin mirar hacia donde, y etiquetaba como no operable un dia con la
+    # rafaga alineada con la pista, donde el avion no recibe carga lateral.
+    # El motor dejo de vetar por ese criterio y la referencia lo acompaña: si no
+    # lo hiciera, la bateria mediria el desacuerdo contra un criterio que el
+    # propio proyecto descarto.
 
-    # 4. Niebla por spread termico
+    # 3. Niebla por spread termico
     vote_fog = "CAUTION" if (sc.spread_c is not None and sc.spread_c <= 2.0) else "GO"
 
-    # 5. Fenomenos wx
+    # 4. Fenomenos wx
     sev = max((_WX_SEVERITY.get(c.strip().upper(), 0.0) for c in sc.wx_codes), default=0.0)
     vote_wx = "NO GO" if sev >= 1.0 else "CAUTION" if sev >= 0.6 else "GO"
 
-    # 6. Tendencia TAF
+    # 5. Tendencia TAF
     vote_taf = "CAUTION" if sc.r_taf >= 0.6 else "GO"
 
-    return _worst(vote_vis, vote_xw, vote_gust, vote_fog, vote_wx, vote_taf)
+    return _worst(vote_vis, vote_xw, vote_fog, vote_wx, vote_taf)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

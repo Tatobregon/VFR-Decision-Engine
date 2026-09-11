@@ -142,24 +142,36 @@ def _worst_verdict(a: str, b: str) -> str:
 XWIND_CAUTION_FRACTION = 0.85     # >= 0.85 del limite -> CAUTION
                                   # >= el limite       -> NO GO
 
-# ── Rafagas ───────────────────────────────────────────────────────────────────
-# PROCEDENCIA: (J) JUICIO DECLARADO, revisado por piloto sobre el criterio
-# original, con el argumento de estatus del parametro que se expone arriba: una
-# rafaga por debajo de la referencia de operacion normal deja al avion dentro de
-# lo que puede sostener, de modo que el piso de CAUTION no se justifica a la
-# mitad de esa referencia sino cerca de ella. El NO GO exige superarla con
-# margen, porque exceder una referencia de rutina no equivale a exceder un valor
-# certificado.
+# ── Rafagas: NO imponen piso por si solas ─────────────────────────────────────
+# PROCEDENCIA: (J) JUICIO DECLARADO, revisado por piloto (septiembre 2026).
 #
-# TRAZABILIDAD DEL CAMBIO (septiembre 2026): el valor anterior era 0.50, igual
-# que el del cruzado. Se separo y se elevo tras detectar que producia CAUTION en
-# condiciones operables — caso observado: delta +13 kt contra una referencia de
-# 20 kt en un aerodromo con cruzado efectivo de 0.2 kt. Ver la nota sobre
-# INDEPENDENCIA DE LA REFERENCIA en risk/scenarios.py: para este factor la
-# concordancia con la etiqueta normativa es por construccion y NO constituye
-# evidencia independiente.
-GUST_CAUTION_FRACTION = 0.85      # >= 0.85 x gust_max   -> CAUTION
-GUST_NOGO_FACTOR      = 1.5       # >= 1.50 x gust_max   -> NO GO
+# La rafaga entra al veredicto POR SU COMPONENTE CRUZADO, que ya es lo que mide
+# la barrera de cruzado: `xw_eff_kt` se calcula sobre la RAFAGA, no sobre el
+# viento sostenido. Una barrera adicional sobre el delta crudo de rafaga mide
+# algo distinto —cuanto varia el viento, sin mirar hacia donde— y por eso vetaba
+# vuelos con la rafaga alineada con la pista.
+#
+# CASO QUE LO MOTIVO, encontrado por el piloto: SACC, viento 145/12.5 racheado a
+# 27 kt sobre la pista 140. El viento entra a 5 grados de la pista: el cruzado
+# con rafaga es de 2.4 kt contra un maximo demostrado de 18. La barrera de
+# rafaga saltaba igual —delta +18 kt sobre una referencia de 20— y ponia
+# "factor limitante" en un dia en que el avion no recibe carga lateral.
+#
+# EL FUNDAMENTO ES EL ESTATUS DE CADA NUMERO, el mismo que se expone arriba:
+# `crosswind_max_kt` es un maximo DEMOSTRADO en certificacion y define un limite
+# operativo; `gust_max_kt` es una referencia de operacion normal, no un limite.
+# Un veto —que por definicion no se compensa con nada— tiene que apoyarse en un
+# limite, no en una referencia.
+#
+# LA RAFAGA NO DESAPARECE DEL VEREDICTO: sigue entrando por dos caminos. Por el
+# cruzado de rafaga en la barrera, y como componente compensatorio `r_gust`
+# (peso 0.050) que representa la turbulencia y el corte de viento. Lo que deja
+# de existir es su capacidad de VETAR sin tener componente cruzado.
+#
+# Las constantes se conservan porque `r_gust` y la bateria de escenarios siguen
+# necesitando una escala de referencia para la rafaga.
+GUST_CAUTION_FRACTION = 0.85      # escala de referencia de r_gust (ya no veta)
+GUST_NOGO_FACTOR      = 1.5       # idem
 
 
 def conjunctive_floor(
@@ -182,13 +194,11 @@ def conjunctive_floor(
     Reglas (relativas a los limites de CADA aeronave — escalable):
       - Cruzado efectivo >= limite del avion                     -> NO GO
       - Cruzado efectivo >= XWIND_CAUTION_FRACTION del limite     -> CAUTION
-      - Delta de rafaga  >= GUST_NOGO_FACTOR x gust_max           -> NO GO
-      - Delta de rafaga  >= GUST_CAUTION_FRACTION x gust_max      -> CAUTION
       - Niebla probable (r_fog >= 0.9, spread bajo)               -> CAUTION
       - Deterioro pronosticado en TAF (r_taf >= 0.6)              -> CAUTION
 
-    El cruzado y la rafaga usan escalas distintas a proposito: ver la
-    justificacion en el bloque de constantes de este modulo.
+    La RAFAGA no tiene piso propio: entra por su componente cruzado, que es lo
+    que mide `xw_eff_kt`. Ver la justificacion en el bloque de constantes.
     """
     floor   = "GO"
     reasons = []
@@ -206,23 +216,11 @@ def conjunctive_floor(
                 f"viento cruzado{_con_rafaga(xw_con_rafaga)} {xw_eff_kt:.0f} kt "
                 f"(>={XWIND_CAUTION_FRACTION:.0%} del limite de {xw_limit_kt:.0f} kt)")
 
-    # ── Rafagas (variabilidad del viento) ─────────────────────────────────────
-    # La rafaga mide VARIABILIDAD, no intensidad sostenida, y gust_max_kt es una
-    # referencia de operacion normal y no un valor certificado. De ahi que la
-    # escala sea mas permisiva que la del cruzado (ver bloque de constantes).
-    if gust_kt is not None and spd_kt is not None and gust_max_kt > 0:
-        delta = gust_kt - spd_kt
-        if delta >= GUST_NOGO_FACTOR * gust_max_kt:
-            floor = _worst_verdict(floor, "NO GO")
-            reasons.append(
-                f"rafaga +{delta:.0f} kt supera {GUST_NOGO_FACTOR:g}x la referencia "
-                f"del avion ({gust_max_kt:.0f} kt)")
-        elif delta >= GUST_CAUTION_FRACTION * gust_max_kt:
-            floor = _worst_verdict(floor, "CAUTION")
-            reasons.append(
-                f"rafaga +{delta:.0f} kt "
-                f"(>={GUST_CAUTION_FRACTION:.0%} de la referencia de "
-                f"{gust_max_kt:.0f} kt del avion)")
+    # ── Rafagas: sin piso propio ──────────────────────────────────────────────
+    # Deliberadamente NO hay barrera sobre el delta crudo de rafaga. La rafaga
+    # ya esta dentro de `xw_eff_kt`, que es el cruzado calculado sobre ella: si
+    # la rafaga carga lateralmente al avion, veta por ahi. Si esta alineada con
+    # la pista, no hay carga lateral y no hay nada que vetar.
 
     # ── Niebla probable (indicador adelantado: puede pasar a IMC rapido) ──────
     if r_fog >= 0.9:

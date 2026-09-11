@@ -83,10 +83,10 @@ automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a
 | `risk/ahp_weights.py` | **COMPLETO** | Derivacion AHP de los pesos. Los juicios de a pares NO son a ojo: se derivan de accidentologia con la operacion explicita `a_ij = redondeo_Saaty(I_i/I_j)`, con `I = prob x severidad` (Doc 9859 OACI). Cada entrada declara su procedencia (E evidencia / N norma / D derivada / J juicio). CR=0.069. |
 | `risk/weights.py` | **COMPLETO** | Pesos AHP W_VIS=0.357 W_CEIL=0.357 W_XWIND=0.099 W_FOG=0.071 W_GUST=0.050 W_WX=0.044 W_TAF=0.022. Funciones r_i. Thresholds **calibrados**: t_go=0.22, t_caution=0.59. Los **parametros de forma** de las rampas son constantes nombradas con procedencia declarada (N norma / J juicio): los quiebres de riesgo MAXIMO son la frontera IFR de la norma; los de riesgo NULO son juicio. `r_fog` de este modulo NO corre en runtime (la rampa real esta en `features/fog_risk.py`). |
 | `risk/hard_blockers.py` | **COMPLETO** | Tokens TS/TSRA/TSGR/GR/FC/VA/FZRA/FZDZ + vis<1.5km + ceil<500ft → NO GO inmediato. |
-| `risk/soft_scoring.py` | **COMPLETO** | `compute_soft_score(...)` → `SoftScoreResult`. Score compensatorio + **barrera no-compensatoria** (`conjunctive_floor`): `decision = worst(umbral(R), piso)`. Expone `guardrail_floor`/`guardrail_reason`. Las fronteras del piso son constantes nombradas con procedencia declarada: `XWIND_CAUTION_FRACTION=0.85` (J), `GUST_CAUTION_FRACTION=0.85` (J) y `GUST_NOGO_FACTOR=1.5` (J). Comparten el corte de CAUTION pero **NO el de NO GO**: el cruzado veta AL alcanzar el maximo demostrado, la rafaga recien a 1.5x su referencia. Efecto medido en sensitivity [5]: <=3/38 flips ante +/-30%. |
+| `risk/soft_scoring.py` | **COMPLETO** | `compute_soft_score(...)` → `SoftScoreResult`. Score compensatorio + **barrera no-compensatoria** (`conjunctive_floor`): `decision = worst(umbral(R), piso)`. Expone `guardrail_floor`/`guardrail_reason`. La unica frontera de viento es `XWIND_CAUTION_FRACTION=0.85` (J), sobre el cruzado calculado con la RAFAGA. **La rafaga no impone piso por si sola** (septiembre 2026): entra por su componente cruzado. Efecto medido en sensitivity [5]: <=2/38 flips ante +/-30%. |
 | `risk/scenarios.py` | **COMPLETO** | Bateria de 38 escenarios de referencia con etiqueta normativa ANAC/OACI (`normative_label`). Fuente compartida por calibracion y sensibilidad. **Declara en su encabezado el ALCANCE de la independencia de la referencia**: vale para vis/techo/wx/TAF, NO para cruzado ni rafaga, donde la etiqueta replica los cortes del motor y la concordancia es por construccion. |
 | `risk/calibration.py` | **COMPLETO** | Calibracion de umbrales por anclaje normativo (grid search + costo asimetrico). Resultado: t_go=0.22, t_caution=0.59 (36/38 = 95% concordancia, 0 sub-avisos, 2 sobre-avisos). Reporta ademas la concordancia **por nivel de minimos personales** (sin minimos 95%, PPL 89%, Alumno 74%) y verifica que en ninguno hay sub-avisos: el desvio es siempre por sobre-aviso. Validez de constructo, no empirica. |
-| `risk/sensitivity.py` | **COMPLETO** | Sensibilidad en 5 ejes: [1] OAT ±20% por peso, [2] Monte Carlo 7 pesos, [3] umbrales, [4] **parametros de forma de las r_i**, [5] **fraccion de CAUTION de la barrera**. Estabilidad del veredicto 99%; 35/36 escenarios nunca cambian. **Hallazgo clave**: los parametros de forma pesan MAS que los pesos (5.6% de flips contra 0.8%). |
+| `risk/sensitivity.py` | **COMPLETO** | Sensibilidad en 5 ejes: [1] OAT ±20% por peso, [2] Monte Carlo 7 pesos, [3] umbrales, [4] **parametros de forma de las r_i**, [5] **fraccion de CAUTION de la barrera de cruzado** (la rafaga ya no tiene piso propio). Estabilidad del veredicto 99%; 35/36 escenarios nunca cambian. **Hallazgo clave**: los parametros de forma pesan MAS que los pesos (5.6% de flips contra 0.8%). |
 
 ### INTEGRACION
 
@@ -298,9 +298,12 @@ solo 0.099 y daria GO). La barrera impone un PISO por factor y
 `decision = worst(umbral(R), piso)`:
 ```
 cruzado efectivo >= limite avion       → NO GO   cruzado >= 85%  del limite  → CAUTION
-delta rafaga >= 1.5 x gust_max avion   → NO GO   delta   >= 85%  del gust_max → CAUTION
 niebla probable (r_fog >= 0.9)     → CAUTION     deterioro TAF (r_taf >= 0.6) → CAUTION
 ```
+El **cruzado efectivo se calcula sobre la RAFAGA**, no sobre el viento sostenido:
+es el peor instante que el avion va a encontrar. Por eso la rafaga no necesita un
+piso aparte — y tenerlo producia vetos con el viento alineado con la pista (ver
+*La rafaga entra por su componente cruzado*).
 Cubre los factores de bajo peso que el score diluye; vis/techo (peso alto, deterioro
 gradual) siguen compensatorios. Elevo la concordancia con la norma de 66% a 92%.
 
@@ -704,6 +707,62 @@ para el destino, pero puede hacerlo.
 > corredor que no la cumpliera dejaria el punto SIN nombre, nunca mal nombrado, y
 > hay un test de integridad del dato que avisa.
 
+### La rafaga entra por su componente cruzado, no por su magnitud cruda
+
+Bug real encontrado por el piloto (septiembre 2026). SACC, viento **145/12.5 kt
+racheado a 27** sobre la pista **140**: el viento entra a 5 grados de la pista.
+
+```
+cruzado sostenido        1.1 kt
+cruzado CON RAFAGA       2.4 kt        contra un maximo demostrado de 18 kt
+delta de rafaga         +14 kt        contra una referencia de 20 kt
+```
+
+La pantalla mostraba **"Factor limitante (no se compensa con el resto): rafaga
++18 kt"** en un dia en que el avion no recibe carga lateral. La barrera de
+rafaga medía **cuanto varia el viento, sin mirar hacia donde**.
+
+**La barrera sobre el delta crudo de rafaga se ELIMINO.** El fundamento es el
+estatus de cada numero, el mismo que ya sostenia la separacion de escalas:
+
+- `crosswind_max_kt` es un maximo **DEMOSTRADO en certificacion**: define un
+  limite operativo, y un veto se apoya en un limite.
+- `gust_max_kt` es una **referencia de operacion normal**, no un limite. Vetar
+  —que por definicion no se compensa con nada— sobre una referencia era darle a
+  ese numero una autoridad que no tiene.
+
+**La rafaga NO desaparece del veredicto**, entra por dos caminos:
+1. Por el **cruzado de rafaga**, que es lo que ya mide `xw_eff_kt`: si la rafaga
+   carga lateralmente, veta por ahi. Verificado con el mismo viento del caso
+   contra una pista perpendicular: NO GO por cruzado de 27 kt.
+2. Como componente **compensatorio** `r_gust` (peso 0.050), que representa la
+   turbulencia y el corte de viento y se promedia con el resto.
+
+Lo que deja de existir es su capacidad de vetar sin componente cruzado.
+
+**Efecto medido** sobre la bateria de 38 escenarios: concordancia con la
+referencia **38/38**, **0 sub-avisos**; calibracion **sin cambios** (t_go=0.22,
+t_caution=0.59, 36/38 = 95%, los mismos dos sobre-avisos G2 y J1). La bateria
+acompaño el cambio: `normative_label` dejo de votar por el delta crudo, porque
+si no mediria el desacuerdo contra un criterio que el propio proyecto descarto —
+es la misma circularidad ya declarada para este factor, no una nueva.
+
+`GUST_CAUTION_FRACTION` y `GUST_NOGO_FACTOR` se conservan como escala de
+referencia de `r_gust` y de la bateria, pero **ya no gobiernan ningun piso**:
+hay un test que verifica que cambiarlas no mueve ningun veredicto, y el eje [5]
+de sensibilidad dejo de barrerlas (daban 0/38 flips en todos los valores, que no
+es robustez sino una perilla desconectada).
+
+> **Consecuencia declarada, pendiente de decision.** Sin piso por rafaga, un
+> viento **alineado con la pista** de 15 kt racheado a 47 —delta +32 kt, 160% de
+> la referencia de un C152— da **GO con R=0.050** (escenario E5 de la bateria).
+> El cruzado es cero, asi que ninguna barrera lo ve, y `r_gust` aporta como
+> mucho 0.050 por su peso AHP. Es coherente con el criterio adoptado, pero un
+> gradiente de 32 kt es cortante de viento en corta final. Si se quiere cubrir,
+> el lugar correcto NO es reponer la barrera al 85% —que es lo que se acaba de
+> quitar— sino un veto de gradiente extremo, muy por encima, con su propia
+> justificacion.
+
 ### El TAF decide el momento evaluado; el METAR solo mientras siga vigente
 
 Un aerodromo con estacion tiene **tres** fuentes, y cual describe el momento del
@@ -1092,7 +1151,7 @@ Sin la variable la app arranca igual: `/api/copilot/status` responde
 `available: false`, el panel del frontend no se muestra y **el resto del sistema
 funciona normalmente**. El copiloto es accesorio y su caida no arrastra a nadie.
 
-Suite de regresion (386 tests, sin red, ~5 s):
+Suite de regresion (389 tests, sin red, ~5 s):
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt

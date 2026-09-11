@@ -279,8 +279,11 @@ def shape_analysis(battery, base_w, base_v):
 # que las tres sean comparables entre si aunque partan de valores distintos.
 _BARRERAS = (
     ("XWIND_CAUTION_FRACTION", (0.60, 0.68, 1.02, 1.11)),   # base 0.85
-    ("GUST_CAUTION_FRACTION",  (0.60, 0.68, 1.02, 1.11)),   # base 0.85
-    ("GUST_NOGO_FACTOR",       (1.05, 1.20, 1.80, 1.95)),   # base 1.50
+    # GUST_CAUTION_FRACTION y GUST_NOGO_FACTOR ya NO figuran: desde septiembre
+    # de 2026 la rafaga no impone piso por si sola —entra por su componente
+    # cruzado, que es lo que barre XWIND_CAUTION_FRACTION—. Barrerlas daria
+    # 0/38 flips en todos los valores, que no es robustez sino una perilla
+    # desconectada, y leerlo como estabilidad seria enganoso.
 )
 
 
@@ -392,7 +395,7 @@ if __name__ == "__main__":
         _prev = row["parametro"]
         print(f"      {etiqueta:<26}{row['base']:>7.2f}{row['valor']:>8.2f}"
               f"{row['flips']:>4}/{n:<5}")
-    print("      Cruzado y rafaga se barren por separado: no comparten escala.")
+    print("      La rafaga no se barre: ya no impone piso (entra por el cruzado).")
 
     # ── Conclusion cuantitativa ───────────────────────────────────────────────
     print("\n" + "-" * 82)

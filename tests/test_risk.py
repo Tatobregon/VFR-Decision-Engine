@@ -257,12 +257,20 @@ def test_la_fuente_del_dato_no_cambia_el_score(weather):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Barrera de rafagas: escala propia, distinta de la del cruzado
+# La RAFAGA entra por su componente cruzado, no por su magnitud cruda
 # ══════════════════════════════════════════════════════════════════════════════
-# La rafaga y el cruzado dejaron de compartir umbral (septiembre 2026). El
-# motivo esta en el estatus de cada parametro: crosswind_max_kt es un maximo
-# DEMOSTRADO en certificacion, gust_max_kt es una referencia de operacion
-# normal. Estos tests fijan esa separacion para que no se revierta sin querer.
+# Septiembre 2026: la barrera sobre el delta crudo de rafaga se ELIMINO. Medía
+# cuanto varia el viento sin mirar hacia donde, y vetaba vuelos con la rafaga
+# alineada con la pista, donde el avion no recibe carga lateral.
+#
+# Caso que lo motivo, encontrado por el piloto: SACC 145/12.5 racheado a 27 kt
+# sobre la pista 140. El cruzado con rafaga es de 2.4 kt contra un maximo
+# demostrado de 18, y aun asi saltaba "factor limitante" por un delta de +18 kt.
+#
+# El fundamento es el estatus de cada numero: `crosswind_max_kt` es un maximo
+# DEMOSTRADO en certificacion y define un limite operativo; `gust_max_kt` es una
+# referencia de operacion normal. Un veto —que no se compensa con nada— se apoya
+# en un limite, no en una referencia.
 
 from risk.soft_scoring import (
     GUST_CAUTION_FRACTION,
@@ -271,101 +279,104 @@ from risk.soft_scoring import (
 )
 
 
-def _piso_por_rafaga(delta_kt, gust_max_kt=20.0):
-    """Piso conjuntivo con SOLO rafaga activa (cruzado y demas neutralizados)."""
-    piso, _ = conjunctive_floor(
-        xw_eff_kt=0.0, xw_limit_kt=12.0,
-        gust_kt=10.0 + delta_kt, spd_kt=10.0,
-        gust_max_kt=gust_max_kt, r_fog=0.0, r_taf=0.0,
+def _piso(xw_eff, xw_limit=18.0, gust=None, spd=None, gust_max=20.0):
+    piso, motivo = conjunctive_floor(
+        xw_eff_kt=xw_eff, xw_limit_kt=xw_limit,
+        gust_kt=gust, spd_kt=spd, gust_max_kt=gust_max,
+        r_fog=0.0, r_taf=0.0,
+        xw_con_rafaga=gust is not None,
     )
-    return piso
+    return piso, motivo
 
 
-def test_la_rafaga_tolera_superar_su_referencia_y_el_cruzado_no():
+@pytest.mark.parametrize("delta", [10.0, 18.0, 32.0, 60.0])
+def test_una_rafaga_alineada_con_la_pista_no_veta(delta):
     """
-    Cruzado y rafaga comparten el corte de CAUTION pero NO el de NO GO, y eso
-    refleja el distinto estatus de cada limite: `crosswind_max_kt` es un maximo
-    DEMOSTRADO en certificacion —alcanzarlo es NO GO— mientras que
-    `gust_max_kt` es una referencia de operacion normal, que se puede superar
-    con margen antes de vetar el vuelo.
+    Sin componente cruzado no hay nada que vetar, por grande que sea el delta.
+    Es exactamente el caso que reporto el piloto.
     """
-    assert GUST_NOGO_FACTOR > 1.0, (
-        "la rafaga tiene que poder superar su referencia sin ser NO GO"
-    )
-    # El cruzado veta AL alcanzar su limite; la rafaga recien a 1.5x el suyo.
-    piso_xw, _ = conjunctive_floor(
-        xw_eff_kt=12.0, xw_limit_kt=12.0, gust_kt=None, spd_kt=None,
-        gust_max_kt=20.0, r_fog=0.0, r_taf=0.0,
-    )
-    piso_gust = _piso_por_rafaga(20.0)          # 100% de la referencia
-    assert piso_xw == "NO GO"
-    assert piso_gust == "CAUTION"
+    piso, motivo = _piso(xw_eff=0.0, gust=12.0 + delta, spd=12.0)
+    assert piso == "GO"
+    assert "rafaga" not in motivo
+
+
+def test_el_caso_real_del_piloto_no_marca_factor_limitante():
+    """SACC 145/12.5 G27 sobre RWY 140: cruzado con rafaga 2.4 kt de 18."""
+    perfil = get_profile("Pipistrel Alpha Trainer")
+    piso, motivo = _piso(xw_eff=2.4, xw_limit=perfil.crosswind_max_kt,
+                         gust=27.0, spd=12.5, gust_max=perfil.gust_max_kt)
+    assert piso == "GO"
+    assert motivo == ""
+
+
+def test_la_misma_rafaga_SI_veta_cuando_carga_de_costado():
+    """
+    Lo que importa es la direccion, no la magnitud: el mismo viento contra una
+    pista perpendicular tiene que vetar. Si no, se habria eliminado el veto en
+    vez de corregirlo.
+    """
+    perfil = get_profile("Pipistrel Alpha Trainer")
+    piso, motivo = _piso(xw_eff=27.0, xw_limit=perfil.crosswind_max_kt,
+                         gust=27.0, spd=12.5, gust_max=perfil.gust_max_kt)
+    assert piso == "NO GO"
+    assert "cruzado" in motivo and "rafaga" in motivo
 
 
 @pytest.mark.parametrize("fraccion,esperado", [
-    (0.50, "GO"),        # dia ventoso normal: ya no dispara CAUTION
-    (0.70, "GO"),
+    (0.50, "GO"),
     (0.84, "GO"),
-    (0.85, "CAUTION"),   # justo en la referencia de operacion normal
-    (1.00, "CAUTION"),
-    (1.49, "CAUTION"),
-    (1.50, "NO GO"),     # la supera con margen
-    (2.00, "NO GO"),
+    (0.85, "CAUTION"),   # el corte lo pone el CRUZADO, no la rafaga
+    (0.99, "CAUTION"),
+    (1.00, "NO GO"),     # alcanzar el maximo demostrado veta
+    (1.50, "NO GO"),
 ])
-def test_la_escalera_de_rafagas(fraccion, esperado):
-    assert _piso_por_rafaga(20.0 * fraccion) == esperado
-
-
-def test_el_caso_operativo_que_motivo_el_cambio_da_go():
+def test_la_escalera_la_marca_el_cruzado_de_la_rafaga(fraccion, esperado):
     """
-    Caso real observado en SACC: viento 318/6.8 kt con rafaga 20.8 sobre la
-    pista 320 (cruzado efectivo 0.2 kt) en un Alpha Trainer. Un delta de
-    rafaga de 14 kt sobre una referencia de 20 es un dia ventoso, no una
-    condicion que amerite advertencia.
+    La rafaga sigue decidiendo el veredicto, pero a traves de `xw_eff_kt`, que
+    es el cruzado calculado SOBRE ella: el peor instante que el avion encuentra.
     """
-    perfil = get_profile("Pipistrel Alpha Trainer")
-    piso, _ = conjunctive_floor(
-        xw_eff_kt=0.2, xw_limit_kt=perfil.crosswind_max_kt,
-        gust_kt=20.8, spd_kt=6.8, gust_max_kt=perfil.gust_max_kt,
-        r_fog=0.0, r_taf=0.0,
-    )
-    assert piso == "GO"
+    limite = 18.0
+    piso, _ = _piso(xw_eff=limite * fraccion, xw_limit=limite,
+                    gust=30.0, spd=12.0)
+    assert piso == esperado
 
 
-def test_la_escala_de_rafaga_es_relativa_a_cada_aeronave():
+def test_la_escala_sigue_siendo_relativa_a_cada_aeronave():
+    """REGLA DE ALCANCE: el mismo cruzado pesa distinto segun el avion."""
+    alpha = get_profile("Pipistrel Alpha Trainer").crosswind_max_kt   # 18 kt
+    da40  = get_profile("Diamond DA40").crosswind_max_kt              # 20 kt
+    xw = 18.0
+    assert _piso(xw, alpha)[0] == "NO GO"      # alcanza su maximo
+    assert _piso(xw, da40)[0]  == "CAUTION"    # 90% del suyo
+
+
+def test_las_constantes_de_rafaga_ya_no_gobiernan_ningun_piso():
     """
-    Regla de alcance: el mismo delta pesa distinto segun el avion.
-
-    Con 20 kt de delta, el Alpha (referencia 20 kt) queda al 100% y el DA40
-    (referencia 30 kt) al 67%. El umbral nunca es un valor absoluto en kt.
+    Se conservan porque `r_gust` y la bateria de escenarios necesitan una escala
+    de referencia, pero cambiarlas no puede mover un veredicto: si lo moviera,
+    la barrera habria vuelto a existir sin que nadie lo declare.
     """
-    delta = 20.0
-    alpha = get_profile("Pipistrel Alpha Trainer").gust_max_kt   # 20 kt
-    da40  = get_profile("Diamond DA40").gust_max_kt              # 30 kt
-    assert _piso_por_rafaga(delta, alpha) == "CAUTION"           # 100%
-    assert _piso_por_rafaga(delta, da40)  == "GO"                # 67%
+    assert GUST_CAUTION_FRACTION > 0 and GUST_NOGO_FACTOR > 0
+    for gm in (1.0, 20.0, 500.0):
+        piso, _ = _piso(xw_eff=0.0, gust=80.0, spd=10.0, gust_max=gm)
+        assert piso == "GO", f"la rafaga volvio a vetar con gust_max={gm}"
 
 
-def test_la_referencia_normativa_no_se_desincroniza_del_motor():
+def test_la_referencia_normativa_tampoco_vota_por_rafaga():
     """
-    El voto de rafaga de risk/scenarios.py DUPLICA los cortes del motor.
-    Esa duplicacion es deliberada y esta declarada en el encabezado de ese
-    modulo (la concordancia de este factor es por construccion, no evidencia
-    independiente), pero si los dos valores se separan sin querer, la bateria
-    empieza a medir contra una regla que el sistema ya no aplica.
+    La bateria dejo de votar por el delta crudo junto con el motor. Si votara,
+    mediria el desacuerdo contra un criterio que el propio proyecto descarto.
     """
     import inspect
 
     from risk import scenarios
 
     fuente = inspect.getsource(scenarios.normative_label)
-    assert f'>= {GUST_NOGO_FACTOR}' in fuente, (
-        "el corte de NO GO por rafaga de scenarios.py no coincide con "
-        f"GUST_NOGO_FACTOR={GUST_NOGO_FACTOR}"
+    assert "vote_gust" not in fuente, (
+        "scenarios.normative_label volvio a votar por la rafaga cruda"
     )
-    assert f'>= {GUST_CAUTION_FRACTION}' in fuente, (
-        "el corte de CAUTION por rafaga de scenarios.py no coincide con "
-        f"GUST_CAUTION_FRACTION={GUST_CAUTION_FRACTION}"
+    assert "crosswind_gust_kt" in fuente, (
+        "el voto de viento tiene que seguir calculandose sobre la rafaga"
     )
 
 
