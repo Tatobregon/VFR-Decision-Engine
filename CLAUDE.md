@@ -114,7 +114,7 @@ automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a
 
 | Archivo | Estado | Descripcion |
 |---|---|---|
-| `route/optimizer.py` | **COMPLETO** | Interfaz unica: `optimize()`. La web usa siempre `mode="suggested"` (A* sobre corredor geografico, eligiendo el candidato con mayor cobertura de aerovia). Con `via=[ViaPoint(...)]` arma la ruta por segmentos (`_optimize_via`): cada tramo sale cuando aterriza el anterior y el combustible se agrupa en ETAPAS separadas por las escalas. `detour_cost()` compara contra la ruta directa. **No modela tiempo en tierra** (ver *Un sobrevuelo y una escala...*). |
+| `route/optimizer.py` | **COMPLETO** | Interfaz unica: `optimize()`. La web usa siempre `mode="suggested"` (A* sobre corredor geografico, eligiendo el candidato con mayor cobertura de aerovia). Con `via=[ViaPoint(...)]` arma la ruta por segmentos (`_optimize_via`): cada tramo sale cuando aterriza el anterior y el combustible se agrupa en ETAPAS separadas por las escalas. `detour_cost()` compara contra la ruta directa. **No modela tiempo en tierra, por decision explicita** (ver *Un sobrevuelo y una escala...*). |
 | `route/graph.py` | **COMPLETO** | Grafo de aerodromos con `max_leg_km` + rechazo por bounding box. Modos shortest/fastest/safest. Expone `max_gs_kt` (cota superior de velocidad de tierra) para la heuristica de A*. El peso de arista NO se redondea: redondearlo violaba la desigualdad de admisibilidad. |
 | `route/astar.py` | **COMPLETO** | A* con heuristica haversine admisible en los tres modos. En `fastest` divide por `graph.max_gs_kt` (crucero de LA AERONAVE + viento), no por una constante: dividir por los 97 kt del Alpha rompia la admisibilidad para PA-28, C172 y DA40. Fijado por `tests/test_route.py`, que verifica h(n) <= costo real contra Dijkstra para los 5 perfiles. |
 | `route/airway_router.py` | **COMPLETO** | Dijkstra sobre aerovias filtrado por MEA de la aeronave. `find_airways_for_leg()`, `find_airways_for_route_legs()` (camino continuo end-to-end). |
@@ -588,14 +588,20 @@ inexistente, repetido, igual al origen o al destino, o mas de `MAX_VIA_POINTS`
 escrito por aproximacion mandaria al piloto a otro aerodromo, que es el mismo
 modo de falla que la regla R4 del copiloto existe para evitar.
 
-> **Limitacion declarada: no se modela tiempo en tierra.** `_optimize_via` hace
+> **No se modela tiempo en tierra, y es deliberado.** `_optimize_via` hace
 > `salida_del_siguiente_tramo = llegada_del_anterior`, asi que una escala sale a
 > la misma hora en que aterriza. Para la escala en si no cambia nada —se evalua
 > a la hora de llegada, que es cuando se aterriza—, pero corre hacia atras la
-> ETA de todo lo que viene despues: con una escala de combustible real de 30-45
-> min, el destino se evalua para una hora anterior a la que se va a llegar.
-> Arreglarlo es del motor de ruta, no de la web, y mueve el momento evaluado de
-> todos los tramos posteriores: es una decision pendiente, no un olvido.
+> ETA de todo lo que viene despues.
+>
+> **Decision del piloto (septiembre 2026), con su fundamento**: el tiempo en
+> tierra es la variable menos predecible del vuelo —depende del servicio de
+> combustible, del tramite, de la espera— y elegir un numero seria inventar la
+> premisa del calculo, que es justo lo que este sistema no hace en ningun otro
+> lado. La conducta correcta es la real: **si se hace escala, se vuelve a la web
+> desde la escala** y se recalculan tiempos y riesgo hasta el destino con la hora
+> de salida verdadera. Un pronostico a varias horas vista recalculado sobre el
+> terreno vale mas que uno proyectado con una demora supuesta.
 
 > **Y el modo mock no llegaba al terreno.** `_corridor_alts_msl()` llamaba a
 > `get_elevations_m()` **sin propagar `mock`**, de modo que `mock=True` —que el
