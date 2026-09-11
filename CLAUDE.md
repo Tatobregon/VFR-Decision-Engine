@@ -97,17 +97,17 @@ automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a
 | `decision/engine.py` | **COMPLETO** | `DecisionEngine.evaluate()` → `DecisionResult`. Pipeline: fetch→parse→**condiciones del momento**→hard_blockers→soft_score+taf_window→decision. **Regla de fuente**: con codigo ICAO intenta METAR+TAF y cae a NWP si no hay METAR; sin ICAO va directo a NWP. **Regla de momento** (`_condiciones_para_el_momento`): dentro de `VIGENCIA_OBSERVACION_H` manda el METAR; despues manda el TAF y el NWP completa temperatura y rocio; si ninguno cubre el momento, NWP entero. El camino NWP usa **muestreo en anillo** (peor caso en tiempo Y espacio). |
 | `output/briefing.py` | **COMPLETO** | `generate_briefing(...)` → briefing meteorologico multi-linea para el piloto (origen, destino, ruta, NOTAMs). 100% reglas, sin IA. |
 | `output/flight_plan.py` | **COMPLETO** | `build_flight_plan(...)` → plan de vuelo OACI (casillas 7-19 + mensaje FPL). **No radica** el plan: lo presenta el piloto. |
-| `web/app.py` | **COMPLETO** | Backend FastAPI + frontend HTML (`web/static`). **Entry point unico del sistema.** Endpoints: `/api/evaluate`, `/api/profile`, `/api/timeline`, `/api/flightplan`, `/api/airport/{code}`, `/api/airports`, `/api/airports/map`, `/api/aircraft`, `/api/vfr_corridors`, `/api/airspace`, `/api/copilot`, `/api/copilot/status`. Switch VFR/IFR, corredores VFR, perfil vertical, panel del copiloto. **Puntos de paso**: `EvaluateRequest.via` (sobrevuelo o escala), validacion con nombre, ficha por escala a su hora de llegada, costo del desvio y veredicto global que incluye las escalas. |
+| `web/app.py` | **COMPLETO** | Backend FastAPI + frontend HTML (`web/static`). **Entry point unico del sistema.** Endpoints: `/api/evaluate`, `/api/profile`, `/api/timeline`, `/api/flightplan`, `/api/airport/{code}`, `/api/airports`, `/api/airports/map`, `/api/aircraft`, `/api/vfr_corridors`, `/api/airspace`, `/api/copilot` (devuelve ademas `proposal`, la propuesta de ruta SIN aplicar), `/api/copilot/status`. Switch VFR/IFR, corredores VFR, perfil vertical, panel del copiloto. **Puntos de paso**: `EvaluateRequest.via` (sobrevuelo o escala), validacion con nombre, ficha por escala a su hora de llegada, costo del desvio y veredicto global que incluye las escalas. |
 
 ### COPILOTO (capa de lenguaje natural)
 
 | Archivo | Estado | Descripcion |
 |---|---|---|
 | `copilot/client.py` | **COMPLETO** | Cliente Gemini por **REST plano, sin SDK** (`requirements.txt` sigue en 4 paquetes). `LLMClient` es un Protocol: el resto del paquete no depende de Gemini. **Cadena de reserva** entre modelos ante los 503 del nivel gratuito. `ScriptedClient` para tests sin red. |
-| `copilot/tools.py` | **COMPLETO** | Las **7 herramientas** deterministas + su esquema de function calling. Envoltorios finos sobre `data/airports.py`, `route/performance.py`, `decision/engine.py`, `decision/enroute.py` y `route/airway_router.py`. **No agregan ninguna fuente de datos.** `resolve_airport()` con ranking (codigo > nombre exacto > prefijo > provincia). |
+| `copilot/tools.py` | **COMPLETO** | Las **8 herramientas** deterministas + su esquema de function calling. Envoltorios finos sobre `data/airports.py`, `route/performance.py`, `decision/engine.py`, `decision/enroute.py` y `route/airway_router.py`. **No agregan ninguna fuente de datos.** `resolve_airport()` con ranking (codigo > nombre exacto > prefijo > provincia). `proponer_cambio_de_ruta()` PROPONE un cambio de ruta y no lo aplica. |
 | `copilot/prompts.py` | **COMPLETO** | Instruccion de sistema con las 5 reglas duras + `verdict_fallback()`, la plantilla determinista de veredicto. |
-| `copilot/agent.py` | **COMPLETO** | Bucle pregunta→herramienta→datos→redaccion (tope 3 vueltas) y las **dos garantias que se hacen cumplir en codigo**: `_enforce_verdict()` y `_enforce_codes()`. `trim_history()` recorta en limites de turno. |
-| `copilot/eval_set.py` | **COMPLETO** | **89 casos** etiquetados, **8 intenciones**, **las 5 regiones**. Incluye 11 casos cuyo dato NO existe, con patron de deteccion objetiva. Un test exige >=5 casos por intencion: agregar una herramienta sin sus casos rompe la suite. |
+| `copilot/agent.py` | **COMPLETO** | Bucle pregunta→herramienta→datos→redaccion (tope 3 vueltas) y las **dos garantias que se hacen cumplir en codigo**: `_enforce_verdict()` y `_enforce_codes()`. `trim_history()` recorta en limites de turno. Inyecta `ruta_actual` en las herramientas (el estado de pantalla va por codigo, no por el modelo) y saca la propuesta de ruta del RESULTADO de la herramienta, nunca del texto. |
+| `copilot/eval_set.py` | **COMPLETO** | **98 casos** etiquetados, **9 intenciones**, **las 5 regiones**. Un caso puede traer `contexto` (estado del formulario): hay intenciones que solo existen con un vuelo cargado. Incluye 11 casos cuyo dato NO existe, con patron de deteccion objetiva. Un test exige >=5 casos por intencion: agregar una herramienta sin sus casos rompe la suite. |
 | `copilot/evaluate.py` | **COMPLETO** | Matriz de confusion, P/R/F1, resolucion de entidad, **tasa de invencion**, integridad de veredicto, latencia, desagregado por region. Cachea en `eval_results.json`. |
 
 ### ROUTE LAYER
@@ -750,9 +750,9 @@ queda sin nafta en el aire.
 "no puedo contestar esto", el clasificador queda obligado a elegir una herramienta y
 el modelo inventa para encajar.
 
-**Las 7 herramientas** (8 intenciones con `fuera_de_alcance`): `buscar_aerodromo`,
+**Las 8 herramientas** (9 intenciones con `fuera_de_alcance`): `buscar_aerodromo`,
 `contacto_aerodromo`, `servicios_aerodromo`, `combustible_cercano`, `evaluar_meteo`,
-`atmosfera_en_punto` y `mejor_hora_para_salir`.
+`atmosfera_en_punto`, `mejor_hora_para_salir` y `proponer_cambio_de_ruta`.
 
 > ### El veredicto es de AERODROMO; el informe en altura NO lleva veredicto
 >
@@ -777,6 +777,67 @@ el modelo inventa para encajar.
 > Incluye margen contra el terreno (grilla SRTM 3x3 a 10 km, UNA peticion) y degrada
 > sin el si Open-Topo-Data falla: el informe de atmosfera se entrega igual.
 
+> ### El copiloto PROPONE la ruta; aplicarla es un acto del piloto
+>
+> `proponer_cambio_de_ruta` es la **octava** herramienta y la unica que no
+> responde sino que propone. Agrega, convierte o quita un punto de paso del
+> vuelo cargado. Alcance deliberadamente acotado a los puntos de paso: el
+> origen, el destino, la aeronave y la hora se siguen tocando a mano.
+>
+> **No aplica nada, por arquitectura.** Devuelve como QUEDARIA la ruta; la
+> pantalla la muestra con su costo y el piloto la aplica con un click. El
+> modelo de lenguaje elige que proponer; el codigo deterministico calcula que
+> implica; el piloto decide. Ningun camino permite que el LLM modifique el
+> vuelo de nadie. Aplicar tampoco evalua: deja el formulario cargado y el
+> piloto aprieta **Evaluar** cuando quiere.
+>
+> **La ruta actual la aporta el CODIGO, no el modelo.** `ruta_actual` se
+> inyecta desde el estado de pantalla igual que `engine_factory`. Hacer que el
+> modelo transcriba origen, destino y puntos ya cargados es exactamente como
+> nacio el bug de las tres horas: el formulario decia una cosa, el modelo
+> copiaba otra, y nadie lo notaba.
+>
+> **La intencion no se adivina.** "Pasar por Rosario" y "hacer escala en
+> Rosario" dibujan la misma linea y son dos vuelos distintos. La herramienta
+> mapea las formas del castellano ("pasar por", "sobrevolar", "de paso por" ->
+> sobrevuelo; "bajar en", "aterrizar en", "parar a cargar en" -> escala;
+> "sacar", "sin pasar por", "volver a la directa" -> quitar) y cuando de verdad
+> no se puede saber —"meteme Rosario en la ruta"— devuelve `falta_tipo` y el
+> modelo **repregunta**. Verificado en vivo: con esa frase el asistente
+> pregunta en vez de elegir.
+>
+> **Una escala propuesta trae su veredicto**, evaluado a la hora en que se
+> aterriza ahi y con la hora de salida del FORMULARIO (que esta en UTC, no en
+> hora local: se interpreta en codigo, sin pasar por el parser de hora local).
+> Proponer una escala sin decir si se puede aterrizar seria ofrecer un boton a
+> ciegas. Un sobrevuelo NO trae veredicto: no se aterriza ahi, y el veredicto
+> de aerodromo mide despegue y aterrizaje contra una pista.
+>
+> **El veredicto de la escala entra a la barrera R2** como cualquier otro: el
+> agente lo agrega a `resultados_meteo`, asi que si el texto no lo transcribe
+> se reemplaza por la plantilla determinista. Sin eso habria un camino nuevo
+> por el que un veredicto llega al piloto sin verificar.
+>
+> **El costo se mide contra la ruta que hay AHORA**, no contra la directa: con
+> dos puntos ya cargados, lo que el piloto necesita saber es cuanto agrega ESTE
+> cambio. Medido: agregar Parana a un vuelo que ya pasa por Rosario cuesta
+> +210.9 km; agregarlo a la ruta directa, +82.3 km.
+>
+> **Las tres intenciones vecinas se separaron contrastando descripciones**, que
+> es lo mismo que funciono con el trio meteorologico. Medido en vivo antes y
+> despues, sobre las mismas seis frases:
+>
+> | Frase | Antes | Despues |
+> |---|---|---|
+> | "quiero pasar por Rosario" | repreguntaba el tipo | sobrevuelo |
+> | "podriamos pasar por arriba de Rio Cuarto?" | `atmosfera_en_punto` | sobrevuelo |
+> | "necesito bajar a cargar nafta en Villa Dolores" | `combustible_cercano` | escala |
+>
+> `atmosfera_en_punto` dice ahora que INFORMA y no toca la ruta;
+> `combustible_cercano`, que dice DONDE hay combustible y que bajar a cargar es
+> un cambio de ruta. Ninguna de las dos cambio de comportamiento: F1 = 1.000 y
+> 0.941 respectivamente despues del cambio.
+
 **Contexto de pantalla.** El endpoint recibe el estado del formulario (origen, destino,
 aeronave, regimen, altitud, experiencia) y se inyecta en la instruccion de sistema, de
 modo que "como esta el destino?" no obligue a repreguntar lo que el piloto ya cargo.
@@ -796,48 +857,77 @@ unico; exigir exclusividad producia una correccion falsa.
 de reserva) · `gemini-flash-lite-latest` rechaza `thinkingBudget=0` con 400 ·
 hay que reenviar el `content` del modelo TAL CUAL porque lleva `thoughtSignature`.
 
-**Resultados medidos** sobre los 89 casos de `copilot/eval_set.py`
+**Resultados medidos** sobre los 98 casos de `copilot/eval_set.py`
 (modelo `gemini-flash-lite-latest`, que resuelve a `gemini-3.5-flash-lite`):
 
 | Metrica | Valor |
 |---|---|
-| Exactitud de clasificacion de intencion | **86/89 = 96.6 %** |
-| F1 macro-promedio (8 intenciones) | **0.969** |
-| Exactitud de resolucion de aerodromo | **72/73 = 98.6 %** |
+| Exactitud de clasificacion de intencion | **94/98 = 95.9 %** |
+| F1 macro-promedio (9 intenciones) | **0.957** |
+| Exactitud de resolucion de aerodromo | **82/83 = 98.8 %** |
 | **Tasa de invencion sobre datos ausentes** | **0 %** (0 de 9 con deteccion objetiva) |
-| Reconocimiento explicito de la ausencia | 10/11 = 90.9 % |
-| Veredictos que hubo que forzar | **0 de 10** |
+| Reconocimiento explicito de la ausencia | **11/11 = 100 %** |
+| Veredictos que hubo que forzar | **0 de 11** |
 | Codigos fabricados que hubo que corregir | **0** |
-| Latencia (media / mediana / p95) | 4.80 s / 3.62 s / 12.20 s |
+| Latencia (media / mediana / p95) | 14.60 s / 9.59 s / 39.89 s |
 
-F1 = **1.000** en `evaluar_meteo`, `atmosfera_en_punto` y `mejor_hora_para_salir`: las
-tres intenciones meteorologicas, que son las vecinas mas confundibles entre si, se
-separan perfectamente. Lo consiguio contrastar las descripciones de las herramientas
-(que evaluar_meteo es de SUPERFICIE contra una pista y atmosfera_en_punto es del AIRE
-sobre un punto de paso), no un cambio de modelo.
+> **La corrida tiene que estar limpia de caidas para poder leerse.** El nivel
+> gratuito devuelve 503 intermitentes y el agente degrada convirtiendo ese turno
+> en `fuera_de_alcance`, que la metrica cuenta como error de clasificacion. Una
+> corrida con 8 caidas dio 87.8 % y otra con 0, sobre el mismo codigo, dio
+> 95.9 %: la diferencia no era del clasificador. Antes de reportar un numero hay
+> que verificar cuantos casos traen el texto de indisponibilidad; el reporte
+> los distingue. Lo mismo vale al comparar entre versiones.
 
-**Comparacion con la version anterior**, que tenia 5 herramientas y 71 casos:
-intencion 95.8 % -> **96.6 %** y F1 macro 0.958 -> **0.969**. Agregar dos intenciones
-no degrado la clasificacion: la mejoro, porque cada herramienta nueva le saca ambiguedad
-a las que ya estaban.
+**Comparacion con la version anterior**, que tenia 7 herramientas y 89 casos:
+intencion 96.6 % -> **95.9 %** y F1 macro 0.969 -> **0.957**, con una intencion
+mas y nueve casos mas. Practicamente plano: agregar la modificacion de ruta no
+degrado la clasificacion de las otras ocho. **La latencia si subio** (4.80 ->
+14.60 s de media) y tiene causa conocida: `proponer_cambio_de_ruta` calcula DOS
+rutas completas —la actual y la propuesta— y, si es escala, corre ademas una
+evaluacion meteorologica. Es el precio de que la propuesta traiga su costo y su
+veredicto en vez de ser un boton a ciegas.
 
-Por region: CUYO 11/11, LITORAL 10/10, PATAGONIA 18/18, PAMPA 26/27, NOA 10/11 — el
-comportamiento no depende de la region (regla de alcance).
+**Contrastar las descripciones es lo que separa las intenciones vecinas**, y se
+aplico dos veces con el mismo efecto y sin cambiar de modelo: primero al trio
+meteorologico (que `evaluar_meteo` es de SUPERFICIE contra una pista y
+`atmosfera_en_punto` es del AIRE sobre un punto de paso) y despues al agregar la
+modificacion de ruta, que competia con esas dos por las mismas frases. Las tres
+meteorologicas quedan ahora en F1 0.933-0.952 —bajaron de 1.000 al aparecer una
+cuarta vecina— y `fuera_de_alcance` y `contacto_aerodromo` dan 1.000.
 
-**Los 3 desaciertos, analizados uno por uno** (seccion [8] del reporte; la matriz de
-confusion NO se retoca, se informa el analisis por separado):
-1. *"a quien llamo en Cordoba?"* -> **pidio desambiguacion** en vez de adivinar. Es la
-   conducta que pide R4; la metrica la penaliza porque no invoco herramienta.
-2. *"hay nafta en Andalgala?"* -> uso `combustible_cercano` en vez de
-   `servicios_aerodromo`. Confusion real entre dos intenciones vecinas; la respuesta
-   igual fue correcta y declaro la ausencia del dato.
-3. *"que pista tiene el aeropuerto de Wakanda?"* -> uso `buscar_aerodromo`, razonable
-   para un nombre desconocido, y reporto correctamente que no existe.
+Por region: CUYO 12/12, LITORAL 14/14, PAMPA 30/30, PATAGONIA 18/19, NOA 10/12 —
+el comportamiento no depende de la region (regla de alcance).
 
-Ninguno de los tres produjo una respuesta incorrecta o peligrosa.
+**Los 4 desaciertos, analizados uno por uno** (la matriz de confusion NO se
+retoca, se informa el analisis por separado):
+1. *"hay nafta en Andalgala?"* -> uso `combustible_cercano` en vez de
+   `servicios_aerodromo`. Confusion real entre dos intenciones vecinas; la
+   respuesta igual fue correcta y declaro la ausencia del dato. Es el mismo
+   desacierto de la version anterior.
+2. *"que pista tiene el aeropuerto de Wakanda?"* -> uso `buscar_aerodromo`,
+   razonable para un nombre desconocido, y reporto correctamente que no existe.
+   Tambien venia de la version anterior.
+3. *"como viene el dia en Piedra del Aguila?"* -> uso `evaluar_meteo` en vez de
+   `mejor_hora_para_salir`. Las dos hablan del veredicto del mismo aerodromo;
+   la respuesta fue correcta para un momento en vez de para el dia.
+4. *"puedo pasar por arriba de Tucuman sin aterrizar?"* -> uso
+   `atmosfera_en_punto` en vez de proponer el sobrevuelo. Es el borde que queda
+   entre las dos: la frase se puede leer como "que me encuentro ahi arriba" o
+   como "agregame ese punto". Contrastar las descripciones resolvio los otros
+   casos de esa familia, no este.
 
-**Fuera de la fase 1, explicitamente**: modificacion de ruta por lenguaje natural,
-uso en vuelo, GPS y cualquier fuente de datos nueva.
+Ninguno de los cuatro produjo una respuesta incorrecta o peligrosa.
+
+**La unica falla de resolucion** fue *"volvamos a la ruta directa, sacale el
+punto de paso"*, que **no nombra ningun aerodromo**: exigirle un codigo mide si
+el modelo lo INFIERE del contexto, que es otra cosa que la resolucion de
+entidad. La etiqueta se corrigio a `None` para las proximas corridas; el 98.8 %
+reportado es el medido antes de corregirla, o sea conservador.
+
+**Fuera de alcance, explicitamente**: uso en vuelo, GPS y cualquier fuente de datos
+nueva. La modificacion de ruta por lenguaje natural era la fase 2 y ya esta hecha,
+acotada a los puntos de paso.
 
 ### Perfiles de aeronave (5)
 
@@ -909,7 +999,7 @@ Sin la variable la app arranca igual: `/api/copilot/status` responde
 `available: false`, el panel del frontend no se muestra y **el resto del sistema
 funciona normalmente**. El copiloto es accesorio y su caida no arrastra a nadie.
 
-Suite de regresion (346 tests, sin red, ~4 s):
+Suite de regresion (366 tests, sin red, ~5 s):
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt

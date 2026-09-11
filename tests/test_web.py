@@ -15,12 +15,11 @@ import time
 import pytest
 from fastapi import HTTPException
 
-from route.optimizer import ViaPoint
+from route.optimizer import ViaPoint, eta_por_aerodromo
 from risk.aircraft_profiles import get_profile
 from web.app import (
     MAX_VIA_POINTS,
     ViaPointIn,
-    _eta_por_aerodromo,
     _generate_route_waypoints,
     _parse_via,
 )
@@ -84,7 +83,7 @@ def test_hay_un_tope_de_puntos_de_paso():
 # motor de decision.
 
 class _Leg:
-    """Tramo minimo: lo unico que mira `_eta_por_aerodromo` es dest y duracion."""
+    """Tramo minimo: lo unico que mira `eta_por_aerodromo` es dest y duracion."""
     def __init__(self, origin, dest, time_hours):
         self.origin, self.dest, self.time_hours = origin, dest, time_hours
 
@@ -93,7 +92,7 @@ def test_la_hora_de_llegada_acumula_los_tramos():
     dep = 1_789_000_000
     legs = [_Leg("SACO", "SAAR", 1.0), _Leg("SAAR", "SAEZ", 2.0)]
 
-    etas = _eta_por_aerodromo(legs, dep)
+    etas = eta_por_aerodromo(legs, dep)
 
     assert etas["SAAR"] == dep + 3600
     assert etas["SAEZ"] == dep + 3 * 3600
@@ -105,7 +104,7 @@ def test_cada_escala_se_evalua_a_su_propia_hora():
     legs = [_Leg("SACO", "SAAR", 1.5), _Leg("SAAR", "SAAP", 1.0),
             _Leg("SAAP", "SAEZ", 0.5)]
 
-    etas = _eta_por_aerodromo(legs, dep)
+    etas = eta_por_aerodromo(legs, dep)
 
     assert etas["SAAR"] != etas["SAAP"]
     assert etas["SAAR"] < etas["SAAP"] < etas["SAEZ"]
@@ -117,7 +116,7 @@ def test_si_la_ruta_pasa_dos_veces_vale_el_primer_arribo():
     legs = [_Leg("SACO", "SAAR", 1.0), _Leg("SAAR", "SAAP", 1.0),
             _Leg("SAAP", "SAAR", 1.0)]
 
-    etas = _eta_por_aerodromo(legs, dep)
+    etas = eta_por_aerodromo(legs, dep)
 
     assert etas["SAAR"] == dep + 3600
 

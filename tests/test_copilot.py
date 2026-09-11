@@ -614,3 +614,305 @@ def test_el_nombre_bien_escrito_le_gana_al_compacto():
     """La tolerancia no puede desplazar a una coincidencia exacta."""
     ap, _ = T.resolve_airport("La Cumbre")
     assert ap.code == "SACC"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Propuesta de cambio de ruta
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Es la unica herramienta que no responde sino que PROPONE, y por eso tiene un
+# contrato de seguridad propio:
+#
+#   * no aplica nada — devuelve como quedaria la ruta, no la cambia;
+#   * no adivina la intencion — sobrevolar y aterrizar son dos vuelos distintos,
+#     y si el piloto no lo aclaro, repregunta;
+#   * el veredicto de una escala queda cubierto por R2 igual que cualquier otro.
+#
+# Corre sin red: el motor se inyecta simulado.
+
+_RUTA_BASE = {"origin": "SACO", "dest": "SAEZ",
+              "aircraft": "Cessna 172 Skyhawk", "via": []}
+
+
+class _MotorFalso:
+    """Motor determinista simulado: devuelve el veredicto que se le pida."""
+
+    def __init__(self, decision="GO", r_total=0.1, fetch_ok=True, **kw):
+        self._decision, self._r, self._ok = decision, r_total, fetch_ok
+
+    def evaluate(self, station_id, runway_heading=None, departure_time=0,
+                 flight_duration_h=1.0):
+        from types import SimpleNamespace
+        return SimpleNamespace(
+            station_id=station_id, decision=self._decision, r_total=self._r,
+            hard_blocked=(self._decision == "NO GO"), blocker_summary="",
+            score_breakdown=None, taf_result=None, weather_source="nwp",
+            conditions_source="pronostico NWP", obs_time=departure_time,
+            next_go_from=None, weather=None, fetch_ok=self._ok,
+            error_message="" if self._ok else "sin datos",
+        )
+
+
+def _motor(decision="GO", r_total=0.1, fetch_ok=True):
+    return lambda **kw: _MotorFalso(decision, r_total, fetch_ok)
+
+
+def test_la_propuesta_no_aplica_nada():
+    """
+    Lo mas importante de esta herramienta es lo que NO hace. Devuelve como
+    quedaria la ruta; cambiarla es un acto del piloto.
+    """
+    ruta = dict(_RUTA_BASE, via=[])
+    r = T.proponer_cambio_de_ruta(lugar="Rosario", tipo="sobrevuelo",
+                                  ruta_actual=ruta, engine_factory=_motor())
+
+    assert r["ok"] is True
+    assert r["propuesta"]["via_resultante"] == [{"code": "SAAR", "is_stop": False}]
+    assert ruta["via"] == [], "la herramienta modifico la ruta que recibio"
+
+
+def test_si_no_esta_clara_la_intencion_repregunta():
+    """
+    Pasar por encima de Rosario y aterrizar en Rosario son dos vuelos distintos.
+    La herramienta NO elige: devuelve `falta_tipo` para que el modelo pregunte.
+    """
+    r = T.proponer_cambio_de_ruta(lugar="Rosario", tipo="",
+                                  ruta_actual=dict(_RUTA_BASE),
+                                  engine_factory=_motor())
+
+    assert r["ok"] is False
+    assert r["motivo"] == "falta_tipo"
+    assert "SOBREVOLARLO" in r["mensaje"] and "ESCALA" in r["mensaje"]
+
+
+def test_sin_vuelo_cargado_no_hay_ruta_que_modificar():
+    r = T.proponer_cambio_de_ruta(lugar="Rosario", tipo="escala",
+                                  ruta_actual={}, engine_factory=_motor())
+    assert r["ok"] is False
+    assert r["motivo"] == "sin_ruta_cargada"
+
+
+def test_el_sobrevuelo_no_trae_veredicto_y_la_escala_si():
+    """
+    El veredicto de aerodromo mide despegue y aterrizaje contra una pista. En un
+    sobrevuelo no se aterriza: emitir uno le daria dos significados a la misma
+    etiqueta. En una escala si, y ademas hace falta para decidir.
+    """
+    comun = dict(ruta_actual=dict(_RUTA_BASE), engine_factory=_motor("CAUTION", 0.4))
+
+    sobre = T.proponer_cambio_de_ruta(lugar="Rosario", tipo="sobrevuelo", **comun)
+    escala = T.proponer_cambio_de_ruta(lugar="Rosario", tipo="escala", **comun)
+
+    assert sobre["escala"] is None
+    assert escala["escala"]["veredicto"] == "CAUTION"
+    # Misma geometria: lo que cambia es el vuelo, no la linea
+    assert sobre["costo"]["ruta_despues"] == escala["costo"]["ruta_despues"]
+
+
+def test_una_escala_sin_datos_no_se_presenta_como_buena():
+    r = T.proponer_cambio_de_ruta(lugar="Rosario", tipo="escala",
+                                  ruta_actual=dict(_RUTA_BASE),
+                                  engine_factory=_motor(fetch_ok=False))
+    assert r["escala"]["ok"] is False
+    assert "veredicto" not in r["escala"]
+
+
+def test_quitar_un_punto_devuelve_la_ruta_sin_el():
+    ruta = dict(_RUTA_BASE, via=[{"code": "SAAR", "is_stop": True}])
+    r = T.proponer_cambio_de_ruta(lugar="Rosario", tipo="quitar",
+                                  ruta_actual=ruta, engine_factory=_motor())
+
+    assert r["ok"] is True
+    assert r["propuesta"]["accion"] == "quitar"
+    assert r["propuesta"]["via_resultante"] == []
+    # Quitar ACORTA: el costo tiene que ser negativo, no un valor absoluto
+    assert r["costo"]["dist_km_extra"] <= 0
+
+
+def test_cambiar_de_sobrevuelo_a_escala_no_duplica_el_punto():
+    ruta = dict(_RUTA_BASE, via=[{"code": "SAAR", "is_stop": False}])
+    r = T.proponer_cambio_de_ruta(lugar="Rosario", tipo="escala",
+                                  ruta_actual=ruta, engine_factory=_motor())
+
+    assert r["propuesta"]["via_resultante"] == [{"code": "SAAR", "is_stop": True}]
+
+
+def test_el_costo_se_mide_contra_la_ruta_actual():
+    """
+    Lo que el piloto necesita saber es cuanto agrega ESTE cambio, no cuanto
+    agregan todos los puntos que ya tenia.
+    """
+    sola     = T.proponer_cambio_de_ruta(
+        lugar="Parana", tipo="sobrevuelo", ruta_actual=dict(_RUTA_BASE),
+        engine_factory=_motor())
+    encadena = T.proponer_cambio_de_ruta(
+        lugar="Parana", tipo="sobrevuelo",
+        ruta_actual=dict(_RUTA_BASE, via=[{"code": "SAAR", "is_stop": False}]),
+        engine_factory=_motor())
+
+    assert sola["costo"]["dist_km_extra"] != encadena["costo"]["dist_km_extra"]
+    assert len(encadena["propuesta"]["via_resultante"]) == 2
+
+
+@pytest.mark.parametrize("via,tipo,motivo", [
+    ([],                                   "quitar",     "no_esta_en_la_ruta"),
+    ([{"code": "SAAR", "is_stop": False}],  "sobrevuelo", "sin_cambios"),
+])
+def test_los_pedidos_sin_sentido_se_dicen_con_nombre(via, tipo, motivo):
+    r = T.proponer_cambio_de_ruta(lugar="Rosario", tipo=tipo,
+                                  ruta_actual=dict(_RUTA_BASE, via=via),
+                                  engine_factory=_motor())
+    assert r["ok"] is False
+    assert r["motivo"] == motivo
+    assert "SAAR" in r["mensaje"]
+
+
+def test_no_se_puede_pasar_por_el_propio_origen():
+    r = T.proponer_cambio_de_ruta(lugar="SACO", tipo="escala",
+                                  ruta_actual=dict(_RUTA_BASE),
+                                  engine_factory=_motor())
+    assert r["ok"] is False
+    assert r["motivo"] == "es_origen_o_destino"
+
+
+def test_un_lugar_inexistente_no_se_aproxima():
+    r = T.proponer_cambio_de_ruta(lugar="Wakanda", tipo="escala",
+                                  ruta_actual=dict(_RUTA_BASE),
+                                  engine_factory=_motor())
+    assert r["ok"] is False
+    assert r["motivo"] == "no_encontrado"
+
+
+def test_hay_un_tope_de_puntos_de_paso():
+    lleno = [{"code": c, "is_stop": False}
+             for c in ("SAOC", "SAOD", "SAAP", "SAZR", "SANT")]
+    r = T.proponer_cambio_de_ruta(lugar="Rosario", tipo="sobrevuelo",
+                                  ruta_actual=dict(_RUTA_BASE, via=lleno),
+                                  engine_factory=_motor())
+    assert r["ok"] is False
+    assert r["motivo"] == "demasiados_puntos"
+
+
+# ── El contrato con el agente ─────────────────────────────────────────────────
+
+def _cliente_propone(args, respuesta):
+    return _cliente_con_herramienta("proponer_cambio_de_ruta", args, respuesta)
+
+
+def test_la_propuesta_sale_de_la_herramienta_no_del_texto():
+    """
+    El modelo elige QUE proponer; el codigo calcula QUE implica. La propuesta que
+    llega a la pantalla es la de la herramienta, no la que el modelo escribio.
+    """
+    cliente = _cliente_propone(
+        {"lugar": "Rosario", "tipo": "sobrevuelo"},
+        "Te propongo sobrevolar SAAR: agrega poco.")
+    ans = CopilotAgent(cliente, engine_factory=_motor()).ask(
+        "quiero pasar por Rosario", context=dict(_RUTA_BASE))
+
+    assert ans.intent == "proponer_cambio_de_ruta"
+    assert ans.proposal is not None
+    assert ans.proposal["propuesta"]["via_resultante"] == [
+        {"code": "SAAR", "is_stop": False}]
+
+
+def test_la_ruta_actual_la_aporta_el_codigo_no_el_modelo():
+    """
+    El modelo no transcribe origen, destino ni los puntos ya cargados: se
+    inyectan desde el estado de pantalla. Hacerlo al reves es como nacio el bug
+    de las tres horas.
+    """
+    cliente = _cliente_propone({"lugar": "Rosario", "tipo": "quitar"}, "Listo.")
+    contexto = dict(_RUTA_BASE, via=[{"code": "SAAR", "is_stop": True}])
+    ans = CopilotAgent(cliente, engine_factory=_motor()).ask(
+        "sacame Rosario", context=contexto)
+
+    # El modelo NO mando la ruta; aun asi la herramienta supo que SAAR estaba.
+    assert cliente.recibidas, "no se llamo al modelo"
+    assert ans.proposal is not None
+    assert ans.proposal["propuesta"]["accion"] == "quitar"
+    assert ans.proposal["propuesta"]["via_anterior"] == [
+        {"code": "SAAR", "is_stop": True}]
+
+
+def test_sin_propuesta_el_campo_queda_vacio():
+    cliente = _cliente_con_herramienta(
+        "contacto_aerodromo", {"query": "Cruz Alta"}, "Llamas al 15-438878.")
+    ans = CopilotAgent(cliente).ask("a quien llamo en Cruz Alta?")
+    assert ans.proposal is None
+
+
+def test_el_veredicto_de_una_escala_queda_cubierto_por_R2():
+    """
+    Si el texto no transcribe el veredicto de la escala, se reemplaza por la
+    plantilla determinista — igual que con cualquier otro veredicto. Sin esto
+    habria un camino por el que un veredicto llega al piloto sin verificar.
+    """
+    cliente = _cliente_propone(
+        {"lugar": "Rosario", "tipo": "escala"},
+        "Podes hacer escala en SAAR tranquilo, esta perfecto.")   # no dice NO GO
+    ans = CopilotAgent(cliente, engine_factory=_motor("NO GO", 0.9)).ask(
+        "quiero hacer escala en Rosario", context=dict(_RUTA_BASE))
+
+    assert ans.verdict_enforced is True
+    assert "NO GO" in ans.text
+
+
+def test_la_hora_de_la_propuesta_sale_del_formulario_y_es_UTC():
+    """
+    El campo `departure_time` del formulario esta en UTC; el parametro `cuando`
+    de las otras herramientas, en hora local. Pasarlo por el parser de hora
+    local correria la consulta tres horas — el bug que ya costo caro en esta
+    misma capa. Y calcular para "dentro de una hora" daria el desvio y el
+    veredicto de un momento que no es el del piloto.
+    """
+    import time as _t
+    from datetime import datetime, timezone
+
+    ts = T._salida_del_formulario({"departure_time": "13:00"})
+    assert datetime.fromtimestamp(ts, timezone.utc).hour == 13
+
+    # Sin hora, ni con una ilegible, se inventa nada raro: dentro de una hora.
+    ahora = _t.time()
+    for ctx in ({}, {"departure_time": ""}, {"departure_time": "xx:yy"}):
+        assert 0 < T._salida_del_formulario(ctx) - ahora <= 3700
+
+
+def test_la_escala_se_evalua_a_la_hora_del_vuelo_cargado():
+    """El veredicto de la escala tiene que ser el de SU momento, no el de ahora."""
+    momentos = []
+
+    class _Espia:
+        def __init__(self, **kw): pass
+        def evaluate(self, station_id, runway_heading=None, departure_time=0,
+                     flight_duration_h=1.0):
+            momentos.append(departure_time)
+            return _MotorFalso().evaluate(station_id, runway_heading,
+                                          departure_time, flight_duration_h)
+
+    salida = T._salida_del_formulario({"departure_time": "13:00"})
+    T.proponer_cambio_de_ruta(
+        lugar="Rosario", tipo="escala",
+        ruta_actual=dict(_RUTA_BASE, departure_time="13:00"),
+        engine_factory=lambda **kw: _Espia(),
+    )
+
+    assert momentos, "no se evaluo la escala"
+    # Se llega DESPUES de despegar, y dentro del mismo vuelo (no al dia siguiente)
+    assert salida < momentos[0] < salida + 12 * 3600
+
+
+def test_sin_vuelo_cargado_igual_se_nombra_el_lugar():
+    """
+    R4: siempre se nombra el codigo exacto que se resolvio. "Cargá el vuelo para
+    poder agregar SAAR (Rosario)" es accionable; "no hay vuelo cargado" a secas,
+    no. Y si el lugar tampoco existe, eso gana: se dice que no existe.
+    """
+    r = T.proponer_cambio_de_ruta(lugar="Rosario", tipo="escala",
+                                  ruta_actual={}, engine_factory=_motor())
+    assert r["motivo"] == "sin_ruta_cargada"
+    assert r["aerodromo"]["codigo"] == "SAAR"
+
+    r = T.proponer_cambio_de_ruta(lugar="Wakanda", tipo="escala",
+                                  ruta_actual={}, engine_factory=_motor())
+    assert r["motivo"] == "no_encontrado"

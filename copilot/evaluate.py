@@ -107,7 +107,9 @@ def run(casos: List[EvalCase], forzar: bool = False) -> List[Dict[str, Any]]:
             time.sleep(_PAUSA_S)
 
         print(f"  [{i:3d}/{len(casos)}] {c.pregunta[:58]:58s}", end="", flush=True)
-        ans = agente.ask(c.pregunta)
+        # El contexto de pantalla es parte del caso: hay intenciones que solo
+        # existen con un vuelo cargado, y evaluarlas sin el mediria otra cosa.
+        ans = agente.ask(c.pregunta, context=c.contexto)
         nuevos += 1
 
         registro = {

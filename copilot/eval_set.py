@@ -51,6 +51,11 @@ class EvalCase:
     region    : str = "-"
     sin_dato  : bool = False
     prohibido : Optional[str] = None
+    # Estado del formulario con el que se corre el caso. La mayoria no lo
+    # necesita, pero hay intenciones que SOLO existen con un vuelo cargado:
+    # "quiero pasar por Rosario" no significa nada sin una ruta que modificar.
+    # Evaluarlas con la pantalla vacia mediria otra cosa.
+    contexto  : Optional[dict] = None
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -167,7 +172,6 @@ _FUERA = [
     EvalCase("interpretame este METAR: SACO 121200Z 18010KT 9999 SCT030 24/12 Q1013",
              "fuera_de_alcance"),
     EvalCase("como hago un aterrizaje con viento cruzado fuerte?", "fuera_de_alcance"),
-    EvalCase("cambiame la ruta para pasar por arriba de Rosario", "fuera_de_alcance"),
     EvalCase("que dice la RAAC parte 91 sobre altura minima?", "fuera_de_alcance"),
     EvalCase("escribime un poema sobre volar", "fuera_de_alcance"),
     EvalCase("cuanto sale un Cessna 152 usado?", "fuera_de_alcance"),
@@ -268,9 +272,75 @@ _HORARIO = [
 ]
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# 11. proponer_cambio_de_ruta
+# ──────────────────────────────────────────────────────────────────────────────
+# La unica intencion que PROPONE en vez de responder. Los casos cubren las tres
+# acciones —sobrevolar, hacer escala y quitar— y, sobre todo, la distincion que
+# el modelo tiene que aprender: "pasar por" y "hacer escala en" dan la misma
+# linea en el mapa y son dos vuelos distintos.
+#
+# Se incluyen a proposito casos SIN la intencion explicita ("meteme Rosario en
+# la ruta"): ahi la conducta correcta NO es adivinar, es repreguntar. La
+# herramienta devuelve `falta_tipo` justamente para eso.
+
+# Vuelo de referencia para los casos de ruta. Cordoba -> Ezeiza cruza el pais de
+# oeste a este por el centro, asi que cualquiera de los puntos que se piden abajo
+# implica un desvio real y medible.
+_VUELO_CARGADO = {
+    "origin": "SACO", "dest": "SAEZ", "aircraft": "Cessna 172 Skyhawk",
+    "flight_rules": "VFR", "departure_time": "13:00", "experience": "PPL",
+    "via": [],
+}
+_VUELO_CON_PUNTO = dict(_VUELO_CARGADO, via=[{"code": "SAAR", "is_stop": False}])
+
+_RUTA = [
+    EvalCase("quiero pasar por Rosario",
+             "proponer_cambio_de_ruta", "SAAR", "LITORAL",
+             contexto=_VUELO_CARGADO),
+    EvalCase("agregame una escala en Villa Dolores",
+             "proponer_cambio_de_ruta", "SAOD", "PAMPA",
+             contexto=_VUELO_CARGADO),
+    EvalCase("podriamos sobrevolar Rio Cuarto en el camino?",
+             "proponer_cambio_de_ruta", "SAOC", "PAMPA",
+             contexto=_VUELO_CARGADO),
+    EvalCase("sacame Rosario de la ruta",
+             "proponer_cambio_de_ruta", "SAAR", "LITORAL",
+             contexto=_VUELO_CON_PUNTO),
+    EvalCase("quiero hacer escala en San Luis para cargar combustible",
+             "proponer_cambio_de_ruta", "SAOU", "CUYO",
+             contexto=_VUELO_CARGADO),
+    EvalCase("meteme Santa Rosa en el medio del vuelo",
+             "proponer_cambio_de_ruta", "SAZR", "PAMPA",
+             contexto=_VUELO_CARGADO),
+    EvalCase("prefiero hacer escala en Neuquen antes de seguir",
+             "proponer_cambio_de_ruta", "SAZN", "PATAGONIA",
+             contexto=_VUELO_CARGADO),
+    # Sin codigo esperado A PROPOSITO: la frase no nombra ningun aerodromo, asi
+    # que no prueba resolucion de entidad. Exigirle un codigo medira si el
+    # modelo INFIERE del contexto, que es otra cosa y no es lo que reporta esa
+    # metrica. (Se etiqueto mal una vez, y produjo una falla de resolucion que
+    # no era tal.)
+    EvalCase("volvamos a la ruta directa, sacale el punto de paso",
+             "proponer_cambio_de_ruta", None, "LITORAL",
+             contexto=_VUELO_CON_PUNTO),
+    EvalCase("puedo pasar por arriba de Tucuman sin aterrizar?",
+             "proponer_cambio_de_ruta", "SANT", "NOA",
+             contexto=_VUELO_CARGADO),
+    # Este caso vivia en `_FUERA`: era fuera de alcance cuando el copiloto no
+    # podia tocar la ruta. Ahora puede, asi que la etiqueta quedo vieja — el
+    # modelo la clasificaba "mal" contra una verdad de referencia caduca. Se
+    # deja anotado porque es un riesgo real de todo conjunto etiquetado: cuando
+    # el sistema gana una capacidad, parte del ground truth deja de valer.
+    EvalCase("cambiame la ruta para pasar por arriba de Rosario",
+             "proponer_cambio_de_ruta", "SAAR", "LITORAL",
+             contexto=_VUELO_CARGADO),
+]
+
+
 CASES: Tuple[EvalCase, ...] = tuple(
     _BUSCAR + _CONTACTO + _SERVICIOS + _COMBUSTIBLE + _METEO + _FUERA
-    + _LIMITE + _CUYO + _ALTURA + _HORARIO
+    + _LIMITE + _CUYO + _ALTURA + _HORARIO + _RUTA
 )
 
 

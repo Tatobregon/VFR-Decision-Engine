@@ -502,6 +502,29 @@ class DetourCost:
         return self.fuel_ok_antes and not self.fuel_ok_despues
 
 
+def eta_por_aerodromo(legs: List["LegDetail"], dep_time: int) -> Dict[str, int]:
+    """
+    Momento (Unix UTC) en que se llega a cada aerodromo de la ruta.
+
+    Se acumula el tiempo de los tramos en orden y se registra la PRIMERA vez que
+    se llega a cada codigo: si la ruta pasara dos veces por el mismo aerodromo,
+    lo que importa para la meteorologia es el primer arribo.
+
+    Vive aca y no en la capa web porque tanto la pantalla como el copiloto
+    necesitan saber a que hora se aterriza en cada escala, y que la capa de
+    lenguaje importara de `web/` invertiria las dependencias.
+
+    NOTA: el optimizador no modela tiempo en tierra (`_optimize_via` hace
+    `salida = llegada`), por decision explicita — ver CLAUDE.md.
+    """
+    etas: Dict[str, int] = {}
+    t = dep_time
+    for leg in legs:
+        t += int(leg.time_hours * 3600)
+        etas.setdefault(leg.dest, t)
+    return etas
+
+
 def detour_cost(base: OptimizeResult, con_via: OptimizeResult) -> DetourCost:
     """Compara la ruta directa contra la que pasa por los puntos pedidos."""
     if not base.found or not con_via.found:

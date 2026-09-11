@@ -1689,6 +1689,13 @@
 
 <!-- ═══════════════════════════════════════════════════════════ SCRIPTS -->
 <script>
+// Color del veredicto. Vive afuera de los componentes porque el panel del
+// copiloto es un Alpine aparte —no anida dentro de app()— y los dos tienen que
+// pintar GO/CAUTION/NO GO igual. Duplicarlo es como empiezan a divergir.
+function colorDeVeredicto(d) {
+  return d === 'GO' ? '#3fb950' : d === 'CAUTION' ? '#d29922' : '#f85149';
+}
+
 function app() {
   return {
     // ── Estado del formulario
@@ -3173,9 +3180,7 @@ function app() {
     },
 
     // ── Helpers de display
-    decisionColor(d) {
-      return d === 'GO' ? '#3fb950' : d === 'CAUTION' ? '#d29922' : '#f85149';
-    },
+    decisionColor(d) { return colorDeVeredicto(d); },
 
     catColor(cat) {
       if (cat === 'VFR') return '#3fb950';
@@ -3360,6 +3365,88 @@ function app() {
             <div>
               <div class="text-xs leading-relaxed copilot-md" x-html="md(m.text)"></div>
 
+              <!-- ── PROPUESTA DE CAMBIO DE RUTA ───────────────────────────
+                   Sale de la herramienta determinista, no del texto del modelo,
+                   y NO está aplicada: el asistente propone y el piloto decide.
+                   Un modelo de lenguaje no modifica el vuelo de nadie. -->
+              <template x-if="m.proposal">
+                <div class="mt-2 rounded-lg border px-3 py-2.5 text-xs"
+                     :class="m.proposal.costo?.rompe_la_autonomia
+                             ? 'border-nogo/45 bg-nogo/5' : 'border-accent/40 bg-accent/5'">
+
+                  <div class="text-[9px] uppercase tracking-widest text-muted mb-1.5">
+                    Propuesta · no aplicada
+                  </div>
+
+                  <!-- Qué cambia -->
+                  <div class="font-mono text-[11px] text-[#e6edf3] mb-2">
+                    <span x-text="accionTexto(m.proposal)"></span>
+                    <span class="text-accent font-bold" x-text="m.proposal.propuesta.aerodromo.codigo"></span>
+                    <span class="text-muted" x-text="'· ' + m.proposal.propuesta.aerodromo.nombre"></span>
+                  </div>
+
+                  <!-- Ruta resultante -->
+                  <div class="font-mono text-[10px] text-muted mb-2 break-words"
+                       x-text="(m.proposal.costo?.ruta_despues || []).join(' → ')"></div>
+
+                  <!-- Lo que cuesta. Quitar un punto AHORRA: el signo importa. -->
+                  <div class="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[11px] mb-2">
+                    <span class="text-muted" x-text="m.proposal.costo.dist_km_extra < 0 ? 'ahorra' : 'agrega'"></span>
+                    <span class="text-[#e6edf3] font-semibold"
+                          x-text="Math.abs(m.proposal.costo.dist_km_extra) + ' km'"></span>
+                    <span class="text-muted">·</span>
+                    <span class="text-[#e6edf3] font-semibold"
+                          x-text="Math.abs(Math.round(m.proposal.costo.time_min_extra)) + ' min'"></span>
+                    <span class="text-muted">·</span>
+                    <span class="text-[#e6edf3] font-semibold"
+                          x-text="Math.abs(m.proposal.costo.fuel_l_extra) + ' L'"></span>
+                  </div>
+
+                  <!-- Veredicto de la escala: si se aterriza ahí, tiene que poder aterrizarse -->
+                  <template x-if="m.proposal.escala && m.proposal.escala.ok">
+                    <div class="flex items-center gap-2 mb-2 flex-wrap">
+                      <span class="text-[10px] text-muted">Al llegar a la escala:</span>
+                      <span class="cat-tag font-mono text-[10px]"
+                            :style="`background:${decisionColor(m.proposal.escala.veredicto)}22; color:${decisionColor(m.proposal.escala.veredicto)}`"
+                            x-text="m.proposal.escala.veredicto"></span>
+                      <span class="text-[10px] text-muted font-mono"
+                            x-text="m.proposal.escala.momento_evaluado"></span>
+                    </div>
+                  </template>
+                  <template x-if="m.proposal.escala && !m.proposal.escala.ok">
+                    <div class="text-[10px] text-caution mb-2">
+                      Sin datos meteorológicos para esa escala a esa hora: no se puede
+                      afirmar que sea aterrizable.
+                    </div>
+                  </template>
+
+                  <!-- El desvío deja el vuelo sin autonomía -->
+                  <div x-show="m.proposal.costo?.rompe_la_autonomia"
+                       class="text-[10px] text-nogo font-semibold mb-2">
+                    ⚠ Con este cambio el vuelo queda <b>sin autonomía suficiente</b>.
+                  </div>
+
+                  <!-- Confirmación explícita. Aplicar sólo carga el formulario:
+                       la evaluación la corre el piloto cuando quiera. -->
+                  <div class="flex items-center gap-2" x-show="!m.proposalApplied">
+                    <button type="button" @click="aplicarPropuesta(m)"
+                            class="text-[11px] font-semibold px-3 py-1.5 rounded-lg border border-accent/60 text-accent hover:bg-accent/15 transition">
+                      Aplicar al formulario
+                    </button>
+                    <button type="button" @click="m.proposalApplied = 'descartada'"
+                            class="text-[11px] px-3 py-1.5 rounded-lg border border-border text-muted hover:text-[#e6edf3] transition">
+                      Descartar
+                    </button>
+                  </div>
+                  <div x-show="m.proposalApplied === 'aplicada'" class="text-[10px] text-go">
+                    ✓ Cargado en el formulario. Apretá <b>Evaluar</b> para ver los números nuevos.
+                  </div>
+                  <div x-show="m.proposalApplied === 'descartada'" class="text-[10px] text-muted">
+                    Descartada. La ruta quedó como estaba.
+                  </div>
+                </div>
+              </template>
+
               <!-- Trazabilidad: que herramienta corrio. Hace visible la
                    arquitectura: el texto sale de un dato, no del modelo. -->
               <div class="flex flex-wrap items-center gap-1.5 mt-1.5">
@@ -3500,9 +3587,51 @@ function copilot() {
           // en IFR la altitud la fija la MEA: no tiene sentido informarla
           cruise_alt_ft:  f.flight_rules === 'VFR' ? (f.cruise_alt_ft || null) : null,
           experience:     f.experience || null,
+          // Los puntos ya cargados: sin esto el asistente no puede quitar uno
+          // ni saber que ya esta, y propondria duplicados.
+          via:            (f.via || []).map(v => ({ code: v.code, is_stop: !!v.is_stop })),
         };
       } catch (e) {
         return null;
+      }
+    },
+
+    decisionColor(d) { return colorDeVeredicto(d); },
+
+    accionTexto(p) {
+      const a = p && p.propuesta && p.propuesta.accion;
+      if (a === 'escala')     return 'Hacer escala en ';
+      if (a === 'sobrevuelo') return 'Sobrevolar ';
+      if (a === 'quitar')     return 'Quitar de la ruta ';
+      return 'Modificar la ruta en ';
+    },
+
+    // Confirmación explícita del piloto. Carga el formulario y NADA MÁS: la
+    // evaluación la corre él cuando quiera. El asistente propone; aplicar y
+    // decidir son actos del piloto.
+    aplicarPropuesta(m) {
+      const prop = m && m.proposal && m.proposal.propuesta;
+      if (!prop || !Array.isArray(prop.via_resultante)) return;
+      try {
+        const el  = document.querySelector('[x-data="app()"]');
+        const app = window.Alpine && window.Alpine.$data(el);
+        if (!app || !app.form) {
+          this.error = 'No se pudo acceder al formulario para aplicar el cambio.';
+          return;
+        }
+        // Se reemplaza la lista COMPLETA, no se aplica un delta: la herramienta
+        // ya calculó cómo queda la ruta, y recalcularlo acá sería tener dos
+        // fuentes de verdad para lo mismo.
+        const nombres = new Map((app.form.via || []).map(v => [v.code, v.name]));
+        nombres.set(prop.aerodromo.codigo, prop.aerodromo.nombre);
+        app.form.via = prop.via_resultante.map(v => ({
+          code:    v.code,
+          name:    nombres.get(v.code) || v.code,
+          is_stop: !!v.is_stop,
+        }));
+        m.proposalApplied = 'aplicada';
+      } catch (e) {
+        this.error = 'No se pudo aplicar la propuesta al formulario.';
       }
     },
 
@@ -3546,6 +3675,10 @@ function copilot() {
           codeFixed: d.code_corrected,
           latency: d.latency_s,
           failed: !d.available,
+          // La propuesta viene de la herramienta, no del texto. Nace SIN
+          // aplicar: el piloto la confirma con un click o la descarta.
+          proposal: d.proposal || null,
+          proposalApplied: null,
         });
       } catch (e) {
         this.error = 'Falló la conexión con el asistente.';

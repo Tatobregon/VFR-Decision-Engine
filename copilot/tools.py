@@ -59,6 +59,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 try:
     from data.airports import AIRPORTS, AirportInfo, get_by_code, search_airports
     from route.performance import haversine_km
+    from route.optimizer import (ViaPoint, detour_cost, eta_por_aerodromo,
+                                 optimize)
     from risk.aircraft_profiles import PROFILE_NAMES, get_profile
 except ImportError:                                    # ejecucion como script
     import os
@@ -66,6 +68,8 @@ except ImportError:                                    # ejecucion como script
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from data.airports import AIRPORTS, AirportInfo, get_by_code, search_airports
     from route.performance import haversine_km
+    from route.optimizer import (ViaPoint, detour_cost, eta_por_aerodromo,
+                                 optimize)
     from risk.aircraft_profiles import PROFILE_NAMES, get_profile
 
 logger = logging.getLogger(__name__)
@@ -449,6 +453,29 @@ def _parse_cuando(cuando: Optional[str]) -> Tuple[int, str]:
     return int(dep.timestamp()), "dentro de una hora (no se entendio la fecha pedida)"
 
 
+def _etiqueta_momento(unix_ts: int) -> str:
+    """Momento Unix -> etiqueta legible en hora local argentina."""
+    tz_ar = timezone(timedelta(hours=_AR_UTC_OFFSET_H))
+    return (datetime.fromtimestamp(unix_ts, tz_ar).strftime("%d/%m/%Y %H:%M")
+            + " hora local")
+
+
+def _fuente_explicada(source: str) -> str:
+    """
+    Como se le nombra al piloto la fuente de las condiciones evaluadas.
+
+    Son TRES, no dos. Decir "pronostico numerico NWP" sobre condiciones que
+    salieron del TAF seria nombrar mal la fuente, que es justo lo que el resto
+    del sistema dejo de hacer.
+    """
+    if source == "metar":
+        return "observacion METAR real"
+    if source == "metar+taf":
+        return ("pronostico TAF del aerodromo para ese momento, con temperatura "
+                "y punto de rocio del modelo numerico")
+    return "pronostico numerico NWP (no es una observacion directa)"
+
+
 def evaluar_meteo(
     query: str,
     cuando: Optional[str] = None,
@@ -580,10 +607,7 @@ def evaluar_meteo(
         },
         "desglose": desglose,
         "fuente": resultado.weather_source,
-        "fuente_explicada": (
-            "observacion METAR real" if resultado.weather_source == "metar"
-            else "pronostico numerico NWP (no es una observacion directa)"
-        ),
+        "fuente_explicada": _fuente_explicada(resultado.weather_source),
         "instruccion": (
             "Transcribi el veredicto EXACTAMENTE como figura en el campo "
             "'veredicto'. No lo suavices, no lo endurezcas y no uses sinonimos. "
@@ -939,6 +963,334 @@ def mejor_hora_para_salir(
 # ──────────────────────────────────────────────────────────────────────────────
 # El nombre de cada entrada es la intencion medible en la matriz de confusion.
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Herramienta 8: proponer_cambio_de_ruta
+# ──────────────────────────────────────────────────────────────────────────────
+#
+# Es la primera herramienta que no RESPONDE sino que PROPONE, y eso cambia el
+# contrato en dos puntos que no son negociables:
+#
+#   * NO APLICA NADA. Devuelve una propuesta; el cambio lo aplica la pantalla
+#     despues de que el piloto lo confirme con un click. El modelo de lenguaje
+#     no puede modificar el vuelo de nadie, ni aunque se lo pidan bien.
+#
+#   * LA RUTA ACTUAL LA APORTA EL CODIGO, no el modelo. `ruta_actual` se inyecta
+#     desde el estado de la pantalla igual que `engine_factory`. Hacer que el
+#     modelo transcriba origen, destino y puntos ya cargados es exactamente como
+#     nacio el bug de las tres horas: el formulario decia una cosa, el modelo
+#     copiaba otra, y nadie lo notaba.
+
+# Lo que la herramienta entiende como intencion del piloto. Se declara explicito
+# porque "pasar por" y "hacer escala en" son dos vuelos distintos y la
+# herramienta NO adivina: si no esta claro, devuelve `falta_tipo` y el modelo
+# pregunta.
+TIPO_SOBREVUELO = "sobrevuelo"
+TIPO_ESCALA     = "escala"
+TIPO_QUITAR     = "quitar"
+TIPOS_VALIDOS   = (TIPO_SOBREVUELO, TIPO_ESCALA, TIPO_QUITAR)
+
+# Mismo tope que la capa web (`web.app.MAX_VIA_POINTS`). Se repite como
+# constante propia y no se importa para no invertir la dependencia: el copiloto
+# no puede depender de `web/`.
+MAX_PUNTOS_DE_PASO = 5
+
+
+def _via_actual(ruta_actual: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Puntos de paso ya cargados en la pantalla, normalizados."""
+    crudos = (ruta_actual or {}).get("via") or []
+    salida = []
+    for v in crudos:
+        if not isinstance(v, dict):
+            continue
+        code = str(v.get("code") or "").strip().upper()
+        if code and code in AIRPORTS:
+            salida.append({"code": code, "is_stop": bool(v.get("is_stop"))})
+    return salida
+
+
+def _salida_del_formulario(ruta_actual: Dict[str, Any]) -> int:
+    """
+    Hora de salida del vuelo cargado en la pantalla, en Unix UTC.
+
+    OJO CON LA ZONA: el campo `departure_time` del formulario esta en **UTC**,
+    mientras que el parametro `cuando` de las otras herramientas esta en hora
+    LOCAL. Pasarlo por `_parse_cuando` correria la consulta tres horas — que es
+    exactamente el bug que ya costo caro en esta misma capa. Por eso se
+    interpreta aca, en codigo, y no se reusa el parser de hora local.
+
+    Sin hora cargada se usa dentro de una hora, que es lo que hace la web.
+    """
+    texto = str((ruta_actual or {}).get("departure_time") or "").strip()
+    ahora = datetime.now(timezone.utc)
+    if texto:
+        try:
+            h, m = (int(x) for x in texto.split(":"))
+            dep = ahora.replace(hour=h, minute=m, second=0, microsecond=0)
+            if dep < ahora:
+                dep += timedelta(days=1)
+            return int(dep.timestamp())
+        except (TypeError, ValueError):
+            logger.warning(f"Copiloto: hora de salida ilegible {texto!r}")
+    return int((ahora + timedelta(hours=1)).timestamp())
+
+
+def proponer_cambio_de_ruta(
+    lugar          : str,
+    tipo           : str = "",
+    ruta_actual    : Optional[Dict[str, Any]] = None,
+    engine_factory : Optional[Callable[..., Any]] = None,
+) -> Dict[str, Any]:
+    """
+    Arma una PROPUESTA de cambio de ruta para que el piloto la confirme.
+
+    `tipo` es "sobrevuelo" (pasar por encima), "escala" (aterrizar ahi) o
+    "quitar" (sacar un punto ya cargado). Si el piloto no dejo claro cual, la
+    herramienta NO elige: devuelve `falta_tipo` para que el modelo pregunte.
+    Pasar por encima de Rosario y aterrizar en Rosario son dos vuelos distintos.
+
+    Devuelve el costo del desvio —km, minutos y litros contra la ruta que hay
+    ahora— y, si es escala, el veredicto del aerodromo a la hora en que se
+    aterriza. Proponer una escala sin decir si se puede aterrizar ahi seria
+    ofrecer un boton a ciegas.
+    """
+    ruta_actual = ruta_actual or {}
+    origen  = str(ruta_actual.get("origin") or "").strip().upper()
+    destino = str(ruta_actual.get("dest") or "").strip().upper()
+
+    # El lugar se resuelve PRIMERO, aunque todavia no haya vuelo cargado. La
+    # regla R4 pide nombrar el codigo exacto que se resolvio, y "cargá el vuelo
+    # para poder agregar SAAR (Rosario)" es mucho mas util que un "no hay vuelo
+    # cargado" a secas. Ademas, si el lugar no existe, eso se dice igual.
+    ap, error = _resolver_o_error(lugar)
+    if error:
+        return error
+
+    # ── Sin ruta cargada no hay nada que modificar ────────────────────────────
+    if not origen or not destino or origen not in AIRPORTS or destino not in AIRPORTS:
+        return {
+            "ok": False,
+            "motivo": "sin_ruta_cargada",
+            "aerodromo": _ficha_breve(ap),
+            "mensaje": f"El piloto quiere tocar la ruta en {ap.code} "
+                       f"({ap.name}), pero todavia no tiene un vuelo cargado en "
+                       f"la pantalla. Pedile que cargue origen y destino; no "
+                       f"inventes un vuelo.",
+        }
+
+    via = _via_actual(ruta_actual)
+    ya_esta = next((v for v in via if v["code"] == ap.code), None)
+
+    # ── La intencion tiene que ser explicita ──────────────────────────────────
+    tipo_norm = _norm(str(tipo or ""))
+    if "quitar" in tipo_norm or "sacar" in tipo_norm or "elimin" in tipo_norm:
+        accion = TIPO_QUITAR
+    elif "escala" in tipo_norm or "aterriz" in tipo_norm or "parar" in tipo_norm:
+        accion = TIPO_ESCALA
+    elif "sobrevuelo" in tipo_norm or "sobrevolar" in tipo_norm or "pasar" in tipo_norm:
+        accion = TIPO_SOBREVUELO
+    else:
+        return {
+            "ok": False,
+            "motivo": "falta_tipo",
+            "aerodromo": _ficha_breve(ap),
+            "mensaje": f"No esta claro que quiere hacer el piloto en "
+                       f"{ap.code}. Preguntale si quiere SOBREVOLARLO (pasar "
+                       f"por encima, vuelo continuo) o hacer ESCALA (aterrizar "
+                       f"ahi). No elijas vos: son dos vuelos distintos — la "
+                       f"escala exige que el aerodromo sea operable y parte el "
+                       f"calculo de combustible en etapas.",
+        }
+
+    # ── Casos que no tienen sentido, dichos con nombre ────────────────────────
+    if accion == TIPO_QUITAR and ya_esta is None:
+        return {
+            "ok": False,
+            "motivo": "no_esta_en_la_ruta",
+            "aerodromo": _ficha_breve(ap),
+            "mensaje": f"{ap.code} no es un punto de paso del vuelo actual, "
+                       f"asi que no hay nada que quitar. Decibelo al piloto.",
+        }
+    if accion != TIPO_QUITAR:
+        if ap.code in (origen, destino):
+            return {
+                "ok": False,
+                "motivo": "es_origen_o_destino",
+                "aerodromo": _ficha_breve(ap),
+                "mensaje": f"{ap.code} ya es el origen o el destino del vuelo. "
+                           f"No puede ser ademas un punto de paso.",
+            }
+        if ya_esta is None and len(via) >= MAX_PUNTOS_DE_PASO:
+            return {
+                "ok": False,
+                "motivo": "demasiados_puntos",
+                "mensaje": f"El vuelo ya tiene {len(via)} puntos de paso, que es "
+                           f"el maximo. Pedile al piloto que quite alguno antes "
+                           f"de agregar otro.",
+            }
+
+    # ── Ruta resultante si el piloto acepta ───────────────────────────────────
+    if accion == TIPO_QUITAR:
+        via_nueva = [v for v in via if v["code"] != ap.code]
+    else:
+        quiere_escala = (accion == TIPO_ESCALA)
+        if ya_esta is not None:
+            if ya_esta["is_stop"] == quiere_escala:
+                return {
+                    "ok": False,
+                    "motivo": "sin_cambios",
+                    "aerodromo": _ficha_breve(ap),
+                    "mensaje": f"{ap.code} ya esta en la ruta como "
+                               f"{'escala' if quiere_escala else 'sobrevuelo'}. "
+                               f"No hay nada que cambiar.",
+                }
+            via_nueva = [{**v, "is_stop": quiere_escala} if v["code"] == ap.code else v
+                         for v in via]
+        else:
+            via_nueva = via + [{"code": ap.code, "is_stop": quiere_escala}]
+
+    # ── Costo del cambio, contra la ruta que hay AHORA ────────────────────────
+    # No contra la ruta directa: si el piloto ya tiene dos puntos cargados, lo
+    # que necesita saber es cuanto agrega ESTE cambio, no cuanto agregan todos.
+    ac = _perfil_de(ruta_actual)
+    # La hora del vuelo la pone el PILOTO en el formulario. Calcular el desvio
+    # y el veredicto de la escala para "dentro de una hora" daria numeros de un
+    # momento que no es el suyo.
+    dep_ts = _salida_del_formulario(ruta_actual)
+
+    def _ruta(puntos):
+        return optimize(
+            origin=origen, dest=destino, mode="suggested",
+            aircraft=ac, suggest_alternate=False, evaluate_intermediate=False,
+            mock=False, dep_time=dep_ts,
+            via=[ViaPoint(p["code"], p["is_stop"]) for p in puntos] or None,
+        )
+
+    try:
+        antes   = _ruta(via)
+        despues = _ruta(via_nueva)
+    except Exception as e:                                   # pragma: no cover
+        logger.warning(f"Copiloto: fallo el calculo de ruta: {e}")
+        return {
+            "ok": False,
+            "motivo": "error_interno",
+            "mensaje": "No se pudo calcular la ruta con ese cambio. Decile al "
+                       "piloto que no se pudo; no estimes el desvio vos.",
+        }
+
+    if not despues.found:
+        return {
+            "ok": False,
+            "motivo": "sin_ruta",
+            "aerodromo": _ficha_breve(ap),
+            "mensaje": f"No se pudo armar una ruta que pase por {ap.code}: "
+                       f"{despues.error or 'sin detalle'}.",
+        }
+
+    costo = detour_cost(antes, despues)
+
+    # ── Si es escala, hay que poder aterrizar ahi ─────────────────────────────
+    # Se evalua a la hora en que se LLEGA, derivada de los tramos reales de la
+    # ruta propuesta. Es el mismo criterio que usa la pantalla.
+    escala = None
+    if accion == TIPO_ESCALA:
+        etas = eta_por_aerodromo(despues.legs, dep_ts)
+        cuando = etas.get(ap.code, dep_ts)
+        escala = _evaluar_para_propuesta(ap, cuando, ruta_actual, engine_factory)
+
+    return {
+        "ok": True,
+        "propuesta": {
+            "accion":      accion,
+            "aerodromo":   _ficha_breve(ap),
+            "origen":      origen,
+            "destino":     destino,
+            # Lo que la pantalla tiene que dejar cargado si el piloto acepta.
+            # Se entrega la lista COMPLETA y no el delta: aplicar pasa a ser una
+            # sola asignacion, sin que el frontend tenga que replicar la logica.
+            "via_resultante": via_nueva,
+            "via_anterior":   via,
+        },
+        "costo": {
+            "dist_km_extra":      costo.dist_km_extra,
+            "time_min_extra":     costo.time_min_extra,
+            "fuel_l_extra":       costo.fuel_l_extra,
+            "fuel_ok_despues":    costo.fuel_ok_despues,
+            "rompe_la_autonomia": costo.rompe_la_autonomia,
+            "ruta_despues":       list(despues.path),
+        },
+        "escala": escala,
+        "mensaje": "Es una PROPUESTA: no se aplico nada. Contale al piloto que "
+                   "cambia y cuanto cuesta, y decile que la confirme con el "
+                   "boton. No afirmes que la ruta ya cambio.",
+    }
+
+
+def _perfil_de(ruta_actual: Dict[str, Any]):
+    """Perfil de aeronave del vuelo cargado; el de referencia si no figura."""
+    nombre = str(ruta_actual.get("aircraft") or "")
+    for n in PROFILE_NAMES:
+        if _norm(nombre) == _norm(n):
+            return get_profile(n)
+    return None
+
+
+def _evaluar_para_propuesta(ap, cuando, ruta_actual, engine_factory):
+    """
+    Veredicto del aerodromo de la escala, a la hora en que se aterriza.
+
+    Devuelve `None` si no se pudo evaluar: una escala sin veredicto se informa
+    como tal, nunca como una escala buena.
+    """
+    if engine_factory is None:
+        from decision.engine import DecisionEngine
+        engine_factory = DecisionEngine
+
+    kwargs: Dict[str, Any] = {}
+    perfil = _perfil_de(ruta_actual)
+    if perfil is not None:
+        kwargs["aircraft"] = perfil
+
+    try:
+        resultado = engine_factory(**kwargs).evaluate(
+            station_id=ap.code, runway_heading=None,
+            departure_time=cuando, flight_duration_h=1.0,
+        )
+    except Exception as e:                                   # pragma: no cover
+        logger.warning(f"Copiloto: fallo la evaluacion de la escala {ap.code}: {e}")
+        return None
+
+    if not resultado.fetch_ok:
+        return {
+            "ok": False,
+            "aerodromo": ap.code,
+            "mensaje": "No hay datos meteorologicos para esa escala a esa hora. "
+                       "Decilo; no supongas que se puede aterrizar.",
+        }
+
+    # La forma es la MISMA que la de `evaluar_meteo` a proposito: asi el agente
+    # puede meter este veredicto en la barrera R2 sin casos especiales, y un
+    # veredicto de escala queda tan protegido como cualquier otro.
+    return {
+        "ok": True,
+        "aerodromo": _ficha_breve(ap),
+        "momento_evaluado": _etiqueta_momento(cuando),
+        "veredicto": resultado.decision,
+        "r_total": round(resultado.r_total, 3),
+        "bloqueo_normativo": {
+            "activo": resultado.hard_blocked,
+            "detalle": resultado.blocker_summary or None,
+        },
+        "fuente": resultado.weather_source,
+        "fuente_explicada": _fuente_explicada(resultado.weather_source),
+        "procedencia": getattr(resultado, "conditions_source", ""),
+        "instruccion": (
+            "Transcribi el veredicto EXACTAMENTE como figura en 'veredicto'. "
+            "Es el veredicto DE LA ESCALA a la hora en que se aterriza ahi, no "
+            "el del vuelo entero."
+        ),
+    }
+
+
 REGISTRY: Dict[str, Callable[..., Dict[str, Any]]] = {
     "buscar_aerodromo": buscar_aerodromo,
     "contacto_aerodromo": contacto_aerodromo,
@@ -947,6 +1299,7 @@ REGISTRY: Dict[str, Callable[..., Dict[str, Any]]] = {
     "evaluar_meteo": evaluar_meteo,
     "atmosfera_en_punto": atmosfera_en_punto,
     "mejor_hora_para_salir": mejor_hora_para_salir,
+    "proponer_cambio_de_ruta": proponer_cambio_de_ruta,
 }
 
 # Intencion adicional que no ejecuta nada. Existe para que el clasificador
@@ -1009,7 +1362,12 @@ def tool_declarations() -> List[Dict[str, Any]]:
             "description": (
                 "Aerodromos con combustible publicado cerca de una referencia. "
                 "Usala cuando el piloto pregunta DONDE puede repostar o cargar "
-                "combustible, no cuando pregunta por un aerodromo puntual."
+                "combustible, no cuando pregunta por un aerodromo puntual. "
+                "OJO, NO CONFUNDIR: esta solo INFORMA donde hay combustible. Si "
+                "el piloto quiere BAJAR A CARGAR en un lugar concreto —'bajar a "
+                "cargar nafta en X', 'parar a repostar en X'— eso es aterrizar "
+                "en el camino, o sea un cambio de ruta: va por "
+                "proponer_cambio_de_ruta con tipo='escala'."
             ),
             "parameters": {"type": "object", "properties": {
                 "query": _P_QUERY,
@@ -1049,11 +1407,17 @@ def tool_declarations() -> List[Dict[str, Any]]:
         {
             "name": "atmosfera_en_punto",
             "description": (
-                "Estado del AIRE sobre un lugar, a altitud de crucero. Es para "
-                "decidir si conviene PASAR POR ARRIBA de algun punto: desviarse "
-                "por ahi, sobrevolarlo, meterse en esa zona. Señales de que va "
-                "esta y no evaluar_meteo: 'por arriba de', 'si paso por', 'me "
-                "desvio por', 'en altura', 'en ruta', 'a X pies', 'sobre'. "
+                "Estado del AIRE sobre un lugar, a altitud de crucero. "
+                "INFORMA, no toca la ruta. Es para responder COMO ESTA el aire "
+                "ahi arriba: 'como esta el aire sobre X', 'si paso por X que me "
+                "encuentro', 'que viento hay sobre X a 8000 pies'. Señales de "
+                "que va esta y no evaluar_meteo: 'por arriba de', 'en altura', "
+                "'en ruta', 'a X pies', 'sobre'. "
+                "OJO, NO CONFUNDIR: si el piloto quiere AGREGAR ese punto al "
+                "vuelo —'quiero pasar por X', 'podriamos pasar por arriba de "
+                "X?', 'meteme X'— eso es un cambio de ruta y va por "
+                "proponer_cambio_de_ruta. La diferencia es si pregunta por las "
+                "CONDICIONES o pide MODIFICAR por donde vuela. "
                 "Devuelve viento, temperatura, visibilidad y nubes en el nivel, "
                 "SIN veredicto GO/CAUTION/NO GO, porque el veredicto es de "
                 "aerodromo y esto no lo es. Si no sabes la altitud, llamala "
@@ -1094,6 +1458,45 @@ def tool_declarations() -> List[Dict[str, Any]]:
                              "description": f"Una de: {', '.join(PROFILE_NAMES)}."},
                 "provincia": _P_PROV,
             }, "required": ["query"]},
+        },
+        {
+            "name": "proponer_cambio_de_ruta",
+            "description": (
+                "CAMBIA LA RUTA: agrega, convierte o quita un punto de paso "
+                "del vuelo que el piloto tiene cargado. Es la herramienta "
+                "cuando el piloto quiere MODIFICAR POR DONDE VA, no cuando "
+                "pregunta como esta algo. NO aplica el cambio: devuelve una "
+                "propuesta con su costo y el piloto la confirma con un boton. "
+                "Nunca le digas que la ruta ya cambio. "
+                "SOBREVUELO y ESCALA son dos vuelos distintos aunque dibujen la "
+                "misma linea: en el sobrevuelo se pasa por encima y el vuelo es "
+                "continuo; en la escala se ATERRIZA, asi que el aerodromo tiene "
+                "que ser operable, su veredicto pesa sobre el vuelo y el "
+                "combustible se calcula por etapa. "
+                "COMO SACAR EL TIPO DE LO QUE DIJO EL PILOTO — mandalo siempre "
+                "que se pueda, no lo dejes vacio por las dudas: "
+                "'pasar por X', 'pasar por arriba de X', 'sobrevolar X', 'ir "
+                "por X', 'de paso por X' -> tipo='sobrevuelo'. "
+                "'escala en X', 'bajar en X', 'aterrizar en X', 'parar en X', "
+                "'bajar a cargar en X', 'hacer noche en X' -> tipo='escala'. "
+                "'sacar X', 'quitar X', 'sin pasar por X', 'volver a la ruta "
+                "directa' -> tipo='quitar'. "
+                "Dejalo vacio SOLO si de verdad no se puede saber (por ejemplo "
+                "'meteme X en la ruta'): ahi la herramienta te devuelve la "
+                "repregunta y se la haces al piloto. No elijas vos."
+            ),
+            "parameters": {"type": "object", "properties": {
+                "lugar": {"type": "string",
+                          "description": "Aerodromo o ciudad del punto de paso, "
+                                         "como lo nombro el piloto."},
+                "tipo": {"type": "string",
+                         "enum": ["sobrevuelo", "escala", "quitar"],
+                         "description": "'sobrevuelo' = pasar por encima. "
+                                        "'escala' = aterrizar ahi. "
+                                        "'quitar' = sacar un punto ya cargado. "
+                                        "Dejalo vacio solo si el piloto no lo "
+                                        "aclaro y queres que te repregunten."},
+            }, "required": ["lugar"]},
         },
     ]}]
 

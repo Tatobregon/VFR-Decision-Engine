@@ -216,6 +216,11 @@ class CopilotAnswer:
     model_version    : str = ""
     error            : Optional[str] = None
     history          : List[Dict[str, Any]] = field(default_factory=list)
+    # Propuesta de cambio de ruta, si el turno genero una. Sale de la
+    # HERRAMIENTA, nunca del texto del modelo: el modelo elige que proponer, el
+    # codigo calcula que implica, y el piloto lo aplica con un click. Un modelo
+    # de lenguaje no puede modificar el vuelo de nadie.
+    proposal         : Optional[Dict[str, Any]] = None
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -274,6 +279,7 @@ class CopilotAgent:
         contents.append({"role": "user", "parts": [{"text": pregunta}]})
 
         invocaciones: List[ToolInvocation] = []
+        propuesta: Optional[Dict[str, Any]] = None
         resultados_meteo: List[Dict[str, Any]] = []
         resultados_todos: List[Dict[str, Any]] = []
         texto = ""
@@ -294,8 +300,13 @@ class CopilotAgent:
 
                 pares: List[Tuple[ToolCall, Dict[str, Any]]] = []
                 for call in resp.tool_calls:
+                    # `ruta_actual` va por codigo, igual que `engine_factory`.
+                    # Hacer que el modelo transcriba origen, destino y puntos ya
+                    # cargados es como nacio el bug de las tres horas: el
+                    # formulario decia una cosa y el modelo copiaba otra.
                     datos = T.execute(call.name, call.args,
-                                      engine_factory=self.engine_factory)
+                                      engine_factory=self.engine_factory,
+                                      ruta_actual=context)
                     invocaciones.append(ToolInvocation(
                         name=call.name,
                         args=dict(call.args),
@@ -305,6 +316,15 @@ class CopilotAgent:
                     resultados_todos.append(datos)
                     if call.name == "evaluar_meteo" and datos.get("ok"):
                         resultados_meteo.append(datos)
+                    if call.name == "proponer_cambio_de_ruta" and datos.get("ok"):
+                        propuesta = datos
+                        # El veredicto de la escala entra a la barrera R2 como
+                        # cualquier otro. Sin esto habria un camino por el que
+                        # un veredicto llega al piloto sin verificar que el
+                        # texto lo transcriba, que es lo unico que R2 protege.
+                        escala = datos.get("escala") or {}
+                        if escala.get("ok") and escala.get("veredicto"):
+                            resultados_meteo.append(escala)
                     pares.append((call, {"resultado": datos}))
 
                 contents.append(self.client.build_tool_result_content(pares))
@@ -344,6 +364,7 @@ class CopilotAgent:
             latency_s=time.time() - t0,
             model_version=version,
             history=contents,
+            proposal=propuesta,
         )
 
     # ── Validacion ────────────────────────────────────────────────────────────

@@ -35,7 +35,8 @@ from data.fetcher_openmeteo import OpenMeteoFetcher
 from parsers.openmeteo_adapter import OpenMeteoAdapter
 from decision.engine import DecisionEngine
 from decision.enroute import evaluate_nwp_at_coord, nwp_series_at_coord
-from route.optimizer import optimize, ViaPoint, detour_cost
+from route.optimizer import (optimize, ViaPoint, detour_cost,
+                             eta_por_aerodromo)
 from route.airway_router import find_airways_for_leg, find_airways_for_route_legs
 from route.vfr_corridors import corridor_path_for_leg
 from output.briefing import generate_briefing
@@ -426,26 +427,6 @@ def _parse_via(via_in: List[ViaPointIn], origin: str, dest: str) -> List[ViaPoin
     return puntos
 
 
-def _eta_por_aerodromo(legs: list, dep_time: int) -> Dict[str, int]:
-    """
-    Momento (Unix UTC) en que se llega a cada aerodromo de la ruta.
-
-    Se acumula el tiempo de los tramos en orden y se registra la PRIMERA vez que
-    se llega a cada codigo: si la ruta pasara dos veces por el mismo aerodromo,
-    lo que importa para la meteorologia es el primer arribo.
-
-    NOTA declarada: el optimizador no modela tiempo en tierra en las escalas
-    (`_optimize_via` hace `salida += tiempo_de_vuelo`), asi que la salida de una
-    escala coincide con su llegada. Para la escala en si no cambia nada —se
-    evalua a la hora de llegada, que es cuando se aterriza—, pero corre hacia
-    atras la ETA de todo lo que viene despues.
-    """
-    etas: Dict[str, int] = {}
-    t = dep_time
-    for leg in legs:
-        t += int(leg.time_hours * 3600)
-        etas.setdefault(leg.dest, t)
-    return etas
 
 
 def _clamp_vfr_alt(alt_ft, aircraft: AircraftProfile) -> Optional[int]:
@@ -1884,7 +1865,7 @@ async def evaluate(req: EvaluateRequest):
     stop_cards: List[WeatherCard] = []
     escalas = [v.code for v in via_points if v.is_stop]
     if escalas and route_result.found:
-        etas = _eta_por_aerodromo(route_result.legs, dep_time)
+        etas = eta_por_aerodromo(route_result.legs, dep_time)
         with ThreadPoolExecutor(max_workers=min(4, len(escalas))) as ex:
             futs = {
                 code: ex.submit(engine.evaluate, code, None,
@@ -2030,6 +2011,11 @@ class CopilotResponse(BaseModel):
     model_version    : str
     history          : List[Dict]
     available        : bool = True
+    # Propuesta de cambio de ruta, si el turno genero una. Sale de la
+    # HERRAMIENTA determinista, no del texto del modelo, y NO esta aplicada:
+    # la pantalla la muestra y el piloto la confirma con un click. Un modelo de
+    # lenguaje no modifica el vuelo de nadie.
+    proposal         : Optional[Dict] = None
 
 
 # El agente se construye una sola vez y se reusa. Se hace perezosamente para
@@ -2103,4 +2089,5 @@ def copilot(req: CopilotRequest):
         latency_s        = round(ans.latency_s, 2),
         model_version    = ans.model_version,
         history          = ans.history,
+        proposal         = ans.proposal,
     )
