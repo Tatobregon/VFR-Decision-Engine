@@ -681,7 +681,12 @@
             <div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform"
                  :class="form.avoid_airspace ? 'translate-x-4' : ''"></div>
           </div>
-          <span class="text-xs text-muted">Evitar espacios aéreos R/P/D</span>
+          <span class="text-xs text-muted"
+                title="Rodea las zonas restringidas, prohibidas y peligrosas usando aeródromos como puntos de paso. Como el rodeo sólo puede apoyarse en aeródromos, a veces alarga mucho la ruta: mirá la distancia resultante antes de darla por buena.">
+            Evitar espacios aéreos R/P/D
+            <span class="text-[10px]" :class="form.avoid_airspace ? 'text-caution' : 'text-muted'"
+                  x-text="form.avoid_airspace ? '· puede alargar mucho la ruta' : ''"></span>
+          </span>
         </label>
 
         <!-- Mínimos personales (experiencia del piloto) -->
@@ -1706,7 +1711,12 @@ function app() {
       dest_runway:    null,
       aircraft:       'Pipistrel Alpha Trainer',
       departure_time: '',
-      avoid_airspace: true,
+      // Arranca APAGADO. El grafo de ruteo solo tiene aerodromos como puntos
+      // intermedios, asi que esquivar una zona obliga a rodearla por el
+      // aerodromo disponible mas cercano, que puede estar lejisimos: un
+      // SACC-JES de 43 km se convertia en 313 km rodeando la TMA Cordoba por
+      // Villa del Rosario. Que el piloto lo prenda cuando lo necesite.
+      avoid_airspace: false,
       flight_rules:   'VFR',
       experience:     'PPL',
       // Altitud de crucero VFR elegida por el piloto (ft MSL). null = que la
@@ -3590,6 +3600,10 @@ function copilot() {
           // Los puntos ya cargados: sin esto el asistente no puede quitar uno
           // ni saber que ya esta, y propondria duplicados.
           via:            (f.via || []).map(v => ({ code: v.code, is_stop: !!v.is_stop })),
+          // Sin esto el copiloto calcularia el costo del desvío con otras
+          // reglas de ruteo que las que después usa la pantalla, y los dos
+          // números no coincidirían.
+          avoid_airspace: !!f.avoid_airspace,
         };
       } catch (e) {
         return null;

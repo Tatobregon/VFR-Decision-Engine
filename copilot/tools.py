@@ -1157,10 +1157,18 @@ def proponer_cambio_de_ruta(
     # momento que no es el suyo.
     dep_ts = _salida_del_formulario(ruta_actual)
 
+    # El ruteo tiene que correr con las MISMAS reglas que va a usar la pantalla
+    # cuando el piloto aplique el cambio. Con el switch de espacios aereos
+    # prendido la ruta puede alargarse muchisimo —el rodeo solo puede apoyarse
+    # en aerodromos—, asi que ignorarlo aca daria un costo que despues no
+    # coincide con el que se muestra en la ficha de ruta.
+    evitar_zonas = bool(ruta_actual.get("avoid_airspace"))
+
     def _ruta(puntos):
         return optimize(
             origin=origen, dest=destino, mode="suggested",
             aircraft=ac, suggest_alternate=False, evaluate_intermediate=False,
+            avoid_restricted_zones=evitar_zonas,
             mock=False, dep_time=dep_ts,
             via=[ViaPoint(p["code"], p["is_stop"]) for p in puntos] or None,
         )

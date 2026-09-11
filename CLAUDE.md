@@ -611,6 +611,42 @@ modo de falla que la regla R4 del copiloto existe para evitar.
 > completa baja de 8 s a 4 s. Un test que depende en silencio de que responda
 > una API externa no prueba lo que dice probar.
 
+### Evitar espacios aereos es OPT-IN: el rodeo solo puede apoyarse en aerodromos
+
+Bug real encontrado por el piloto (septiembre 2026): pidio SACC-JES (43 km
+directo) con una escala de paso en SACD y le salio una ruta de 313 km que
+**pasaba dos veces por el mismo aerodromo**:
+
+```
+SACC -> VDR -> SACD -> VDR -> JES     313.4 km   con evitacion
+SACC -> SACD -> JES                   120.9 km   sin evitacion
+```
+
+La causa no es el modulo de puntos de paso: es que el grafo de ruteo solo tiene
+**aerodromos** como puntos intermedios. Esquivar una zona no es correr la linea
+unos kilometros, es rodearla por el aerodromo disponible mas cercano — y para
+salir de la TMA Cordoba el mas cercano era Villa del Rosario, a 114 km. Cada
+tramo lo resolvio por su cuenta (SACC->VDR->SACD y SACD->VDR->JES) y al
+concatenarlos el avion vuelve sobre sus pasos.
+
+**Decision: el switch arranca APAGADO** y lo prende el piloto si lo necesita. Un
+rodeo de ese tamaño es una decision operativa suya, no un comportamiento por
+defecto; y al lado del switch se avisa que puede alargar mucho la ruta. El costo
+del desvio ya se informaba correcto (+270.1 km): lo que fallaba no era la
+medicion sino que nadie hubiera elegido esa ruta si la hubiera visto antes.
+
+> **Limitacion que SIGUE en pie, declarada.** Con la evitacion prendida el
+> camino fusionado todavia puede repetir un aerodromo. Arreglarlo de verdad pide
+> waypoints que no sean aerodromos —o resolver el camino completo con los puntos
+> de paso como obligatorios, en vez de tramo por tramo—, y las dos cosas tocan
+> el nucleo del ruteo. Es una decision pendiente, no un olvido.
+
+**Y el copiloto rutea con las MISMAS reglas que la pantalla.** `pageContext()`
+manda ahora `avoid_airspace` y `proponer_cambio_de_ruta` lo propaga a
+`optimize()`. Sin eso el asistente calculaba el costo del desvio sin la
+restriccion puesta y daba un numero que no coincidia con el de la ficha de ruta:
+dos cifras para la misma cosa en la misma pantalla.
+
 ### El TAF decide el momento evaluado; el METAR solo mientras siga vigente
 
 Un aerodromo con estacion tiene **tres** fuentes, y cual describe el momento del
@@ -999,7 +1035,7 @@ Sin la variable la app arranca igual: `/api/copilot/status` responde
 `available: false`, el panel del frontend no se muestra y **el resto del sistema
 funciona normalmente**. El copiloto es accesorio y su caida no arrastra a nadie.
 
-Suite de regresion (366 tests, sin red, ~5 s):
+Suite de regresion (367 tests, sin red, ~5 s):
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt

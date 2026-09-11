@@ -916,3 +916,26 @@ def test_sin_vuelo_cargado_igual_se_nombra_el_lugar():
     r = T.proponer_cambio_de_ruta(lugar="Wakanda", tipo="escala",
                                   ruta_actual={}, engine_factory=_motor())
     assert r["motivo"] == "no_encontrado"
+
+
+def test_la_propuesta_rutea_con_las_mismas_reglas_que_la_pantalla():
+    """
+    Si el piloto tiene prendido "evitar espacios aereos", el copiloto tiene que
+    calcular el desvio con esa restriccion puesta. Ignorarla daria un costo que
+    no coincide con el que despues muestra la ficha de ruta — dos numeros para
+    lo mismo en la misma pantalla.
+    """
+    base = dict(_RUTA_BASE, origin="SACC", dest="JES")
+
+    sin_evitar = T.proponer_cambio_de_ruta(
+        lugar="SACD", tipo="sobrevuelo",
+        ruta_actual=dict(base, avoid_airspace=False), engine_factory=_motor())
+    evitando = T.proponer_cambio_de_ruta(
+        lugar="SACD", tipo="sobrevuelo",
+        ruta_actual=dict(base, avoid_airspace=True), engine_factory=_motor())
+
+    assert sin_evitar["ok"] and evitando["ok"]
+    # Rodear la TMA Cordoba obliga a apoyarse en aerodromos lejanos: la ruta con
+    # la restriccion puesta no puede ser la misma ni costar lo mismo.
+    assert evitando["costo"]["ruta_despues"] != sin_evitar["costo"]["ruta_despues"]
+    assert evitando["costo"]["dist_km_extra"] > sin_evitar["costo"]["dist_km_extra"]

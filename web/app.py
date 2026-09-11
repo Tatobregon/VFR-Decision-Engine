@@ -90,7 +90,11 @@ class EvaluateRequest(BaseModel):
     dest_runway: Optional[int] = None
     aircraft: str = "Pipistrel Alpha Trainer"
     departure_time: str = ""       # "HH:MM" UTC; vacío = ahora + 1h
-    avoid_airspace: bool = True    # si True, la ruta evita zonas R/P/D
+    # Por defecto APAGADO. El grafo de ruteo solo tiene aerodromos como puntos
+    # intermedios, asi que esquivar una zona obliga a rodearla por el aerodromo
+    # disponible mas cercano: un SACC-JES de 43 km se volvia de 313 km rodeando
+    # la TMA Cordoba por Villa del Rosario. Lo prende el piloto si lo necesita.
+    avoid_airspace: bool = False   # si True, la ruta evita zonas R/P/D
     flight_rules: str = "VFR"      # "VFR" (default) | "IFR" — define routing/altitud
     experience: str = "PPL"        # "Alumno" | "PPL" | "Avanzado" — mínimos personales
     # Altitud de crucero VFR elegida por el piloto (ft MSL). Solo aplica en VFR:
