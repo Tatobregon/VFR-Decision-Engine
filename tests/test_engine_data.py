@@ -600,7 +600,8 @@ def test_el_techo_agl_de_un_corredor_se_convierte_a_msl(monkeypatch):
     from web import app as webapp
 
     # Terreno sintetico: 1000 m (~3281 ft) en los tres puntos del corredor.
-    monkeypatch.setattr(webapp, "get_elevations_m", lambda pts: [1000.0] * len(pts))
+    monkeypatch.setattr(webapp, "get_elevations_m",
+                        lambda pts, **kw: [1000.0] * len(pts))
 
     corridor = [{"lat": -31.0, "lon": -64.5, "upper_limit_ft": 1500,
                  "limit_reference": "AGL"} for _ in range(3)]
@@ -616,7 +617,8 @@ def test_el_techo_agl_de_un_corredor_se_convierte_a_msl(monkeypatch):
 def test_un_techo_ya_en_msl_no_se_toca(monkeypatch):
     from web import app as webapp
 
-    monkeypatch.setattr(webapp, "get_elevations_m", lambda pts: [1000.0] * len(pts))
+    monkeypatch.setattr(webapp, "get_elevations_m",
+                        lambda pts, **kw: [1000.0] * len(pts))
     corridor = [{"lat": -31.0, "lon": -64.5, "upper_limit_ft": 4500,
                  "limit_reference": "MSL"}]
     alts = webapp._corridor_alts_msl(corridor, AIRPORTS["SACC"], AIRPORTS["JES"])

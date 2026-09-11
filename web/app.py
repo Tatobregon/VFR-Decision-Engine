@@ -35,7 +35,7 @@ from data.fetcher_openmeteo import OpenMeteoFetcher
 from parsers.openmeteo_adapter import OpenMeteoAdapter
 from decision.engine import DecisionEngine
 from decision.enroute import evaluate_nwp_at_coord, nwp_series_at_coord
-from route.optimizer import optimize
+from route.optimizer import optimize, ViaPoint, detour_cost
 from route.airway_router import find_airways_for_leg, find_airways_for_route_legs
 from route.vfr_corridors import corridor_path_for_leg
 from output.briefing import generate_briefing
@@ -66,9 +66,25 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # ── Modelos ───────────────────────────────────────────────────────────────────
 
+class ViaPointIn(BaseModel):
+    """
+    Punto de paso pedido por el piloto.
+
+    `is_stop` distingue dos cosas que dan la misma linea en el mapa y son
+    operativamente distintas: SOBREVUELO es pasar por encima (el aerodromo es
+    solo forma de la ruta) y ESCALA es aterrizar ahi (el aerodromo tiene que ser
+    operable, su veredicto pesa sobre el vuelo y el combustible se calcula por
+    etapa). Por eso viaja explicito y no se adivina del texto en el backend.
+    """
+    code: str
+    is_stop: bool = False
+
+
 class EvaluateRequest(BaseModel):
     origin: str
     dest: str
+    # Puntos de paso intermedios. Vacio = ruta directa, que es el caso normal.
+    via: List[ViaPointIn] = []
     origin_runway: Optional[int] = None   # None = auto (pista favorable al viento)
     dest_runway: Optional[int] = None
     aircraft: str = "Pipistrel Alpha Trainer"
@@ -271,6 +287,11 @@ class RouteWaypoint(BaseModel):
     # Aeródromos intermedios (fuera de la línea de aerovía)
     is_emergency_airport: bool = False      # aeródromo cercano para emergencia/referencia
     is_fuel_stop: bool = False              # escala de combustible recomendada
+    # Puntos que el piloto pidió expresamente. Se distinguen del resto porque no
+    # son una consecuencia del cálculo: son una decisión suya, y la ruta no los
+    # puede relegar a marcador lateral como hace con un aeródromo de paso.
+    is_via: bool = False                    # sobrevuelo o escala pedidos
+    is_via_stop: bool = False               # además se aterriza acá
     dist_from_prev_km: Optional[float] = None  # distancia desde el aeródromo previo de la ruta
     # Estimación de tiempo en ruta
     eta_utc: Optional[int] = None           # Unix UTC estimado de paso por el waypoint
@@ -290,6 +311,14 @@ class RouteCard(BaseModel):
     legs: List[Dict] = []
     alternate: Optional[Dict] = None
     airspace_conflicts: List[Dict] = []
+    # Puntos de paso aplicados, devueltos tal como se interpretaron. El piloto
+    # tiene que poder verificar que el sistema entendió escala donde él dijo
+    # escala: aplicar un sobrevuelo cuando se pidió aterrizar cambia el
+    # combustible y saltea un veredicto.
+    via: List[Dict] = []
+    # Lo que cuesta el desvío contra la ruta directa. None si no hay puntos de
+    # paso. Sin esto, aceptar un desvío es un botón a ciegas.
+    detour: Optional[Dict] = None
     error: str = ""
 
 
@@ -297,6 +326,11 @@ class EvaluateResponse(BaseModel):
     global_decision: str
     origin: WeatherCard
     dest: WeatherCard
+    # Fichas de las ESCALAS, en orden de vuelo. Un sobrevuelo no genera ficha:
+    # no se aterriza ahí y el veredicto de aeródromo mide despegue y aterrizaje
+    # contra una pista. Una escala sí, y pesa en el veredicto global igual que
+    # el origen y el destino.
+    stops: List[WeatherCard] = []
     route: RouteCard
     briefing: str
 
@@ -347,6 +381,72 @@ def _hora_redonda(ts: int) -> int:
     """
     return int(round(ts / 3600.0) * 3600)
 
+# ── Puntos de paso ────────────────────────────────────────────────────────────
+
+# Tope de puntos de paso por consulta.
+#
+# No es una restriccion arbitraria: cada punto agrega un segmento de ruta y, si
+# es escala, una evaluacion meteorologica con su fetch. Cinco cubre con holgura
+# lo que un vuelo de aviacion general planifica en una etapa —el tramo mas largo
+# del pais, Salta-Ushuaia, se hace con dos o tres escalas de combustible— y pone
+# un techo al costo de una peticion.
+MAX_VIA_POINTS = 5
+
+
+def _parse_via(via_in: List[ViaPointIn], origin: str, dest: str) -> List[ViaPoint]:
+    """
+    Valida y normaliza los puntos de paso pedidos.
+
+    Lanza HTTPException(400) con un mensaje que nombra el punto conflictivo: un
+    codigo mal escrito tiene que decirse, no resolverse por aproximacion. Es el
+    mismo criterio que la regla R4 del copiloto —nombrar el codigo exacto—,
+    porque mandar al piloto a otro aerodromo es el modo de falla que importa.
+    """
+    if not via_in:
+        return []
+    if len(via_in) > MAX_VIA_POINTS:
+        raise HTTPException(
+            400, f"Demasiados puntos de paso ({len(via_in)}); el maximo es {MAX_VIA_POINTS}.")
+
+    puntos: List[ViaPoint] = []
+    vistos: set = set()
+    for v in via_in:
+        code = (v.code or "").strip().upper()
+        if not code:
+            raise HTTPException(400, "Hay un punto de paso sin codigo.")
+        if code not in AIRPORTS:
+            raise HTTPException(400, f"Punto de paso desconocido: {code}")
+        if code in (origin, dest):
+            raise HTTPException(
+                400, f"{code} ya es el origen o el destino del vuelo.")
+        if code in vistos:
+            raise HTTPException(400, f"El punto de paso {code} esta repetido.")
+        vistos.add(code)
+        puntos.append(ViaPoint(code=code, is_stop=bool(v.is_stop)))
+    return puntos
+
+
+def _eta_por_aerodromo(legs: list, dep_time: int) -> Dict[str, int]:
+    """
+    Momento (Unix UTC) en que se llega a cada aerodromo de la ruta.
+
+    Se acumula el tiempo de los tramos en orden y se registra la PRIMERA vez que
+    se llega a cada codigo: si la ruta pasara dos veces por el mismo aerodromo,
+    lo que importa para la meteorologia es el primer arribo.
+
+    NOTA declarada: el optimizador no modela tiempo en tierra en las escalas
+    (`_optimize_via` hace `salida += tiempo_de_vuelo`), asi que la salida de una
+    escala coincide con su llegada. Para la escala en si no cambia nada —se
+    evalua a la hora de llegada, que es cuando se aterriza—, pero corre hacia
+    atras la ETA de todo lo que viene despues.
+    """
+    etas: Dict[str, int] = {}
+    t = dep_time
+    for leg in legs:
+        t += int(leg.time_hours * 3600)
+        etas.setdefault(leg.dest, t)
+    return etas
+
 
 def _clamp_vfr_alt(alt_ft, aircraft: AircraftProfile) -> Optional[int]:
     """
@@ -373,7 +473,7 @@ def _clamp_vfr_alt(alt_ft, aircraft: AircraftProfile) -> Optional[int]:
 
 
 def _corridor_alts_msl(corridor_wps: list, ap: AirportInfo,
-                       next_ap: AirportInfo) -> List[int]:
+                       next_ap: AirportInfo, mock: bool = False) -> List[int]:
     """
     Convierte el limite superior de un corredor VFR a altitud MSL.
 
@@ -388,13 +488,18 @@ def _corridor_alts_msl(corridor_wps: list, ap: AirportInfo,
     El terreno se resuelve con una UNICA peticion SRTM para todos los puntos del
     tramo. Si falla, se degrada a interpolar entre las elevaciones de los dos
     aerodromos: peor estimacion, pero del orden correcto.
+
+    `mock` se propaga hasta la consulta de terreno. Sin eso el modo mock —que
+    el proyecto declara como "desarrollo sin conexion"— igual salia a la red por
+    este camino, y un test escrito sobre mock terminaba dependiendo en silencio
+    de que Open-Topo-Data respondiera.
     """
     if not corridor_wps:
         return []
 
     puntos = [(cw["lat"], cw["lon"]) for cw in corridor_wps]
     try:
-        elevaciones = get_elevations_m(puntos)
+        elevaciones = get_elevations_m(puntos, mock=mock)
     except Exception as e:
         logger.warning(f"No se pudo consultar el terreno del corredor VFR: {e}")
         elevaciones = [None] * len(puntos)
@@ -660,6 +765,7 @@ def _generate_route_waypoints(
     airway_map: Optional[dict] = None,
     flight_rules: str = "VFR",
     vfr_cruise_alt_ft: Optional[int] = None,
+    via_points: Optional[List] = None,
 ) -> List[RouteWaypoint]:
     """
     Construye la lista completa de waypoints de la ruta.
@@ -669,6 +775,9 @@ def _generate_route_waypoints(
     """
     if airway_map is None:
         airway_map = {}
+
+    # Puntos que el piloto pidio expresamente, por codigo.
+    via_por_codigo = {v.code: v for v in (via_points or [])}
 
     leg_dists: List[float] = []
     for i in range(len(path) - 1):
@@ -712,7 +821,11 @@ def _generate_route_waypoints(
         is_intermediate = (i != 0 and i != last_idx)
         leg_before_aw = (path[i-1], path[i]) in airway_map if i > 0 else False
         leg_after_aw  = (path[i], path[i+1]) in airway_map if i < last_idx else False
-        is_off_spine = is_intermediate and leg_before_aw and leg_after_aw
+        # Un punto que el piloto PIDIO no puede degradarse a marcador lateral:
+        # no esta ahi como consecuencia del calculo, esta porque el lo puso.
+        punto_pedido = via_por_codigo.get(code)
+        is_off_spine = (is_intermediate and leg_before_aw and leg_after_aw
+                        and punto_pedido is None)
 
         r_val = r_map.get(code, 0.0)
         # Umbrales calibrados (risk/weights.py), nunca hardcodeados: el mismo R
@@ -725,6 +838,8 @@ def _generate_route_waypoints(
             is_checkpoint=False, cruise_alt_ft=None,
             is_emergency_airport=is_off_spine,
             is_fuel_stop=(i in fuel_stop_indices and is_intermediate),
+            is_via=punto_pedido is not None,
+            is_via_stop=bool(punto_pedido and punto_pedido.is_stop),
             dist_from_prev_km=round(leg_dists[i-1], 1) if i > 0 and i-1 < len(leg_dists) else None,
         ))
 
@@ -768,7 +883,7 @@ def _generate_route_waypoints(
                 corridor_wps = corridor_path_for_leg(ap.lat, ap.lon, next_ap.lat, next_ap.lon)
             except Exception as e:
                 logger.warning(f"Error ruteando corredor VFR {code}->{path[i+1]}: {e}")
-        corridor_alts = _corridor_alts_msl(corridor_wps, ap, next_ap)
+        corridor_alts = _corridor_alts_msl(corridor_wps, ap, next_ap, mock=mock)
         for ci, cw in enumerate(corridor_wps):
             sequence.append(RouteWaypoint(
                 code=cw["corridor_id"] or "VFR-COR",
@@ -1582,11 +1697,21 @@ async def evaluate(req: EvaluateRequest):
     if flight_rules not in ("VFR", "IFR"):
         flight_rules = "VFR"
 
-    # Estimación rápida de duración para ventana meteorológica inicial
+    # Puntos de paso pedidos por el piloto. Se validan ANTES de calcular nada:
+    # un codigo mal escrito tiene que fallar rapido y con nombre, no producir
+    # media ruta y un error a mitad de camino.
+    via_points = _parse_via(req.via, origin, dest)
+
+    # Estimación rápida de duración para ventana meteorológica inicial. Con
+    # puntos de paso la ruta es mas larga que la recta, asi que la estimacion
+    # recorre el orden pedido: si no, la ventana del destino arrancaria
+    # demasiado temprano y se corregiria recien contra la ETA real.
     orig_ap = AIRPORTS[origin]
     dest_ap = AIRPORTS[dest]
-    rough_duration = max(0.5, haversine_km(orig_ap.lat, orig_ap.lon, dest_ap.lat, dest_ap.lon)
-                         / (aircraft.cruise_kt * 1.852) * 1.3)
+    _orden = [orig_ap] + [AIRPORTS[v.code] for v in via_points] + [dest_ap]
+    _dist_estimada = sum(haversine_km(a.lat, a.lon, b.lat, b.lon)
+                         for a, b in zip(_orden, _orden[1:]))
+    rough_duration = max(0.5, _dist_estimada / (aircraft.cruise_kt * 1.852) * 1.3)
 
     # Fase 1: cada extremo se evalua PARA SU MOMENTO.
     #
@@ -1620,7 +1745,41 @@ async def evaluate(req: EvaluateRequest):
         avoid_restricted_zones=req.avoid_airspace,
         mock=False,
         dep_time=dep_time,
+        via=via_points or None,
     )
+
+    # ── Lo que cuesta el desvío ──────────────────────────────────────────────
+    # Se compara contra la ruta directa. La comparacion NO pide alternativo ni
+    # evalua intermedios: es geometria y performance, sin una sola peticion de
+    # red. Sin este numero, aceptar un desvio es un boton a ciegas.
+    detour = None
+    if via_points:
+        base_route = optimize(
+            origin=origin, dest=dest,
+            mode="suggested",
+            r_map=r_map,
+            aircraft=aircraft,
+            suggest_alternate=False,
+            evaluate_intermediate=False,
+            avoid_restricted_zones=req.avoid_airspace,
+            mock=False,
+            dep_time=dep_time,
+        )
+        d = detour_cost(base_route, route_result)
+        detour = {
+            "found":              d.found,
+            "dist_km_extra":      d.dist_km_extra,
+            "time_min_extra":     d.time_min_extra,
+            "fuel_l_extra":       d.fuel_l_extra,
+            "path_antes":         d.path_antes,
+            "path_despues":       d.path_despues,
+            "fuel_ok_antes":      d.fuel_ok_antes,
+            "fuel_ok_despues":    d.fuel_ok_despues,
+            "needs_stop_antes":   d.needs_stop_antes,
+            "needs_stop_despues": d.needs_stop_despues,
+            "rompe_la_autonomia": d.rompe_la_autonomia,
+            "error":              d.error,
+        }
 
     # Duración real desde la ruta calculada
     actual_duration = route_result.total_time_h if (route_result.found and route_result.total_time_h > 0) else rough_duration
@@ -1688,6 +1847,7 @@ async def evaluate(req: EvaluateRequest):
                     logger.warning(f"Error buscando aerovia {leg_orig}->{leg_dest}: {e}")
 
     notams_orig = notams_dest = []
+    av = None
     try:
         from data.fetcher_aviationweather import AviationWeatherFetcher
         av = AviationWeatherFetcher(mock=False)
@@ -1709,6 +1869,54 @@ async def evaluate(req: EvaluateRequest):
     _apply_operational_blockers(dest_card,   dest_ap, arr_time, notams_dest, "aterrizaje",
                                 flight_rules, aircraft.cruise_alt_ft, result=dest_result)
 
+    # ── Las ESCALAS se evalúan como aeródromos, a su hora de llegada ─────────
+    #
+    # Un sobrevuelo no genera ficha: no se aterriza ahí, y el veredicto de
+    # aeródromo mide despegue y aterrizaje contra una pista concreta. Una escala
+    # sí, y con todo lo que eso implica — incluidos los bloqueos que NO son
+    # meteorológicos: aterrizar en una escala después del ocaso veta el vuelo
+    # por la misma razón que veta aterrizar en el destino, y un NOTAM de cierre
+    # también. El optimizador evalúa la escala, pero solo la meteorología; la
+    # noche y los NOTAM se conocen acá.
+    #
+    # Se evalúa a la hora de LLEGADA a esa escala, derivada de los tramos reales
+    # de la ruta ya calculada, no de la estimación inicial.
+    stop_cards: List[WeatherCard] = []
+    escalas = [v.code for v in via_points if v.is_stop]
+    if escalas and route_result.found:
+        etas = _eta_por_aerodromo(route_result.legs, dep_time)
+        with ThreadPoolExecutor(max_workers=min(4, len(escalas))) as ex:
+            futs = {
+                code: ex.submit(engine.evaluate, code, None,
+                                _hora_redonda(etas.get(code, arr_time)),
+                                VENTANA_EXTREMO_H)
+                for code in escalas
+            }
+            for code in escalas:
+                ap_escala = AIRPORTS.get(code)
+                if ap_escala is None:
+                    continue
+                try:
+                    res_escala = futs[code].result()
+                except Exception as e:
+                    logger.warning(f"No se pudo evaluar la escala {code}: {e}")
+                    continue
+                cuando = etas.get(code, arr_time)
+                notams_escala = []
+                if av is not None:
+                    try:
+                        notams_escala = av.get_notams(code)
+                    except Exception:
+                        # Sin NOTAM la ficha sale igual: el bloqueo por cierre no
+                        # se puede afirmar, pero la meteorologia si.
+                        pass
+                card = _to_card(res_escala, res_escala.runway_heading, ap_escala,
+                                notams_escala, moment="llegada", window_start=cuando)
+                _apply_operational_blockers(card, ap_escala, cuando, notams_escala,
+                                            "aterrizaje", flight_rules,
+                                            aircraft.cruise_alt_ft, result=res_escala)
+                stop_cards.append(card)
+
     # El briefing se genera DESPUES de los bloqueos operacionales: si se armara
     # antes, describiria solo la meteorologia e ignoraria un NO GO por noche o
     # por NOTAM de cierre.
@@ -1719,7 +1927,10 @@ async def evaluate(req: EvaluateRequest):
         notams_dest=notams_dest,
     )
 
-    decisions = [origin_card.decision, dest_card.decision]
+    # El veredicto global es el PEOR de todos los aerodromos donde se toca el
+    # suelo. Una escala con NO GO no es un detalle de la ruta: es un aterrizaje
+    # que no se puede hacer, y pesa igual que el origen y el destino.
+    decisions = [origin_card.decision, dest_card.decision] + [c.decision for c in stop_cards]
     global_dec = "NO GO" if "NO GO" in decisions else "CAUTION" if "CAUTION" in decisions else "GO"
 
     # Generar waypoints con checkpoints intermedios cada ~230 km
@@ -1732,6 +1943,7 @@ async def evaluate(req: EvaluateRequest):
         mock=False,
         airway_map=airway_map,
         flight_rules=flight_rules,
+        via_points=via_points,
         vfr_cruise_alt_ft=_clamp_vfr_alt(req.cruise_alt_ft, aircraft)
                           if flight_rules == "VFR" else None,
     )
@@ -1772,6 +1984,12 @@ async def evaluate(req: EvaluateRequest):
             "name": z.name,
             "type": "R" if z.is_restricted else "D" if getattr(z, "zone_type", "") == "D" else "C",
         } for z in route_result.airspace_conflicts],
+        via=[{
+            "code":    v.code,
+            "name":    AIRPORTS[v.code].name,
+            "is_stop": v.is_stop,
+        } for v in via_points],
+        detour=detour,
         error=route_result.error,
     )
 
@@ -1779,6 +1997,7 @@ async def evaluate(req: EvaluateRequest):
         global_decision = global_dec,
         origin          = origin_card,
         dest            = dest_card,
+        stops           = stop_cards,
         route           = route_card,
         briefing        = briefing_text,
     )

@@ -97,7 +97,7 @@ automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a
 | `decision/engine.py` | **COMPLETO** | `DecisionEngine.evaluate()` → `DecisionResult`. Pipeline: fetch→parse→**condiciones del momento**→hard_blockers→soft_score+taf_window→decision. **Regla de fuente**: con codigo ICAO intenta METAR+TAF y cae a NWP si no hay METAR; sin ICAO va directo a NWP. **Regla de momento** (`_condiciones_para_el_momento`): dentro de `VIGENCIA_OBSERVACION_H` manda el METAR; despues manda el TAF y el NWP completa temperatura y rocio; si ninguno cubre el momento, NWP entero. El camino NWP usa **muestreo en anillo** (peor caso en tiempo Y espacio). |
 | `output/briefing.py` | **COMPLETO** | `generate_briefing(...)` → briefing meteorologico multi-linea para el piloto (origen, destino, ruta, NOTAMs). 100% reglas, sin IA. |
 | `output/flight_plan.py` | **COMPLETO** | `build_flight_plan(...)` → plan de vuelo OACI (casillas 7-19 + mensaje FPL). **No radica** el plan: lo presenta el piloto. |
-| `web/app.py` | **COMPLETO** | Backend FastAPI + frontend HTML (`web/static`). **Entry point unico del sistema.** Endpoints: `/api/evaluate`, `/api/profile`, `/api/timeline`, `/api/flightplan`, `/api/airport/{code}`, `/api/airports`, `/api/airports/map`, `/api/aircraft`, `/api/vfr_corridors`, `/api/airspace`, `/api/copilot`, `/api/copilot/status`. Switch VFR/IFR, corredores VFR, perfil vertical, panel del copiloto. |
+| `web/app.py` | **COMPLETO** | Backend FastAPI + frontend HTML (`web/static`). **Entry point unico del sistema.** Endpoints: `/api/evaluate`, `/api/profile`, `/api/timeline`, `/api/flightplan`, `/api/airport/{code}`, `/api/airports`, `/api/airports/map`, `/api/aircraft`, `/api/vfr_corridors`, `/api/airspace`, `/api/copilot`, `/api/copilot/status`. Switch VFR/IFR, corredores VFR, perfil vertical, panel del copiloto. **Puntos de paso**: `EvaluateRequest.via` (sobrevuelo o escala), validacion con nombre, ficha por escala a su hora de llegada, costo del desvio y veredicto global que incluye las escalas. |
 
 ### COPILOTO (capa de lenguaje natural)
 
@@ -114,7 +114,7 @@ automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a
 
 | Archivo | Estado | Descripcion |
 |---|---|---|
-| `route/optimizer.py` | **COMPLETO** | Interfaz unica: `optimize()`. La web usa siempre `mode="suggested"` (A* sobre corredor geografico, eligiendo el candidato con mayor cobertura de aerovia). |
+| `route/optimizer.py` | **COMPLETO** | Interfaz unica: `optimize()`. La web usa siempre `mode="suggested"` (A* sobre corredor geografico, eligiendo el candidato con mayor cobertura de aerovia). Con `via=[ViaPoint(...)]` arma la ruta por segmentos (`_optimize_via`): cada tramo sale cuando aterriza el anterior y el combustible se agrupa en ETAPAS separadas por las escalas. `detour_cost()` compara contra la ruta directa. **No modela tiempo en tierra** (ver *Un sobrevuelo y una escala...*). |
 | `route/graph.py` | **COMPLETO** | Grafo de aerodromos con `max_leg_km` + rechazo por bounding box. Modos shortest/fastest/safest. Expone `max_gs_kt` (cota superior de velocidad de tierra) para la heuristica de A*. El peso de arista NO se redondea: redondearlo violaba la desigualdad de admisibilidad. |
 | `route/astar.py` | **COMPLETO** | A* con heuristica haversine admisible en los tres modos. En `fastest` divide por `graph.max_gs_kt` (crucero de LA AERONAVE + viento), no por una constante: dividir por los 97 kt del Alpha rompia la admisibilidad para PA-28, C172 y DA40. Fijado por `tests/test_route.py`, que verifica h(n) <= costo real contra Dijkstra para los 5 perfiles. |
 | `route/airway_router.py` | **COMPLETO** | Dijkstra sobre aerovias filtrado por MEA de la aeronave. `find_airways_for_leg()`, `find_airways_for_route_legs()` (camino continuo end-to-end). |
@@ -536,6 +536,75 @@ El piloto no tiene forma de reconciliarlo mirando la pantalla, y parece un error
 sistema aunque la logica sea correcta. `DecisionResult.worst_obs_time` informa ahora de
 que muestra salio el veredicto, y la interfaz lo dice cuando difiere de lo mostrado.
 
+### Un sobrevuelo y una escala dan la misma linea y no son el mismo vuelo
+
+El motor de ruta ya sabia pasar por puntos intermedios (`ViaPoint`, `_optimize_via`,
+`detour_cost`), pero no habia forma de pedirselo: `/api/evaluate` no tenia el
+parametro y el formulario no tenia el campo. La capa web lo expone.
+
+```
+"quiero PASAR POR Rosario"        SOBREVUELO  el aerodromo es forma de la ruta
+"quiero hacer ESCALA en Rosario"  ESCALA      se aterriza ahi
+```
+
+La geometria es identica —misma linea, misma distancia, mismo combustible
+total— y el vuelo no lo es. La diferencia se pide **explicita** en el formulario
+(el desplegable ofrece los dos botones y el chip lo sigue diciendo) y viaja como
+`is_stop`; el backend no la adivina del texto. De la escala se siguen tres cosas:
+
+- **Se evalua como aerodromo**, con ficha propia, a la hora en que se ATERRIZA
+  ahi —derivada de los tramos reales de la ruta ya calculada, no de la
+  estimacion inicial—, y con los bloqueos que NO son meteorologicos: aterrizar
+  en una escala despues del ocaso veta el vuelo por la misma razon que veta
+  aterrizar en el destino, y un NOTAM de cierre tambien. El optimizador evalua
+  la escala pero solo la meteorologia; la noche y los NOTAM se conocen en la web.
+- **Su veredicto pesa en el global**, que es el peor de todos los aerodromos
+  donde se toca el suelo. El `R` que acompana al veredicto tambien: si el
+  veredicto sale de una escala, el numero tiene que ser el de ella.
+- **Un sobrevuelo NO genera ficha.** El veredicto de aerodromo mide despegue y
+  aterrizaje contra una pista concreta; emitir uno para un punto por el que solo
+  se pasa volviria a darle dos significados a la misma etiqueta.
+
+**El desvio se cobra.** `RouteCard.detour` informa cuanto agrega contra la ruta
+directa —km, minutos, litros— porque sin ese numero aceptar un punto de paso es
+un boton a ciegas. La comparacion NO pide alternativo ni evalua intermedios: es
+geometria y performance, sin una sola peticion de red. El **quiebre de
+autonomia** se declara aparte de los kilometros: que un desvio convierta una
+ruta viable en una que no cierra no es un detalle de magnitud, es un cambio de
+viabilidad. Verificado: SAAR-SACO con el Alpha Trainer cierra directo (368 km) y
+no cierra por SAZB (1579 km) -> `rompe_la_autonomia=True`; SACO-SAEZ con el
+mismo avion ya no cerraba antes del desvio -> `False`, porque el desvio no lo
+rompio.
+
+**Un punto que el piloto pidio nunca se degrada a marcador lateral.** Un
+aerodromo intermedio sale de la linea de ruta cuando la aerovia es continua a su
+alrededor (pasa a ser referencia de emergencia al costado). Un punto pedido no:
+no esta ahi como consecuencia del calculo, esta porque el piloto lo puso.
+`is_via` / `is_via_stop` lo declaran en cada waypoint.
+
+**La entrada invalida falla con NOMBRE**, no a mitad de camino: codigo
+inexistente, repetido, igual al origen o al destino, o mas de `MAX_VIA_POINTS`
+(5) devuelven 400 diciendo cual es el punto conflictivo. Resolver un codigo mal
+escrito por aproximacion mandaria al piloto a otro aerodromo, que es el mismo
+modo de falla que la regla R4 del copiloto existe para evitar.
+
+> **Limitacion declarada: no se modela tiempo en tierra.** `_optimize_via` hace
+> `salida_del_siguiente_tramo = llegada_del_anterior`, asi que una escala sale a
+> la misma hora en que aterriza. Para la escala en si no cambia nada —se evalua
+> a la hora de llegada, que es cuando se aterriza—, pero corre hacia atras la
+> ETA de todo lo que viene despues: con una escala de combustible real de 30-45
+> min, el destino se evalua para una hora anterior a la que se va a llegar.
+> Arreglarlo es del motor de ruta, no de la web, y mueve el momento evaluado de
+> todos los tramos posteriores: es una decision pendiente, no un olvido.
+
+> **Y el modo mock no llegaba al terreno.** `_corridor_alts_msl()` llamaba a
+> `get_elevations_m()` **sin propagar `mock`**, de modo que `mock=True` —que el
+> proyecto declara como "desarrollo sin conexion"— igual salia a Open-Topo-Data
+> por ese camino. Se encontro porque los tests nuevos de la capa web, escritos
+> sobre mock, tardaban 0.3 s cada uno; con la red bloqueada a proposito la suite
+> completa baja de 8 s a 4 s. Un test que depende en silencio de que responda
+> una API externa no prueba lo que dice probar.
+
 ### El TAF decide el momento evaluado; el METAR solo mientras siga vigente
 
 Un aerodromo con estacion tiene **tres** fuentes, y cual describe el momento del
@@ -834,7 +903,7 @@ Sin la variable la app arranca igual: `/api/copilot/status` responde
 `available: false`, el panel del frontend no se muestra y **el resto del sistema
 funciona normalmente**. El copiloto es accesorio y su caida no arrastra a nadie.
 
-Suite de regresion (322 tests, sin red, ~4 s):
+Suite de regresion (346 tests, sin red, ~4 s):
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
@@ -844,6 +913,12 @@ Suite de regresion (322 tests, sin red, ~4 s):
 `tests/test_regression_scenarios.py` es el test critico: fija el comportamiento del
 veredicto sobre la bateria de referencia (0 sub-avisos, concordancia >= 90%). Si un
 cambio en pesos, umbrales o barrera altera lo que el sistema decide, ahi salta.
+
+`tests/test_web.py` cubre lo que agrega la capa web por encima del motor:
+validacion de los puntos de paso, derivacion de la hora de llegada a cada escala
+y marcado de los puntos pedidos. **Sin red**: los waypoints se generan con
+`mock=True` sobre tramos cortos. Verificado bloqueando `socket.connect` para toda
+la suite, que es la unica forma de probar que un test no sale a internet.
 
 `tests/test_copilot.py` fija el contrato de seguridad del asistente: que un veredicto
 parafraseado o invertido se reemplace por la plantilla determinista, que un codigo

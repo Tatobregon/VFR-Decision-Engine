@@ -552,6 +552,74 @@
       </div>
     </div>
 
+    <!-- ── PUNTOS DE PASO ──────────────────────────────────────────────────
+         Sobrevuelo y escala dan la misma línea en el mapa y NO son el mismo
+         vuelo: en la escala se aterriza, así que el aeródromo tiene que ser
+         operable, su veredicto pesa sobre el vuelo y el combustible se calcula
+         por etapa. Por eso el piloto lo elige al agregar el punto, y el chip
+         sigue diciéndolo después. -->
+    <div class="mb-5">
+      <label class="av-label">Puntos de paso <span class="text-muted font-normal">· opcional</span></label>
+      <div class="relative">
+        <input class="av-input"
+               type="text"
+               placeholder="Agregar un aeródromo intermedio..."
+               x-model="viaSearch"
+               @input="onViaInput()"
+               @focus="viaOpen = viaResults.length > 0"
+               @keydown.escape="viaOpen = false"
+               autocomplete="off"
+               :disabled="form.via.length >= 5"/>
+        <div class="dropdown" x-show="viaOpen" @click.outside="viaOpen = false">
+          <template x-for="ap in viaResults" :key="ap.code">
+            <div class="dropdown-item flex items-center justify-between gap-3">
+              <span class="min-w-0">
+                <span class="font-mono text-accent font-bold" x-text="ap.code"></span>
+                <span class="text-[#e6edf3] ml-2" x-text="ap.name"></span>
+                <span class="text-muted ml-1 text-xs" x-text="ap.province ? '· ' + ap.province : ''"></span>
+              </span>
+              <span class="flex items-center gap-1 shrink-0">
+                <button type="button" @click.stop="addVia(ap, false)"
+                        class="text-[10px] font-mono px-2 py-1 rounded border border-border hover:border-accent hover:text-accent"
+                        title="Pasar por encima: el aeródromo es sólo forma de la ruta">
+                  sobrevolar
+                </button>
+                <button type="button" @click.stop="addVia(ap, true)"
+                        class="text-[10px] font-mono px-2 py-1 rounded border border-border hover:border-accent hover:text-accent"
+                        title="Aterrizar acá: se evalúa como aeródromo y su veredicto cuenta">
+                  escala
+                </button>
+              </span>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- Chips de lo pedido, en orden de vuelo -->
+      <div x-show="form.via.length" class="mt-2 flex items-center gap-2 flex-wrap">
+        <template x-for="(v, i) in form.via" :key="v.code">
+          <span class="flex items-center gap-1.5 text-xs font-mono px-2 py-1 rounded-lg border"
+                :class="v.is_stop ? 'border-accent/50 bg-accent/10 text-accent'
+                                  : 'border-border bg-surface text-[#e6edf3]'">
+            <span class="text-muted" x-text="(i + 1) + '.'"></span>
+            <span class="font-bold" x-text="v.code"></span>
+            <button type="button" @click="toggleViaStop(v.code)"
+                    class="text-[10px] underline decoration-dotted underline-offset-2 hover:opacity-70"
+                    :title="v.is_stop ? 'Se aterriza acá. Click para pasar a sobrevuelo'
+                                      : 'Se pasa por encima. Click para hacerlo escala'"
+                    x-text="v.is_stop ? 'escala' : 'sobrevuelo'"></button>
+            <button type="button" @click="removeVia(v.code)"
+                    class="text-muted hover:text-nogo" title="Quitar">×</button>
+          </span>
+        </template>
+        <span class="text-[10px] text-muted" x-show="form.via.length >= 5">máximo alcanzado</span>
+      </div>
+      <div class="mt-1 text-xs text-muted" x-show="!form.via.length">
+        En una <b>escala</b> se aterriza: el aeródromo se evalúa y su veredicto cuenta.
+        En un <b>sobrevuelo</b> sólo se pasa por encima.
+      </div>
+    </div>
+
     <!-- Aeronave + Hora + Duración -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-5">
       <div>
@@ -684,8 +752,11 @@
               :style="`color:${decisionColor(result?.global_decision)}`"
               x-text="result?.global_decision">
         </span>
+        <!-- El R que se muestra es el PEOR de todos los aeródromos donde se
+             toca el suelo, escalas incluidas: si el veredicto global sale de
+             una escala, el número que lo acompaña tiene que ser el de ella. -->
         <span class="text-xs text-muted font-mono"
-              x-text="'R = ' + Math.max(result?.origin?.r_total||0, result?.dest?.r_total||0).toFixed(2)">
+              x-text="'R = ' + Math.max(...Object.values(fichas()).map(c => c?.r_total || 0), 0).toFixed(2)">
         </span>
       </div>
 
@@ -701,6 +772,52 @@
         <span class="text-muted">·</span>
         <span x-text="formatTime(result?.route?.total_time_h || 0)"></span>
       </div>
+
+      <!-- ── LO QUE CUESTA EL DESVÍO ──────────────────────────────────────
+           Sin este número, pedir un punto de paso es un botón a ciegas: el
+           piloto ve la ruta nueva pero no cuánto agregó. Y el quiebre de
+           autonomía se dice APARTE de los kilómetros, porque no es un detalle
+           de magnitud — es un cambio de viabilidad. -->
+      <template x-if="result?.route?.detour?.found">
+        <div class="mt-3 inline-flex flex-col gap-1.5 text-xs rounded-lg border px-3 py-2"
+             :class="result.route.detour.rompe_la_autonomia
+                     ? 'border-nogo/45 bg-nogo/5' : 'border-border bg-surface'">
+          <div class="flex items-center gap-2 flex-wrap font-mono">
+            <span class="text-muted uppercase tracking-widest text-[9px]">Desvío</span>
+            <template x-for="v in result.route.via" :key="v.code">
+              <span class="px-1.5 py-0.5 rounded"
+                    :class="v.is_stop ? 'bg-accent/15 text-accent' : 'bg-border/40 text-[#e6edf3]'"
+                    :title="v.name"
+                    x-text="v.code + (v.is_stop ? ' · escala' : ' · sobrevuelo')"></span>
+            </template>
+            <span class="text-muted">cuesta</span>
+            <span class="text-[#e6edf3] font-semibold"
+                  x-text="'+' + result.route.detour.dist_km_extra + ' km'"></span>
+            <span class="text-muted">·</span>
+            <span class="text-[#e6edf3] font-semibold"
+                  x-text="'+' + Math.round(result.route.detour.time_min_extra) + ' min'"></span>
+            <span class="text-muted">·</span>
+            <span class="text-[#e6edf3] font-semibold"
+                  x-text="'+' + result.route.detour.fuel_l_extra + ' L'"></span>
+          </div>
+          <!-- El desvío deja la ruta sin autonomía: cambia la viabilidad -->
+          <div x-show="result.route.detour.rompe_la_autonomia"
+               class="text-nogo font-semibold">
+            ⚠ Este desvío deja el vuelo <b>sin autonomía suficiente</b>. Directo cerraba;
+            pasando por acá ya no. Hay que sumar una escala de combustible o quitarlo.
+          </div>
+          <!-- Ya hacía falta escala antes del desvío: no es culpa del punto -->
+          <div x-show="!result.route.detour.rompe_la_autonomia && result.route.needs_fuel_stop"
+               class="text-caution">
+            La ruta necesita escala de combustible — ya la necesitaba sin el desvío.
+          </div>
+        </div>
+      </template>
+      <!-- No se pudo comparar: se dice, no se calla -->
+      <template x-if="result?.route?.detour && !result.route.detour.found">
+        <div class="mt-3 text-xs text-caution"
+             x-text="'No se pudo calcular el costo del desvío: ' + (result.route.detour.error || 'sin detalle')"></div>
+      </template>
     </div>
 
     <!-- ── TIMELINE METEOROLÓGICA ──────────────────────────────────── -->
@@ -751,7 +868,7 @@
 
     <!-- WEATHER CARDS -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
-      <template x-for="(card, role) in (result ? {origen: result.origin, destino: result.dest} : {})" :key="role">
+      <template x-for="(card, role) in fichas()" :key="role">
         <div class="av-card"
              :class="{
                'border-go/40':     card.decision === 'GO',
@@ -762,8 +879,9 @@
           <!-- Header de la card -->
           <div class="flex items-start justify-between mb-4">
             <div>
-              <div class="text-[10px] font-bold tracking-widest uppercase text-muted mb-1"
-                   x-text="role === 'origen' ? '● ORIGEN' : '● DESTINO'"></div>
+              <div class="text-[10px] font-bold tracking-widest uppercase mb-1"
+                   :class="role.startsWith('ESCALA') ? 'text-accent' : 'text-muted'"
+                   x-text="'● ' + role"></div>
               <div class="font-bold text-base text-[#e6edf3]" x-text="card.name"></div>
               <div class="flex items-center gap-2 mt-1">
                 <span class="font-mono text-xs text-accent font-bold" x-text="card.station_id"></span>
@@ -1588,9 +1706,15 @@ function app() {
       // derive el sistema por la regla de los semicírculos. En IFR se ignora:
       // ahí manda la MEA de la aerovía.
       cruise_alt_ft:  null,
+      // Puntos de paso pedidos por el piloto: [{code, name, is_stop}].
+      // Vacío = ruta directa, que es el caso normal.
+      via:            [],
     },
 
     // ── Autocomplete
+    viaSearch:     '',
+    viaResults:    [],
+    viaOpen:       false,
     originSearch:  '',
     originResults: [],
     originOpen:    false,
@@ -1804,6 +1928,69 @@ function app() {
       this.form.dest_runway = null;   // auto: el sistema elige la pista favorable
     },
 
+    // ── Puntos de paso
+    //
+    // El piloto elige SOBREVUELO o ESCALA, y la diferencia no es cosmética:
+    // "quiero pasar por Rosario" y "quiero hacer escala en Rosario" dan la
+    // misma línea en el mapa y distinto vuelo — la escala se aterriza, así que
+    // el aeródromo tiene que ser operable, su veredicto pesa sobre el vuelo y
+    // el combustible se calcula por etapa. Por eso se pide explícito.
+    onViaInput() {
+      clearTimeout(this._viaTimer);
+      if (this.viaSearch.length < 2) {
+        this.viaResults = [];
+        this.viaOpen = false;
+        return;
+      }
+      this._viaTimer = setTimeout(async () => {
+        try {
+          const res = await fetch(`/api/airports?q=${encodeURIComponent(this.viaSearch)}`);
+          const todos = await res.json();
+          // No ofrecer lo que ya está en el vuelo: el backend lo rechaza, y
+          // mejor no ofrecer que ofrecer y fallar.
+          const usados = new Set([this.form.origin, this.form.dest,
+                                  ...this.form.via.map(v => v.code)]);
+          this.viaResults = todos.filter(ap => !usados.has(ap.code));
+          this.viaOpen = this.viaResults.length > 0;
+        } catch(e) {}
+      }, 280);
+    },
+
+    addVia(ap, isStop) {
+      if (this.form.via.length >= 5) {
+        this.error = 'Máximo 5 puntos de paso por vuelo.';
+        return;
+      }
+      this.form.via.push({ code: ap.code, name: ap.name, is_stop: !!isStop });
+      this.viaSearch  = '';
+      this.viaResults = [];
+      this.viaOpen    = false;
+    },
+
+    removeVia(code) {
+      this.form.via = this.form.via.filter(v => v.code !== code);
+    },
+
+    toggleViaStop(code) {
+      const v = this.form.via.find(x => x.code === code);
+      if (v) v.is_stop = !v.is_stop;
+    },
+
+    // ── Fichas de aeródromo, en orden de vuelo
+    //
+    // Las claves son la etiqueta que se muestra: x-for sobre un objeto entrega
+    // (valor, clave) y JS conserva el orden de inserción de las claves de texto,
+    // así que la escala queda entre el origen y el destino, que es donde está.
+    fichas() {
+      if (!this.result) return {};
+      const o = { 'ORIGEN': this.result.origin };
+      (this.result.stops || []).forEach(c => {
+        o['ESCALA · ' + c.station_id] = c;
+      });
+      o['DESTINO'] = this.result.dest;
+      return o;
+    },
+
     // ── Evaluación principal
     async evaluate() {
       this.error   = '';
@@ -1826,6 +2013,8 @@ function app() {
           // solo VFR: en IFR la altitud la fija la MEA de la aerovía
           cruise_alt_ft:  this.form.flight_rules === 'VFR'
                           ? this.form.cruise_alt_ft : null,
+          // Solo código e intención: el nombre es para la pantalla.
+          via:            this.form.via.map(v => ({ code: v.code, is_stop: v.is_stop })),
         };
 
         const res = await fetch('/api/evaluate', {
