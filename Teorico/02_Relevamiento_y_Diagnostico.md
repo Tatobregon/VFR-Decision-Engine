@@ -7,6 +7,12 @@
 > figuraba como 2.2.1 en lugar de 2.3. Se conserva íntegramente el contenido original
 > y se lo redistribuye. Los apartados agregados están señalados; los datos que solo
 > puede aportar el autor están marcados con ⬜.
+>
+> **Actualización del 14/09/2026.** Se alinearon con el estado final del sistema el
+> relevamiento de fuentes (§ 2.2.4), el límite de viento cruzado citado en el § 2.2.5 y
+> el cuadro de diagnóstico. Se relevaron además las plataformas que los pilotos consultan
+> hoy y la consulta habitual al aeródromo de destino (§ 2.1.3), de donde surgen dos filas
+> nuevas del cuadro.
 
 ---
 
@@ -72,9 +78,14 @@ su relevamiento revela que **la información existe pero no fluye: se recolecta*
 El piloto o el instructor que va a volar reúne, por su cuenta y antes de cada salida:
 
 1. **Condiciones meteorológicas**, que al no haber estación en el campo obtiene de reportes
-   de aeródromos distantes, de la apreciación visual directa o de servicios meteorológicos
-   de uso general no aeronáutico.
-2. **Estado del aeródromo de destino y de la ruta**, mediante consulta de NOTAM.
+   de aeródromos distantes, de la apreciación visual directa y de un conjunto de plataformas
+   que cada piloto elige a su criterio: por lo general, servicios meteorológicos de uso
+   general no aeronáutico —Windy, Meteoblue, Open-Meteo— y aviationweather.gov para los
+   informes METAR y TAF. No existe un conjunto de fuentes acordado por la organización.
+2. **Estado del aeródromo de destino y de la ruta**, mediante la consulta de NOTAM en alguna
+   de las plataformas disponibles, la ficha del aeródromo en el registro oficial (MADHEL, a
+   través del AIS) y, habitualmente, la comunicación directa con el aeródromo de destino
+   para confirmar, entre otros datos, la disponibilidad de combustible.
 3. **Capacidades de la aeronave asignada**, del manual de vuelo.
 4. **Su propia experiencia y estado**, sin instrumento formal que lo estructure.
 
@@ -85,16 +96,18 @@ asiento de qué condiciones se consideraron ni con qué criterio se resolvió, d
 organización no puede revisar sus propias decisiones ni detectar patrones.
 
 **No es homogéneo.** Cada piloto integra los factores según su experiencia y su criterio,
-por lo que dos personas pueden resolver de manera distinta ante la misma información.
+por lo que dos personas pueden resolver de manera distinta ante la misma información. La
+heterogeneidad empieza antes de la integración: tampoco la información de partida es la
+misma, porque no existe un conjunto de fuentes acordado y cada piloto consulta las
+plataformas que prefiere.
 
 **No se transmite.** El criterio del instructor experimentado no queda disponible para el
 piloto recién licenciado que alquila la aeronave un sábado, que es precisamente el caso de
 mayor exposición identificado en el § 2.1.1.
 
-⬜ *[Confirmar con el comitente: qué fuentes meteorológicas consultan hoy efectivamente
-(aplicaciones, sitios, radio); si existe algún registro escrito o planilla previa al vuelo;
-si el alquiler libre requiere alguna autorización o el piloto dispone de la aeronave por
-sí mismo.]*
+⬜ *[Confirmar con el comitente: si existe algún registro escrito o planilla previa al
+vuelo, y si el alquiler libre requiere alguna autorización o el piloto dispone de la
+aeronave por sí mismo.]*
 
 ---
 
@@ -128,7 +141,7 @@ control de horas de célula y motor, facturación— y de qué tipo.]*
 de conexión a internet fija, cuál es la cobertura de datos móviles en el campo, y si el
 piloto puede acceder a información en línea desde el lugar o debe hacerlo antes de
 trasladarse. **Es determinante para el sistema desarrollado**, que es una aplicación web y
-requiere conexión: si la cobertura en el campo fuera deficiente, la herramienta debería
+requiere conexión —también su asistente de lenguaje, que consulta un servicio externo—: si la cobertura en el campo fuera deficiente, la herramienta debería
 utilizarse antes del traslado al aeródromo, lo que constituye una restricción de uso a
 declarar.]*
 
@@ -141,12 +154,31 @@ disponible y la razón por la que no se utiliza.
 
 | Fuente | Origen | Estado en el proyecto |
 |---|---|---|
-| METAR y TAF | aviationweather.gov | **Consumida.** Observación y pronóstico en aeródromos con estación. |
-| Pronóstico numérico (NWP) | Open-Meteo | **Consumida.** Cubre los aeródromos sin estación, incluido el de base. |
+| METAR y TAF | aviationweather.gov | **Consumida.** Observación vigente y pronóstico de aeródromo para el momento evaluado, en aeródromos con estación. |
+| Pronóstico numérico (NWP) | Open-Meteo | **Consumida.** Cubre los aeródromos sin estación, incluido el de base; completa la temperatura y el punto de rocío que el TAF no publica, y describe el aire en el nivel de crucero sobre la ruta. |
 | NOTAM | AIS de ANAC | **Consumida.** Estado operativo del aeródromo. |
-| Registro de aeródromos y pistas | ANAC/MADHEL y OurAirports | **Consumida.** Coordenadas, elevación, cabeceras. |
+| Registro de aeródromos y pistas | ANAC/MADHEL y OurAirports | **Consumida.** Coordenadas, elevación y cabeceras; además, contactos, normas particulares y combustible, que el asistente de lenguaje pone a consulta del piloto. |
 | Elevación del terreno | SRTM vía Open-Topo-Data | **Consumida.** Perfil vertical y conflicto de terreno. |
+| Windy y Meteoblue | Servicios meteorológicos de uso general | **Relevadas, no consumidas.** Ver el párrafo que sigue al cuadro. |
 | **Telemetría EFIS de la flota** | Instrumental de a bordo | **Relevada, no consumida.** Ver § 2.2.5. |
+
+Dos observaciones sobre este cuadro. La primera es que las fuentes que el sistema consume
+coinciden con las que los pilotos ya consultan por su cuenta (§ 2.1.3): los informes METAR y
+TAF de aviationweather.gov, la ficha del aeródromo en el registro oficial, los NOTAM y el
+pronóstico numérico de Open-Meteo. El sistema no introduce fuentes ajenas a la práctica de la
+organización; automatiza su consulta y la integra bajo un mismo criterio.
+
+La segunda es que dos de las plataformas de uso habitual, Windy y Meteoblue, no se consumen, y
+la razón es de acceso antes que de contenido: ninguna ofrece un acceso programático gratuito
+que pueda sostener un servicio en producción. La versión de prueba de la interfaz de
+pronóstico puntual de Windy está destinada exclusivamente al desarrollo, no puede utilizarse
+en producción, devuelve pronósticos para coordenadas aleatorias y admite 500 sesiones diarias
+(Windy.com, s.f.); la interfaz gratuita de Meteoblue requiere registro y clave de acceso, y su
+crédito gratuito vence al año, tras lo cual el consumo se abona por créditos (meteoblue,
+s.f.). Open-Meteo, en cambio, entrega el pronóstico numérico por coordenadas sin clave de
+acceso ni registro, y sin costo para uso no comercial hasta 10 000 consultas diarias
+(Open-Meteo, s.f.), lo que satisface el objetivo de gratuidad del § 1.2.2 sin depender de
+un período de prueba.
 
 ### 2.2.5. La telemetría de a bordo: por qué se releva y por qué no se utiliza
 
@@ -154,8 +186,8 @@ La telemetría registrada por los EFIS es el único activo de datos **propio de 
 organización** identificado en el relevamiento, y merece un tratamiento explícito porque
 su valor potencial es real y su exclusión es deliberada.
 
-**Qué permitiría hacer.** El sistema evalúa el viento cruzado contra el límite del perfil
-de aeronave; para el Alpha Trainer ese valor es de 12 nudos. Ese número no es un límite
+**Qué permitiría hacer.** El sistema evalúa el viento cruzado —calculado sobre la ráfaga—
+contra el límite del perfil de aeronave; para el Alpha Trainer ese valor es de 18 nudos. Ese número no es un límite
 operativo sino el **máximo demostrado** por el fabricante durante la certificación: la
 componente cruzada más alta con la que un piloto de pruebas efectuó un aterrizaje
 controlado en condiciones favorables. No describe lo que un alumno o un piloto recién
@@ -197,13 +229,29 @@ esta etapa.
 
 | Punto débil detectado | Propuesta de solución |
 |---|---|
-| **Integración informal de las variables.** El piloto evalúa las condiciones de manera subjetiva, combinando mentalmente techo, visibilidad y viento, lo que produce decisiones inconsistentes entre personas y situaciones. | **Motor de riesgo multicriterio con ponderación AHP.** El juicio subjetivo se reemplaza por un modelo explícito cuyos pesos se derivan de accidentología mediante una operación documentada, auditable y reproducible (§ 3.1.4). |
+| **Integración informal de las variables.** El piloto evalúa las condiciones de manera subjetiva, a partir de fuentes que elige a su criterio y combinando mentalmente techo, visibilidad y viento, lo que produce decisiones inconsistentes entre personas y situaciones. | **Motor de riesgo multicriterio con ponderación AHP.** El juicio subjetivo se reemplaza por un modelo explícito cuyos pesos se derivan de accidentología mediante una operación documentada, auditable y reproducible (§ 3.1.4), aplicado siempre sobre las mismas fuentes oficiales. |
 | **Puntos ciegos territoriales.** Los aeródromos sin estación meteorológica oficial —incluido el de base— obligan a operar con información degradada o con estimaciones visuales. | **Modelo numérico de pronóstico punto a punto.** Cobertura del 100 % de los aeródromos del registro nacional, con muestreo en anillo para tratar la incertidumbre orográfica en terreno complejo (§ 3.2.5). |
+| **La condición que se consulta no es la del momento del vuelo** (§ 2.1.3). La apreciación visual y los reportes de aeródromos distantes describen el estado actual del tiempo; para un vuelo que aterriza horas después y en otro lugar, esa información corresponde a otro momento, y los servicios de uso general que sí pronostican no aplican el criterio aeronáutico. | **Evaluación de cada aeródromo para su propio momento.** El origen se evalúa a la hora de salida, y el destino y las escalas a su hora de llegada, con la fuente que describe ese momento: la observación mientras siga vigente, el pronóstico de aeródromo después y el modelo numérico cuando ninguno de los dos lo alcanza (§ 3.2.5). |
 | **Dilución de factores inhabilitantes.** Un factor individualmente crítico —viento cruzado fuera de límite— puede quedar compensado mentalmente por un clima general favorable. | **Barrera no compensatoria.** Reglas estrictas por perfil de aeronave: un solo factor que exceda el límite impone un piso de veredicto que el resto de las condiciones no puede mejorar (§ 3.2.4). |
 | **La decisión no deja registro** (§ 2.1.3). La evaluación se realiza mentalmente y se descarta, de modo que la organización no puede revisarla ni aprender de ella. | **Veredicto trazable con su justificación.** El sistema informa el factor dominante y el factor limitante de cada evaluación, y exporta un borrador de plan de vuelo, dejando constancia de la información considerada. |
 | **El criterio experto no se transmite** (§ 2.1.3). El juicio del instructor no está disponible para el piloto recién licenciado que alquila la aeronave, que es el caso de mayor exposición. | **Codificación del conocimiento normativo y experto.** El sistema pone a disposición de cualquier piloto, en cualquier momento, el mismo criterio estructurado, con mínimos personales ajustables según el nivel de experiencia. |
+| **La información del aeródromo de destino está dispersa** (§ 2.1.3). Para confirmar combustible, contactos o normas particulares, el piloto localiza la ficha del aeródromo en el registro oficial y se comunica con él por su cuenta. La información existe, pero debe buscarse ficha por ficha, y en los aeródromos controlados no figura en el registro sino en el AIP (§ 1.1.5). | **Asistente de consulta en lenguaje natural.** El piloto pregunta en sus propios términos y el asistente responde a partir del registro, nombrando el código exacto del aeródromo que resolvió; cuando un dato no está publicado lo declara, sin presentarlo como inexistente ni estimarlo. No reemplaza la comunicación con el aeródromo: le entrega al piloto el contacto y los datos publicados antes de hacerla. |
 
 El pedido del usuario y la propuesta general se especifican en el § 1.1.1 y el § 1.2.
+
+---
+
+## Referencias citadas en esta sección
+
+> *Normas APA 7.ª edición. Las páginas de servicios en línea se citan con su fecha de
+> consulta, porque sus condiciones de acceso pueden cambiar. Se consolidan luego en la
+> Sección 7.*
+
+meteoblue. (s.f.). *Free weather API*. Recuperado el 14 de septiembre de 2026, de https://business.meteoblue.com/products/weather-apis/free-weather-api
+
+Open-Meteo. (s.f.). *Free weather API*. Recuperado el 14 de septiembre de 2026, de https://open-meteo.com/
+
+Windy.com. (s.f.). *Specific terms of use of the Windy Map & Point Forecast Services*. Recuperado el 14 de septiembre de 2026, de https://account.windy.com/agreements/windy-api-map-and-point-forecast-terms-of-use
 
 ---
 
@@ -211,12 +259,13 @@ El pedido del usuario y la propuesta general se especifican en el § 1.1.1 y el 
 
 1. **Estructura funcional** (§ 2.1.1): instructores, alumnos activos, pilotos con acceso al
    alquiler libre, y quién autoriza la salida de una aeronave.
-2. **Fuentes meteorológicas actuales** (§ 2.1.3): qué consultan hoy efectivamente, y si
-   existe alguna planilla o registro previo al vuelo.
+2. **Registro previo al vuelo** (§ 2.1.3): si existe alguna planilla o registro escrito, y
+   si el alquiler libre requiere autorización. Las fuentes que se consultan hoy ya están
+   relevadas.
 3. **EFIS** (§ 2.2.1): marca y modelo; si la telemetría se descarga y almacena o solo se
    presenta en vuelo.
 4. **Software de gestión** (§ 2.2.2): si existe y de qué tipo.
 5. **Conectividad** (§ 2.2.3): dato que la consigna pide expresamente y que aún no está
    relevado. Es el más importante de esta lista, porque condiciona el modo de uso del
    sistema.
-6. **Verificar las remisiones** a §§ 5.3 y 6.3 cuando esas secciones estén redactadas.
+6. **Verificar las remisiones** a §§ 3.2.5, 5.3 y 6.3 cuando esas secciones estén redactadas o actualizadas.
