@@ -3,14 +3,24 @@
 > **Nota de adaptación.** La plantilla de la carrera propone para esta sección los
 > fundamentos propios de un proyecto de aprendizaje automático (aprendizaje supervisado,
 > *deep learning*, redes convolucionales; elección entre YOLOv8 y SSD; TensorFlow o
-> PyTorch). El presente trabajo se inscribe en la otra tradición de la inteligencia
-> artificial —la simbólica— y su fundamento científico es, en consecuencia, otro: la
-> representación del conocimiento, los sistemas basados en reglas y el análisis de
-> decisión multicriterio. Se conserva íntegramente la estructura de la sección (3.1
-> fundamentos científicos, 3.2 modelos y arquitecturas, 3.3 *stack* tecnológico) y se
-> sustituye su contenido por el que efectivamente sostiene la solución construida. El
-> § 3.2.2 desarrolla en profundidad la justificación de esa elección, anticipada en el
-> § 1.3.1.
+> PyTorch). El núcleo de decisión del presente trabajo se inscribe en la otra tradición de
+> la inteligencia artificial —la simbólica— y su fundamento científico es, en consecuencia,
+> otro: la representación del conocimiento, los sistemas basados en reglas y el análisis
+> de decisión multicriterio. La interfaz de consulta en lenguaje natural, en cambio, sí
+> emplea un modelo de lenguaje de gran escala, confinado a un rol que no alcanza al
+> veredicto; sus fundamentos se exponen en el § 3.1.9 y su arquitectura en el § 3.2.7. Se
+> conserva íntegramente la estructura de la sección (3.1 fundamentos científicos, 3.2
+> modelos y arquitecturas, 3.3 *stack* tecnológico) y se sustituye su contenido por el que
+> efectivamente sostiene la solución construida. El § 3.2.2 desarrolla en profundidad la
+> justificación de esa elección, anticipada en el § 1.3.1.
+>
+> **Actualización del 15/09/2026.** Se incorporaron los fundamentos y la arquitectura del
+> asistente de consulta (§§ 3.1.9 y 3.2.7), la selección de la fuente según el momento
+> evaluado y la separación entre superficie y altura (§§ 3.2.5.3 y 3.2.5.4) y la
+> planificación con puntos de paso (§ 3.2.6); se corrigió la descripción de los FRAT contra
+> sus fuentes (§ 3.2.1) y se actualizaron las cifras de la batería de referencia. No se
+> renumeró ningún apartado existente, de modo que las remisiones de los capítulos 1 y 2
+> conservan su validez.
 
 ---
 
@@ -50,13 +60,19 @@ el conocimiento existe y está formalizado, pero está disperso, es voluminoso y
 aplicación consistente excede la capacidad de atención de una persona.
 
 La decisión meteorológica de despacho pertenece a esta segunda clase. Los mínimos VFR
-están escritos en la regulación; los límites de viento cruzado están publicados en el
+están escritos en la regulación (Administración Nacional de Aviación Civil [ANAC], 2022,
+Parte 91); los límites de viento cruzado están publicados en el
 manual de vuelo de cada aeronave; la accidentología indica qué factores concentran la
 letalidad. Lo que falta no es descubrir una regularidad oculta en los datos, sino
 integrar de manera explícita, consistente y trazable un conocimiento que ya está
 disponible. Por eso este trabajo se sitúa deliberadamente en la tradición simbólica, en
 la intersección de dos de sus líneas maduras: los sistemas basados en conocimiento
 (§ 3.1.2) y el análisis de decisión multicriterio (§ 3.1.3).
+
+La interfaz de consulta del sistema, en cambio, resuelve un problema de la primera clase:
+interpretar lenguaje natural, cuya relación con la intención de quien pregunta es real pero
+no se sabe expresar en reglas. Por eso emplea un componente aprendido, en un esquema que
+combina ambas tradiciones y que se fundamenta en el § 3.1.9.
 
 ### 3.1.2. Sistemas basados en conocimiento y representación del conocimiento
 
@@ -249,10 +265,15 @@ una ponderación anterior fijada por juicio experto directo, que asignaba a la c
 entre referencia visual y viento el valor 3 en lugar de 7. La sustitución modificó los
 siete pesos de manera sustantiva —el del viento cruzado descendió de 0,179 a 0,099— y
 obligó a recalibrar los umbrales de decisión, cuyo óptimo se desplazó de (0,22 · 0,50) a
-(0,22 · 0,59). El resultado decisivo es que, tras esa recalibración, **el sistema emite
-exactamente el mismo veredicto en los treinta y seis escenarios de la batería de
-referencia**: la misma concordancia del 97 %, los mismos cero sub-avisos y el mismo único
-desacuerdo, que es un sobre-aviso. El umbral inferior ni siquiera se movió.
+(0,22 · 0,59). El resultado decisivo es que, tras esa recalibración, **las dos
+ponderaciones emiten exactamente el mismo veredicto en todos los escenarios de la batería
+de referencia**. La comparación se realizó primero sobre la batería de treinta y seis
+escenarios vigente en ese momento —con la misma concordancia del 97 %, los mismos cero
+sub-avisos y el mismo único desacuerdo, un sobre-aviso— y se repitió sobre la batería actual
+de treinta y ocho escenarios, con idéntico resultado: ambas ponderaciones alcanzan una
+concordancia del 95 %, sin sub-avisos, con los mismos dos desacuerdos —ambos sobre-avisos— y
+sin ningún escenario en el que sus veredictos difieran entre sí. El umbral inferior ni
+siquiera se movió.
 
 Que dos derivaciones independientes de los pesos —una por juicio experto, otra anclada en
 accidentología— produzcan idéntico comportamiento decisional constituye una validación
@@ -357,7 +378,7 @@ de los umbrales (§ 4.2).
 
 Conviene situar este enfoque respecto del estándar de la industria. La gestión de la
 seguridad operacional aeronáutica emplea, siguiendo el Manual de gestión de la seguridad
-operacional de la OACI (2018), una matriz de riesgo que cruza la severidad de un evento
+operacional de la OACI (2018a), una matriz de riesgo que cruza la severidad de un evento
 con su probabilidad y clasifica el resultado en tolerable, tolerable con mitigación o
 intolerable. Ese instrumento es adecuado para evaluar peligros *genéricos* de una
 organización, pero no para clasificar un *vuelo concreto* en un momento concreto: opera
@@ -397,6 +418,11 @@ contribución de cada factor al puntaje total es un producto identificable, y po
 el sistema puede informar el factor dominante y el factor limitante de cada veredicto sin
 maquinaria adicional.
 
+La incorporación de un componente opaco en la interfaz de consulta (§ 3.2.7) no altera esta
+propiedad, porque ese componente no participa de la emisión del veredicto ni de su
+justificación: se limita a comunicarlas, y la fidelidad con que transcribe el veredicto se
+verifica en código.
+
 ### 3.1.7. Fundamentos meteorológicos y de ciencia de datos aplicados
 
 **Observación y pronóstico aeronáuticos.** La información meteorológica aeronáutica está
@@ -410,6 +436,14 @@ califican la naturaleza y la probabilidad de cada variación. Ambos son producto
 estación: existen únicamente donde hay estación meteorológica aeronáutica, lo que en la
 Argentina significa un subconjunto reducido de aeródromos concentrado en los centros de
 mayor tráfico.
+
+Observación y pronóstico no describen lo mismo, y la diferencia importa en una decisión que
+se toma horas antes del vuelo. El METAR describe el instante en que se tomó: es el mejor dato
+disponible sobre ese momento, pero pierde valor como descripción de las condiciones a medida
+que el momento del vuelo se aleja de él. El TAF describe, en cambio, el período de validez
+hacia adelante, y es el producto con el que la meteorología aeronáutica anticipa las
+condiciones de un aeródromo para el momento en que la aeronave estará en él. Esa distinción
+funda la regla de selección de fuente del § 3.2.5.3.
 
 **Predicción numérica del tiempo (NWP).** Para los aeródromos sin estación, la
 alternativa es el modelo numérico. La predicción numérica del tiempo resuelve las
@@ -439,6 +473,14 @@ La respuesta adoptada no consiste en corregir el modelo —no se dispone de dato
 calibrar tal corrección— sino en **muestrearlo**: el sistema consulta el pronóstico en el
 aeródromo y en un anillo de puntos de su entorno, y adopta la peor condición del conjunto.
 El fundamento de diseño se desarrolla en el § 3.2.5.
+
+**El aire en altura.** Además de las variables de superficie, los modelos numéricos
+resuelven la atmósfera en niveles de presión —superficies de presión constante cuya altura
+geopotencial sobre el nivel del mar varía con el estado de la atmósfera— y entregan para cada
+uno temperatura, humedad, nubosidad y viento. Es la información que describe el aire que la
+aeronave efectivamente atraviesa en crucero, y difiere sustancialmente de la de superficie:
+la temperatura desciende con la altura y el viento cambia de intensidad y de dirección. El
+sistema la consume por separado, por las razones de diseño expuestas en el § 3.2.5.4.
 
 **Estimación de la base de nubes.** Los modelos numéricos entregan la nubosidad como
 fracción de cobertura por niveles, no como altura de la base en pies sobre el terreno, que
@@ -497,6 +539,52 @@ destino, que es admisible por construcción: ninguna ruta real entre dos puntos 
 esfera puede ser más corta que el arco que los une. La justificación de por qué se aplica
 cada uno a cada subproblema se desarrolla en el § 3.2.6.
 
+### 3.1.9. Modelos de lenguaje de gran escala e integración neurosimbólica
+
+La interfaz de consulta del sistema emplea el único componente aprendido de toda la
+solución. Conviene precisar qué es, qué propiedad lo vuelve útil para esa tarea y cuál es el
+modo de falla que obliga a confinarlo.
+
+**Qué es un modelo de lenguaje de gran escala.** Es una red neuronal entrenada para predecir
+la continuación de un texto a partir de volúmenes de texto de escala masiva. La arquitectura
+sobre la que se construyen los modelos actuales es el *transformer*, que reemplazó el
+procesamiento secuencial de las redes recurrentes por mecanismos de atención que relacionan
+directamente cada posición del texto con todas las demás (Vaswani et al., 2017). Su
+propiedad más relevante para este trabajo apareció con la escala: un modelo suficientemente
+grande puede realizar tareas nuevas a partir de instrucciones y ejemplos provistos en el
+propio texto de entrada, sin ningún reentrenamiento (Brown et al., 2020). Es esa propiedad
+la que permite emplearlo aquí tal como lo provee un tercero, orientándolo mediante una
+instrucción de sistema y una descripción de las herramientas disponibles, sin entrenamiento
+ni ajuste propios.
+
+**Su modo de falla: la alucinación.** El mismo mecanismo que le da fluidez lo expone a un
+defecto conocido. Un modelo de lenguaje genera la continuación más plausible del texto, no
+la verdadera, y puede producir contenido no respaldado por su fuente con la misma fluidez y
+aparente seguridad que el contenido correcto; la literatura denomina a este fenómeno
+*alucinación* (Ji et al., 2023). En un dominio de seguridad el defecto es particularmente
+grave, porque la forma de la respuesta no permite al usuario distinguir un dato respaldado de
+uno inventado: un número de teléfono, un código de aeródromo o un veredicto fabricados se
+leen igual que los reales.
+
+**Anclaje en herramientas.** Una respuesta a esa limitación consiste en no pedirle al modelo
+que responda desde lo que aprendió, sino que actúe sobre fuentes externas: que decida qué
+consulta realizar, reciba su resultado y redacte a partir de él. Yao et al. (2023) mostraron
+que intercalar el razonamiento del modelo con acciones sobre fuentes de información externas
+mejora tanto su desempeño como la interpretabilidad de su comportamiento, porque la respuesta
+queda asociada a las observaciones que la originaron. Las interfaces de programación de los
+proveedores actuales ofrecen ese mecanismo de manera nativa, como llamada a funciones
+(Google, s.f.-a).
+
+**Integración neurosimbólica.** La combinación de un componente neuronal con un núcleo
+simbólico es el objeto de la inteligencia artificial neurosimbólica, que Garcez y Lamb (2023)
+caracterizan como la articulación del aprendizaje robusto de las redes neuronales con el
+razonamiento y la explicabilidad que aportan las representaciones simbólicas. El presente
+trabajo adopta una forma acotada de esa integración, con una división de roles estricta: el
+componente neuronal se ocupa de lo que el simbólico no resuelve bien —interpretar lenguaje
+natural— y el simbólico conserva lo que el neuronal no puede garantizar —el razonamiento
+normativo, el cálculo y la decisión—. La arquitectura que materializa esa división se
+describe en el § 3.2.7.
+
 ---
 
 ## 3.2. Modelos y arquitecturas
@@ -512,16 +600,18 @@ El instrumento más cercano al que aquí se propone no proviene de la informáti
 la propia comunidad de seguridad aeronáutica: las **herramientas de evaluación de riesgo
 de vuelo** (*Flight Risk Assessment Tool*, FRAT), promovidas para la aviación general por
 el FAA Safety Team y por el General Aviation Joint Steering Committee (FAA Safety Team,
-s.f.). Un FRAT es un formulario que el piloto completa antes del vuelo, en el que un
-conjunto de factores —tipo de operación, entorno, aeronave, entrenamiento y experiencia
-reciente de la tripulación— recibe una puntuación; la suma se clasifica en tres bandas de
+2024; General Aviation Joint Steering Committee, s.f.). Un FRAT es un cuestionario que el
+piloto completa antes del vuelo y que asigna una puntuación a cada respuesta. El del FAA
+Safety Team sigue la lista de verificación PAVE —piloto, aeronave, entorno y presiones
+externas—, con preguntas como el descanso del piloto, su experiencia en la aeronave o las
+condiciones meteorológicas en el destino; la puntuación total se clasifica en tres bandas de
 riesgo: verde (bajo), amarillo (medio) y rojo (alto).
 
 La correspondencia conceptual con el presente trabajo es directa y merece reconocerse
 explícitamente: la estructura de puntuación ponderada de factores y clasificación en tres
 bandas para asistir una decisión de ir o no ir es, en esencia, la del FRAT. Es un
-antecedente validado por años de uso operacional, lo que respalda la forma general de la
-solución. Corresponde aclarar que se lo invoca como antecedente conceptual y no como
+antecedente que la propia autoridad aeronáutica promueve para la aviación general, lo que
+respalda la forma general de la solución. Corresponde aclarar que se lo invoca como antecedente conceptual y no como
 referencia normativa: su marco regulatorio es el estadounidense, y el criterio normativo
 de este trabajo es el argentino (ANAC/OACI), según se estableció en el § 1.1.2.
 
@@ -572,6 +662,21 @@ normativo trazable, *en el estado actual de disponibilidad de datos*. Si el sist
 llegara a operar de manera sostenida y a registrar decisiones de pilotos junto con sus
 resultados, se constituiría con el tiempo el conjunto etiquetado que hoy falta; esa vía
 se contempla como trabajo futuro en el § 6.3.
+
+**El mismo criterio, aplicado a la otra tarea del sistema.** Los criterios de la comparación
+anterior no favorecen a la vertiente simbólica en abstracto: responden a las condiciones de
+una tarea concreta, y aplicados a una tarea distinta pueden dar la respuesta opuesta. Es lo
+que ocurre con la interpretación de las consultas del piloto en lenguaje natural. Para esa
+tarea el insumo sí existe —los modelos de lenguaje se preentrenan sobre corpus de texto de
+escala masiva (Brown et al., 2020)— mientras que el conocimiento no es formalizable en
+reglas: no hay una gramática escribible que anticipe todas las formas en que un piloto puede
+preguntar por el combustible de un aeródromo. La comparación, en consecuencia, se invierte. Y
+los dos criterios en que el aprendizaje automático sale peor parado —la explicabilidad y el
+comportamiento fuera de distribución— no se resuelven eligiendo otro modelo, sino acotando el
+rol del componente: el modelo de lenguaje no emite la decisión, de modo que su opacidad no
+alcanza al veredicto, y las propiedades de la respuesta que no pueden quedar libradas a su
+comportamiento se verifican en código (§ 3.2.7). El sistema no abandona así el criterio de
+esta sección: lo aplica dos veces, una por tarea.
 
 ### 3.2.3. Elección del método de ponderación: AHP frente a las alternativas
 
@@ -672,11 +777,11 @@ decisión = peor( banda(R) , piso_conjuntivo )
 ```
 
 Los factores cubiertos por la barrera son aquellos de peso bajo cuyo deterioro es
-abrupto: viento cruzado y ráfaga respecto de los límites de la aeronave, probabilidad de
-niebla y deterioro pronosticado. La visibilidad y el techo quedan deliberadamente fuera
-de ella: tienen peso alto —no se diluyen— y su degradación es gradual, de modo que el
-tratamiento compensatorio los describe correctamente y ya están cubiertos en su extremo
-por la capa 1.
+abrupto: el viento cruzado —evaluado en su valor de ráfaga— respecto del máximo demostrado
+de la aeronave, la probabilidad de niebla y el deterioro pronosticado. La visibilidad y el
+techo quedan deliberadamente fuera de ella: tienen peso alto —no se diluyen— y su
+degradación es gradual, de modo que el tratamiento compensatorio los describe
+correctamente y ya están cubiertos en su extremo por la capa 1.
 
 Esta arquitectura híbrida es la respuesta directa a la constatación del § 3.1.3 de que la
 decisión de despacho tiene simultáneamente naturaleza compensatoria y no compensatoria.
@@ -690,6 +795,8 @@ cada capa depende únicamente de las inferiores:
 
 ```
 Datos → Interpretación → Características → Riesgo → Decisión → Ruta → Salida → Web
+
+Lenguaje (asistente) ──consulta──▶ Datos · Decisión · Ruta      (no emite veredicto)
 ```
 
 - **Capa de datos.** Un adaptador por fuente externa, responsable del protocolo, los
@@ -702,9 +809,15 @@ Datos → Interpretación → Características → Riesgo → Decisión → Ruta
   —componente de viento cruzado sobre la pista más favorable, proxy de niebla, altitud
   densidad, disponibilidad de luz diurna, análisis de la ventana temporal del pronóstico—.
 - **Capa de riesgo.** Implementa las tres capas del § 3.2.4.
-- **Capa de decisión.** Orquesta el flujo y aplica la regla de selección de fuente.
+- **Capa de decisión.** Orquesta el flujo y aplica la regla de selección de fuente según el
+  momento evaluado (§ 3.2.5.3).
 - **Capas de ruta y salida.** Planificación de la navegación y generación de los productos
   para el piloto (informe y borrador de plan de vuelo).
+- **Capa de lenguaje.** El asistente de consulta, que accede a las capas de datos, decisión
+  y ruta a través de herramientas deterministas. No forma parte de la canalización que emite
+  el veredicto: la consulta, pero no la integra (§ 3.2.7).
+
+### 3.2.5.1. Contrato de datos único
 
 La decisión de diseño más consecuente de esta organización es el **contrato de datos
 único**. Al obligar a que toda fuente se traduzca a la misma estructura tipada antes de
@@ -718,6 +831,8 @@ riesgo meteorológico y la incertidumbre de la estimación—, degradando la int
 del puntaje. La segunda es que la diferencia de confiabilidad es información que el piloto
 necesita, pero como *contexto* del veredicto y no como una corrección oculta dentro de un
 número: el sistema la informa explícitamente en la interfaz.
+
+### 3.2.5.2. Muestreo en anillo del modelo numérico
 
 La segunda decisión relevante es el **muestreo en anillo del modelo numérico**, respuesta
 a la limitación orográfica expuesta en el § 3.1.7. En lugar de consultar el pronóstico en
@@ -791,13 +906,54 @@ aeródromo fuese el punto más alto de su entorno, no quedaría ningún punto de
 comportamiento revertiría al de la consulta simple, que es lo correcto, porque allí la
 nubosidad orográfica se forma sobre el propio campo.
 
-La tercera decisión de diseño de esta capa —tras el contrato de datos único y el muestreo
-en anillo— es la **regla de selección de fuente**: si el aeródromo
-posee código OACI se intenta obtener observación y pronóstico de estación, y si no hay
-observación disponible se recurre al modelo numérico; si no posee código, se va
-directamente al modelo. Esta regla es la que hace operativa la cobertura nacional
-completa: garantiza que todo aeródromo del registro sea evaluable, con el mejor dato
+### 3.2.5.3. Selección de la fuente según el momento evaluado
+
+La tercera decisión de diseño de esta capa es la **regla de selección de fuente**, y su
+formulación final responde a una pregunta que la primera versión del sistema no se hacía:
+no qué fuente tiene un aeródromo, sino qué fuente describe el **momento** por el que se
+pregunta.
+
+La regla de base se conserva. Si el aeródromo posee código OACI se intenta obtener
+observación y pronóstico de estación, y si no hay observación disponible —o el aeródromo no
+posee código— se recurre al modelo numérico. Es la regla que hace operativa la cobertura
+nacional completa: garantiza que todo aeródromo del registro sea evaluable, con el mejor dato
 disponible en cada caso.
+
+Sobre ella se agrega la dimensión temporal. Cada aeródromo del vuelo se evalúa para el
+momento en que la aeronave estará en él —el origen a la hora de salida, el destino y las
+escalas a su hora de llegada—, y para ese momento se elige la fuente que efectivamente lo
+describe (§ 3.1.7): la observación mientras siga vigente; pasada su vigencia, el pronóstico
+de aeródromo, si cubre el momento, complementado por el modelo numérico en las variables que
+el TAF no publica; y, si ninguna de las dos lo alcanza, el modelo numérico completo, cuyo
+horizonte es mayor.
+
+La combinación de fuentes se rige por un principio: cada magnitud se toma entera de una sola
+de ellas, porque combinar, por ejemplo, la dirección del viento de una con la velocidad de
+otra produciría un estado que ninguna pronosticó. Del pronóstico se adopta la peor condición
+del período evaluado, en coherencia con el criterio de peor caso del resto del modelo, y la
+fuente que determinó cada evaluación se informa al piloto.
+
+### 3.2.5.4. Superficie y altura: dos descripciones que no se mezclan
+
+Un punto de la ruta tiene simultáneamente dos realidades meteorológicas: la del suelo que
+queda debajo y la del aire por el que la aeronave efectivamente lo atraviesa en crucero.
+Describir la segunda con datos de la primera no es una aproximación sino un error de
+categoría.
+
+La decisión adoptada es mantenerlas separadas en el propio diseño de los datos. El contrato
+de datos único del § 3.2.5.1 es deliberadamente un contrato de **superficie**: varios de sus
+campos —el techo de nubes medido sobre el terreno, la diferencia entre temperatura y punto de
+rocío como indicio de niebla— carecen de sentido en un nivel de presión, y forzar en él las
+condiciones de altura obligaría a rellenarlos con valores sin significado. Las condiciones
+del nivel de crucero se representan, en cambio, con una estructura propia, y se presentan al
+piloto etiquetadas como tales, junto con la altura geopotencial real del nivel consultado,
+que difiere de la altitud nominal. Las magnitudes que la fuente no publica por nivel —la
+visibilidad, en particular— se declaran ausentes en lugar de sustituirse por las de
+superficie.
+
+El puntaje de riesgo de los puntos de la ruta conserva, por ahora, la visibilidad y el
+techo de superficie, porque la fuente no publica visibilidad por nivel de presión: es una
+limitación declarada, que se retoma en el § 6.3.
 
 ### 3.2.6. Elección de algoritmos para la planificación de ruta
 
@@ -824,12 +980,93 @@ VFR debe circular por corredores publicados. Se los modela como un grafo propio 
 conglomerado y se resuelve nuevamente con Dijkstra, dado que el grafo es reducido y
 enteramente determinado por la publicación aeronáutica.
 
+**Puntos de paso.** Cuando el piloto define puntos intermedios, la ruta se resuelve como una
+sucesión de caminos mínimos —del origen al primer punto, de este al siguiente y así hasta el
+destino— que luego se concatenan. La descomposición permite asignar a cada tramo su propia
+hora de salida y separar el cálculo de combustible en etapas cuando un punto es una escala;
+su contrapartida es que la concatenación de óptimos por tramo no garantiza el óptimo del
+recorrido completo. Las métricas de la ruta —distancia, tiempo, combustible y hora de
+llegada— se calculan sobre la trayectoria que la aeronave efectivamente recorre, incluidos
+los corredores visuales y las aerovías, y no sobre la recta entre aeródromos.
+
 Se descartó explícitamente el uso de metaheurísticas —algoritmos genéticos, colonias de
 hormigas y similares—. En un grafo del tamaño del aquí considerado, los algoritmos
 exactos encuentran el óptimo en tiempos muy inferiores al segundo; una metaheurística
 aportaría no determinismo y pérdida de garantía de optimalidad sin ninguna ventaja
 compensatoria. En un sistema cuyo valor principal es la trazabilidad, el no determinismo
 es un costo, no una característica.
+
+### 3.2.7. Arquitectura del asistente de consulta: el lenguaje como interfaz, no como decisor
+
+El asistente resuelve el problema de acceso planteado en el § 1.1.5 —información disponible
+pero no consultable— con un componente de naturaleza opuesta a la del núcleo: un modelo de
+lenguaje de gran escala, opaco y no determinista (§ 3.1.9). La arquitectura se organiza en
+torno a una sola pregunta: cómo aprovechar su capacidad de interpretar lenguaje sin que sus
+modos de falla alcancen la información de seguridad.
+
+**Alternativas consideradas.**
+
+| Diseño | Evaluación |
+|---|---|
+| Sin interfaz de lenguaje: solo el formulario | Es la situación de partida. Resuelve el veredicto, pero no el acceso a la información dispersa del registro, que obliga a localizar cada ficha. |
+| Interpretación por reglas o clasificador de intenciones propio | Una gramática escrita a mano no anticipa la variedad del lenguaje natural, y un clasificador propio requeriría un corpus etiquetado de consultas de pilotos que no existe: es la misma carencia que desaconsejó el aprendizaje supervisado para el veredicto (§ 3.2.2). |
+| Modelo de lenguaje que responde desde su propio conocimiento | Resuelve la interpretación, pero su respuesta no está anclada en ninguna fuente verificable y queda expuesta a la alucinación (Ji et al., 2023), inaceptable para un dato de seguridad. |
+| **Modelo de lenguaje con herramientas deterministas** | **Adoptado.** El modelo interpreta y redacta; los datos y los cálculos provienen exclusivamente de herramientas del sistema. |
+
+**El patrón de herramientas.** El diseño adoptado se apoya en la intercalación de
+razonamiento y acción descrita por Yao et al. (2023): el modelo no produce la respuesta de
+una vez, sino que decide qué acción ejecutar, recibe su resultado y recién entonces redacta.
+En la interfaz de programación del proveedor ese mecanismo es la llamada a funciones, en la
+que el modelo no ejecuta la función sino que devuelve su nombre y sus argumentos como datos
+estructurados, y es la aplicación la que la ejecuta (Google, s.f.-a). Esa división de
+responsabilidades es la que hace posible la arquitectura: toda operación con efecto
+—consultar el registro, evaluar la meteorología, calcular una ruta— ocurre en código
+determinista del sistema.
+
+El ciclo de cada consulta es, en consecuencia, pregunta → elección de herramienta → ejecución
+determinista → redacción con el resultado, con un tope de tres vueltas de herramienta por
+consulta. El asistente dispone de ocho herramientas —búsqueda de aeródromos, contacto,
+servicios, combustible cercano, evaluación meteorológica, estado del aire sobre un punto,
+mejor hora de salida y propuesta de modificación de la ruta— y de una novena intención
+explícita, *fuera de alcance*, que no ejecuta nada y existe por diseño: sin una salida
+declarada para lo que el sistema no puede responder, el modelo quedaría obligado a elegir
+alguna herramienta y a forzar la respuesta para que encaje.
+
+**Cinco reglas, dos de ellas verificadas en código.** La instrucción de sistema impone cinco
+reglas: (R1) no responder desde el conocimiento propio, sino solo desde lo que devolvió una
+herramienta; (R2) transcribir el veredicto, no parafrasearlo; (R3) no confundir la ausencia
+de un dato con la ausencia de la cosa; (R4) nombrar siempre el aeródromo exacto que se
+resolvió; (R5) declarar lo que está fuera de alcance. Una instrucción es, sin embargo, una
+indicación que el modelo puede no cumplir, y por eso las reglas cuyo incumplimiento produce
+información de seguridad errónea no se confían a ella:
+
+- **R2** se verifica después de la redacción: si el texto no transcribe el veredicto que
+  emitió el motor, o menciona otro distinto, se descarta y se reemplaza por una plantilla
+  determinista. La integridad del veredicto queda así garantizada por construcción, y no por
+  la confianza en el modelo.
+- **R4** se verifica detectando en el texto códigos de aeródromo que no provienen de las
+  herramientas de esa consulta ni del registro oficial; cuando aparece uno, se anexa a la
+  respuesta una corrección determinista que nombra el código verdadero. Un código mal
+  escrito dirige al piloto hacia otro aeródromo.
+- **R3** se garantiza por el contrato de las herramientas, que nunca devuelven un campo
+  vacío: ante un dato no publicado devuelven una declaración explícita de que no está
+  publicado, de modo que el modelo no recibe un vacío que pueda leer como inexistencia.
+
+**El estado de la pantalla lo aporta el código, no el modelo.** El asistente conoce el vuelo
+cargado en el formulario —origen, destino, aeronave, hora y puntos de paso—, pero esa
+información llega a las herramientas por código, sin que el modelo deba transcribirla: la
+respuesta no depende de que copie correctamente datos que el sistema ya conoce.
+
+**Proponer no es aplicar.** La herramienta de modificación de la ruta no modifica nada:
+devuelve cómo quedaría la ruta, con el costo del desvío y, si se trata de una escala, el
+veredicto del aeródromo a la hora de llegada. La propuesta se construye a partir del
+resultado de la herramienta y no del texto del modelo, y el cambio solo se aplica cuando el
+piloto lo confirma en la interfaz. Ninguna vía del diseño permite que el modelo de lenguaje
+modifique el vuelo.
+
+El desempeño del asistente —clasificación de intenciones, resolución de aeródromos, tasa de
+invención ante datos ausentes y latencia— se mide sobre un conjunto de casos etiquetados y se
+reporta en el § 5.1.
 
 ---
 
@@ -856,18 +1093,26 @@ holgadamente en el plan gratuito de la plataforma y desaparece toda posibilidad 
 cambio de versión de una biblioteca de terceros altere silenciosamente un resultado
 numérico del que depende una conclusión de la tesis.
 
+El mismo criterio gobernó la integración del modelo de lenguaje. El cliente del asistente se
+comunica con el proveedor mediante solicitudes HTTP directas, sin incorporar el kit de
+desarrollo oficial, lo que conserva las cuatro dependencias de producción y confina toda la
+dependencia del proveedor a un único módulo: el resto del sistema depende de una interfaz
+abstracta, de modo que sustituir el proveedor no afecta a ningún otro componente.
+
 ### 3.3.2. Componentes
 
 | Capa | Tecnología | Rol y fundamento de la elección |
 |---|---|---|
 | Lenguaje | Python 3.12 | Idéntico en desarrollo y producción. |
-| Servidor de aplicación | **FastAPI** + **Uvicorn** | Marco web asíncrono con validación de esquema y documentación OpenAPI generada automáticamente. Se prefirió sobre Flask por la validación automática de las peticiones y sobre Django por no requerir base de datos ni capa de persistencia: el sistema no almacena estado entre consultas. |
+| Servidor de aplicación | **FastAPI** + **Uvicorn** | Marco web asíncrono con validación de esquema y documentación OpenAPI generada automáticamente. Se prefirió sobre Flask por la validación automática de las peticiones y sobre Django por no requerir base de datos ni capa de persistencia: el sistema no almacena estado entre consultas; el historial de la conversación con el asistente lo conserva la página en el navegador. |
 | Cliente HTTP | **requests** | Consumo de las interfaces externas; API sencilla y control explícito de tiempos de espera y reintentos. |
 | Formularios | **python-multipart** | Requerido por FastAPI para el envío de formularios. |
 | Interfaz | HTML + **Tailwind CSS** | Estilos por clases utilitarias, sin etapa de compilación. |
 | Interactividad | **Alpine.js 3.14.1** | Reactividad declarativa embebida en el propio HTML. Se prefirió sobre React o Vue por no requerir empaquetador ni proceso de construcción, para una interfaz de una sola vista. |
 | Cartografía | **Leaflet 1.9.4** | Biblioteca de mapas interactivos de código abierto, con capa base de teselas oscuras. Se prefirió sobre alternativas comerciales por no requerir clave de servicio ni imponer cuotas. |
-| Pruebas | **pytest** | Suite de regresión ejecutable sin conexión de red. |
+| Modelo de lenguaje | **Google Gemini** (nivel gratuito), por solicitudes HTTP directas | Interpretación de las consultas y redacción de las respuestas del asistente. Se accede mediante una cadena de reserva entre modelos de la misma familia, para tolerar las indisponibilidades intermitentes del nivel gratuito. Si el servicio no está configurado, el resto del sistema funciona normalmente. El proveedor es intercambiable (§ 3.3.1). |
+| Pruebas | **pytest** | Suite de regresión de 389 pruebas, ejecutable sin conexión de red; el modelo de lenguaje se sustituye por un cliente simulado. |
+| Asistencia al desarrollo | **Claude Code** (Anthropic, 2026) | Herramienta de programación asistida por inteligencia artificial, empleada en el desarrollo del sistema y en la redacción y revisión de este documento; no forma parte del sistema entregado. El autor definió los requisitos, tomó las decisiones de diseño y validó los resultados, y todo cambio de código se verificó con la suite de pruebas antes de incorporarse. Su aporte y sus riesgos se analizan en el § 6.2. |
 | Control de versiones | **Git** / **GitHub** | Repositorio público, enlazado en el Anexo conforme a la consigna. |
 | Despliegue | **Render** (plan gratuito) | Despliegue automático a partir del repositorio, definido de manera declarativa en un archivo de configuración versionado. |
 
@@ -875,18 +1120,24 @@ numérico del que depende una conclusión de la tesis.
 
 | Fuente | Producto | Protocolo | Rol en el sistema |
 |---|---|---|---|
-| **aviationweather.gov** | METAR y TAF | JSON sobre HTTP, sin clave | Observación y pronóstico en aeródromos con estación. |
-| **Open-Meteo** (Zippenfenig, 2023) | Pronóstico numérico | JSON sobre HTTP, sin clave | Estimación punto a punto por coordenadas para aeródromos sin estación y puntos en ruta. |
+| **aviationweather.gov** | METAR y TAF | JSON sobre HTTP, sin clave | Observación vigente y pronóstico de aeródromo para el momento evaluado, en aeródromos con estación. |
+| **Open-Meteo** (Zippenfenig, 2023) | Pronóstico numérico | JSON sobre HTTP, sin clave; gratuito para uso no comercial hasta 10 000 consultas diarias (Open-Meteo, s.f.) | Estimación punto a punto por coordenadas para aeródromos sin estación y puntos en ruta, en superficie y en los niveles de presión del crucero. |
 | **AIS / ANAC** | NOTAM oficiales argentinos | HTML, extracción por análisis del documento | Estado operativo del aeródromo. Al no existir interfaz programática publicada, se implementó un extractor propio. |
 | **MADHEL / ANAC** y **OurAirports** | Registro de aeródromos y pistas | Archivo tabular procesado fuera de línea | Coordenadas, elevación, cabeceras y servicios de los 561 aeródromos. |
 | **Open-Topo-Data** (SRTM) | Elevación del terreno | JSON sobre HTTP | Perfil vertical de la ruta y detección de conflicto con el terreno. |
 
-Todas las fuentes en línea son de acceso público y sin costo, condición necesaria para
+Todas las fuentes de datos en línea son de acceso público y sin costo, condición necesaria para
 sostener el objetivo de gratuidad enunciado en el § 1.2.2. Los conjuntos de datos
 estáticos —registro de aeródromos, aerovías, espacios aéreos y regiones de información de
 vuelo— se procesan una sola vez fuera de línea y se versionan junto con el código, de
 modo que el sistema no depende en tiempo de ejecución de la disponibilidad de esos
 servicios.
+
+El modelo de lenguaje no es una fuente de datos, sino un servicio externo de procesamiento
+del lenguaje, y su condición de uso corresponde declararla: en el nivel gratuito, el
+proveedor puede utilizar el contenido de las consultas para mejorar sus productos, admite su
+revisión humana y recomienda no enviar información sensible, confidencial o personal
+(Google, s.f.-b). Sus implicancias se analizan en el § 5.3.
 
 ### 3.3.4. Reproducibilidad metodológica
 
@@ -905,17 +1156,29 @@ es metodológica antes que técnica: garantiza que ninguna modificación posteri
 pesos, los umbrales o la barrera altere las conclusiones reportadas en el § 5 sin que
 ello quede en evidencia de inmediato.
 
+La evaluación del asistente sigue el mismo principio, con una diferencia que conviene
+señalar. Su conjunto de casos etiquetados y el cálculo de sus métricas son también código
+ejecutable, pero la evaluación consulta al modelo del proveedor: sale a la red y depende de su
+disponibilidad. Sus resultados se almacenan en un archivo versionado, para poder reportarlos sin repetir la
+ejecución; los criterios con que se interpretan se exponen en el § 5.1.
+
 ---
 
 ## Referencias citadas en esta sección
 
 Administración Nacional de Aviación Civil. (2022). *Regulaciones Argentinas de Aviación Civil (RAAC), Parte 91: Reglas de vuelo y operación general*. ANAC. ⬜ *[verificar la enmienda vigente a la fecha de entrega — mismo pendiente que en la § 1]*
 
+Anthropic. (2026). *Claude Code* [Software]. https://claude.com/claude-code
+
+AOPA Air Safety Institute. (2019). *28th Joseph T. Nall report: General aviation accidents in 2016*. Aircraft Owners and Pilots Association. (Series decenales tomadas de las figuras 1.1.1 y 1.7.1; valores de 2016 contrastados con la figura 1.11.)
+
 Bauer, P., Thorpe, A., & Brunet, G. (2015). The quiet revolution of numerical weather prediction. *Nature, 525*(7567), 47-55. https://doi.org/10.1038/nature14956
 
 Belton, V., & Gear, T. (1983). On a short-coming of Saaty's method of analytic hierarchies. *Omega, 11*(3), 228-230. https://doi.org/10.1016/0305-0483(83)90047-6
 
 Belton, V., & Stewart, T. J. (2002). *Multiple criteria decision analysis: An integrated approach*. Kluwer Academic Publishers. https://doi.org/10.1007/978-1-4615-1495-4
+
+Brown, T. B., Mann, B., Ryder, N., Subbiah, M., Kaplan, J. D., Dhariwal, P., Neelakantan, A., Shyam, P., Sastry, G., Askell, A., Agarwal, S., Herbert-Voss, A., Krueger, G., Henighan, T., Child, R., Ramesh, A., Ziegler, D., Wu, J., Winter, C., . . . Amodei, D. (2020). Language models are few-shot learners. *Advances in Neural Information Processing Systems, 33*, 1877-1901. https://proceedings.neurips.cc/paper/2020/file/1457c0d6bfcb4967418bfb8ac142f64a-Paper.pdf
 
 Buchanan, B. G., & Shortliffe, E. H. (Eds.). (1984). *Rule-based expert systems: The MYCIN experiments of the Stanford Heuristic Programming Project*. Addison-Wesley.
 
@@ -925,23 +1188,33 @@ Dijkstra, E. W. (1959). A note on two problems in connexion with graphs. *Numeri
 
 Einhorn, H. J. (1970). The use of nonlinear, noncompensatory models in decision making. *Psychological Bulletin, 73*(3), 221-230. https://doi.org/10.1037/h0028695
 
-FAA Safety Team. (s.f.). *Flight Risk Assessment Tool (FRAT)*. Federal Aviation Administration. https://www.faa.gov/general/flight-risk-assessment-tool-frat-faa-safety-team ⬜ *[agregar fecha de consulta]*
-
-AOPA Air Safety Institute. (2019). *28th Joseph T. Nall report: General aviation accidents in 2016*. Aircraft Owners and Pilots Association. (Series decenales tomadas de las figuras 1.1.1 y 1.7.1; valores de 2016 contrastados con la figura 1.11.)
+FAA Safety Team. (2024, 28 de octubre). *Flight Risk Assessment Tool (FRAT)*. Federal Aviation Administration. Recuperado el 14 de septiembre de 2026, de https://www.faa.gov/general/flight-risk-assessment-tool-frat-faa-safety-team
 
 Farr, T. G., Rosen, P. A., Caro, E., Crippen, R., Duren, R., Hensley, S., Kobrick, M., Paller, M., Rodriguez, E., Roth, L., Seal, D., Shaffer, S., Shimada, J., Umland, J., Werner, M., Oskin, M., Burbank, D., & Alsdorf, D. (2007). The Shuttle Radar Topography Mission. *Reviews of Geophysics, 45*(2), RG2004. https://doi.org/10.1029/2005RG000183
 
-Junta de Seguridad en el Transporte. (2021). *Anuario estadístico 2020: Seguridad en el transporte* (Vol. 1, Aeronáutico). Ministerio de Transporte de la Nación Argentina.
+Garcez, A. d'A., & Lamb, L. C. (2023). Neurosymbolic AI: The 3rd wave. *Artificial Intelligence Review, 56*(11), 12387-12406. https://doi.org/10.1007/s10462-023-10448-w
+
+General Aviation Joint Steering Committee. (s.f.). *Flight risk assessment tools* (Safety Enhancement Topic SE 42) [Hoja informativa]. Federal Aviation Administration. Recuperado el 14 de septiembre de 2026, de https://www.faa.gov/sites/faa.gov/files/2022-01/Flight%20Risk%20Assessment%20Tools.pdf
+
+Google. (s.f.-a). *Function calling with the Gemini API*. Google AI for Developers. Recuperado el 14 de septiembre de 2026, de https://ai.google.dev/gemini-api/docs/function-calling
+
+Google. (s.f.-b). *Gemini API additional terms of service*. Google AI for Developers. Recuperado el 14 de septiembre de 2026, de https://ai.google.dev/gemini-api/terms
 
 Green, D. M., & Swets, J. A. (1966). *Signal detection theory and psychophysics*. John Wiley & Sons.
 
 Hart, P. E., Nilsson, N. J., & Raphael, B. (1968). A formal basis for the heuristic determination of minimum cost paths. *IEEE Transactions on Systems Science and Cybernetics, 4*(2), 100-107. https://doi.org/10.1109/TSSC.1968.300136
+
+Ji, Z., Lee, N., Frieske, R., Yu, T., Su, D., Xu, Y., Ishii, E., Bang, Y. J., Madotto, A., & Fung, P. (2023). Survey of hallucination in natural language generation. *ACM Computing Surveys, 55*(12), Artículo 248. https://doi.org/10.1145/3571730
+
+Junta de Seguridad en el Transporte. (2021). *Anuario estadístico 2020: Seguridad en el transporte* (Vol. 1, Aeronáutico). Ministerio de Transporte de la Nación Argentina.
 
 Keeney, R. L., & Raiffa, H. (1976). *Decisions with multiple objectives: Preferences and value tradeoffs*. John Wiley & Sons.
 
 Marcus, G. (2020). *The next decade in AI: Four steps towards robust artificial intelligence*. arXiv. https://arxiv.org/abs/2002.06177
 
 Newell, A., & Simon, H. A. (1976). Computer science as empirical inquiry: Symbols and search. *Communications of the ACM, 19*(3), 113-126. https://doi.org/10.1145/360018.360022
+
+Open-Meteo. (s.f.). *Free weather API*. Recuperado el 14 de septiembre de 2026, de https://open-meteo.com/
 
 Organización de Aviación Civil Internacional. (2018a). *Manual de gestión de la seguridad operacional* (Doc 9859, 4.ª ed.). OACI.
 
@@ -957,15 +1230,18 @@ Saaty, T. L. (1980). *The analytic hierarchy process: Planning, priority setting
 
 Saaty, T. L. (1990). How to make a decision: The analytic hierarchy process. *European Journal of Operational Research, 48*(1), 9-26. https://doi.org/10.1016/0377-2217(90)90057-I
 
+Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N., Kaiser, Ł., & Polosukhin, I. (2017). Attention is all you need. *Advances in Neural Information Processing Systems, 30*, 5998-6008. https://arxiv.org/abs/1706.03762
+
+Yao, S., Zhao, J., Yu, D., Du, N., Shafran, I., Narasimhan, K., & Cao, Y. (2023). ReAct: Synergizing reasoning and acting in language models. En *International Conference on Learning Representations (ICLR 2023)*. https://arxiv.org/abs/2210.03629
+
 Zippenfenig, P. (2023). *Open-Meteo.com weather API* [Software]. Zenodo. https://doi.org/10.5281/zenodo.7970649
 
 > **Nota sobre la referencia a Espy.** La regla de estimación de la base de nubes por
 > diferencia entre temperatura y punto de rocío se atribuye a James Pollard Espy (1836),
 > quien dio la primera formulación del nivel de condensación por ascenso. Se cita en el
 > texto por su valor histórico, y se acompaña de Romps (2017) como referencia técnica
-> moderna y verificable del mismo concepto. ⬜ *[decidir si se incorpora la obra original
-> de Espy —* The Philosophy of Storms*, 1841— a la lista de referencias o si alcanza con
-> la mención en el texto]*
+> moderna y verificable del mismo concepto. Se mantiene como mención histórica en el texto, sin
+> incorporarse a la lista de referencias.
 
 ---
 
@@ -979,14 +1255,26 @@ Zippenfenig, P. (2023). *Open-Meteo.com weather API* [Software]. Zenodo. https:/
    51. La figura 1.11 confirma los valores de 2016 de ambas categorías. El cociente
    345/51 = 6,76 → Saaty 7 queda verificado contra la fuente.
 2. **Enmienda vigente de la RAAC Parte 91** (compartido con la § 1).
-3. **Fecha de consulta** de la página del FAA Safety Team sobre FRAT.
-4. **Obra de Espy**: decidir si se agrega a la lista de referencias o queda como mención
-   histórica en el texto.
-5. **Numeración cruzada**: las remisiones a los § 4.2, § 5.1 y § 6.3 deben verificarse
-   una vez redactadas esas secciones.
-6. **Herramientas de desarrollo asistido por IA**: definir si corresponde consignarlas en
-   el *stack* tecnológico (§ 3.3.2) o en las lecciones aprendidas (§ 6.2). Es una decisión
-   del autor y de su director; se deja explícitamente abierta.
-7. **Figura sugerida**: un diagrama de la arquitectura de tres capas del modelo de riesgo
-   (§ 3.2.4) y otro de la canalización por capas (§ 3.2.5) mejorarían sustancialmente la
-   sección. Podrían reutilizarse en el § 4.2.
+3. ✅ **Fuentes sobre FRAT, verificadas el 14/09/2026.** La página del FAA Safety Team no
+   menciona al General Aviation Joint Steering Committee ni enumera los factores del
+   formulario. Ambas afirmaciones del § 3.2.1 se respaldaron con la hoja informativa del
+   comité (SE 42), y la enumeración de factores se corrigió a la lista PAVE que esa hoja
+   declara. Se retiró además la afirmación de que el FRAT está "validado por años de uso
+   operacional", que ninguna de las dos fuentes sostiene.
+4. ✅ **Obra de Espy**: se mantiene como mención histórica en el texto; la referencia técnica
+   verificable es Romps (2017).
+5. **Numeración cruzada**: las remisiones a los §§ 4.2, 5.1, 5.3, 6.2 y 6.3 deben
+   verificarse una vez redactadas esas secciones.
+6. ✅ **Herramientas de desarrollo asistido por IA**: consignadas en el § 3.3.2; la reflexión
+   sobre su aporte y sus riesgos queda pendiente para el § 6.2.
+7. **Figuras**, a elaborar con el texto cerrado: arquitectura de tres capas del modelo de
+   riesgo (§ 3.2.4), canalización por capas (§ 3.2.5) y arquitectura del asistente
+   (§ 3.2.7). Podrían reutilizarse en el § 4.2.
+8. **Atribución de Open-Meteo.** Su licencia de datos (CC BY 4.0) requiere atribuir la
+   fuente, y la interfaz hoy no la muestra. Queda para tratar en el § 5.3.
+9. **Aviso al usuario del asistente**: informar que la consulta se transmite al proveedor del
+   modelo de lenguaje y bajo qué condiciones de uso (§ 3.3.3). Tratar en el § 5.3.
+10. **Decisión del autor — ráfaga alineada extrema.** Sin piso propio de ráfaga (§ 3.2.4), un
+    viento alineado con la pista de 15 kt con ráfaga de 47 kt en un Cessna 152 resulta GO
+    (escenario E5 de la batería). Decidir si se agrega un veto por gradiente de ráfaga
+    extremo, con su propia justificación.
