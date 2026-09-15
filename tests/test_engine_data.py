@@ -47,6 +47,69 @@ def test_busqueda_por_nombre_y_codigo():
     assert search_airports("zzz-inexistente-zzz") == []
 
 
+@pytest.mark.parametrize("crudo,esperado", [
+    ("GENERAL ACHA - (ACH / SAEA) - DRCE - PÚBLICO NO CONTROLADO", "GENERAL ACHA"),
+    ("CALCHAQUÍ – (CCI) - DRNE - PRIVADO NO CONTROLADO", "CALCHAQUÍ"),
+    ("ROLDÁN / LA ILUSIÓN (RLI) - DRCE - PRIVADO NO CONTROLADO", "ROLDÁN / LA ILUSIÓN"),
+    ("PERITO MORENO - JALIL HAMER (PTM / SAWP) - DRSU - PÚBLICO NO CONTROLADO",
+     "PERITO MORENO - JALIL HAMER"),
+    ("﻿PUEBLO / AEROCLUB - (PAE) - DRCE - PÚBLICO NO CONTROLADO", "PUEBLO / AEROCLUB"),
+    ("PUEBLO (PROVINCIA) - (PPR) - DRNE - PÚBLICO NO CONTROLADO", "PUEBLO (PROVINCIA)"),
+])
+def test_el_nombre_se_limpia_en_todos_los_formatos_del_registro(crudo, esperado):
+    """
+    El registro separa el nombre de sus identificadores con guion, con guion
+    largo o sin separador, y algunos nombres llevan un guion o un parentesis
+    propio. Un formato no reconocido deja el sufijo administrativo pegado al
+    nombre que ve el piloto.
+    """
+    from data.airports import _extract_name
+    assert _extract_name(crudo) == esperado
+
+
+def test_ningun_nombre_conserva_el_sufijo_administrativo():
+    """Integridad del dato sobre el registro real: nombres limpios y sin BOM."""
+    import re
+    sucios = [(c, a.name) for c, a in AIRPORTS.items()
+              if a.name.startswith("﻿")
+              or re.search(r"\bDR(CE|NO|NE|SU)\b|CONTROLADO", a.name)]
+    assert sucios == []
+
+
+def test_un_codigo_repetido_conserva_el_registro_que_lo_declara(tmp_path):
+    """
+    El registro oficial trae registros que repiten el identificador local, las
+    coordenadas y la provincia de OTRO aerodromo; solo el nombre declara el
+    identificador propio. Quedarse con el ultimo que aparece le cambia el
+    nombre a un aerodromo real. Tiene que ganar el consistente en cualquier orden.
+    """
+    import json
+    from data.airports import _load_from_madhel
+
+    def registro(nombre):
+        return {
+            "type": "AD",
+            "human_readable_identifier": nombre,
+            "metadata": {
+                "identifiers": {"local": "XYZ", "icao": None, "iata": None},
+                "localization": {"coordinates": {"lat": -35.0, "lng": -60.0},
+                                 "elevation": 100, "state": "BUENOS AIRES"},
+                "condition": "PUBLICO", "control": "NON-CONTROLLED",
+            },
+            "data": {},
+        }
+
+    propio = registro("PUEBLO REAL - (XYZ) - DRCE - PÚBLICO NO CONTROLADO")
+    ajeno  = registro("OTRO LUGAR – (ABC) - DRNO – PRIVADO NO CONTROLADO")
+
+    for orden in ([propio, ajeno], [ajeno, propio]):
+        cache = tmp_path / "madhel.json"
+        cache.write_text(json.dumps({"airports": orden}), encoding="utf-8")
+        cargados = _load_from_madhel(str(cache))
+        assert list(cargados) == ["XYZ"]
+        assert cargados["XYZ"].name == "PUEBLO REAL"
+
+
 # ── Pipeline de decision ──────────────────────────────────────────────────────
 
 def test_pipeline_completo_devuelve_veredicto():

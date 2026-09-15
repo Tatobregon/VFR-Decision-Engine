@@ -8,6 +8,8 @@ Fuente unica: data/madhel_cache.json (ANAC MADHEL — 712 aerodromos AR)
 Regla de identificador:
   - Si el aerodromo tiene codigo ICAO  → clave primaria = ICAO  (ej. "SACO")
   - Si no tiene ICAO                   → clave primaria = local_id MADHEL (ej. "ACB")
+  - Si dos registros comparten codigo, se conserva el que declara ese mismo
+    identificador en su nombre publicado (ver _load_from_madhel)
 
 Para regenerar el cache ejecutar:
     python data/fetcher_madhel.py --force
@@ -15,17 +17,24 @@ Para regenerar el cache ejecutar:
 
 import csv
 import json
+import logging
 import os
 import re
 import unicodedata
 from dataclasses import dataclass, replace
 from typing import Dict, List, Optional, Tuple
 
+logger = logging.getLogger(__name__)
+
 _DATA_DIR      = os.path.dirname(os.path.abspath(__file__))
 _MADHEL_CACHE  = os.path.join(_DATA_DIR, "madhel_cache.json")
 _RUNWAYS_CSV   = os.path.join(_DATA_DIR, "runways.csv")
 
-_NAME_RE = re.compile(r'^(.+?)\s+-\s+\(')
+# Grupo de identificadores del nombre publicado: "(ACH)" o "(ACH / SAEA)". El
+# nombre es lo que esta antes del grupo. Se busca el grupo y no el guion que lo
+# precede porque el registro usa guion, guion largo o ningun separador segun el
+# aerodromo, y porque hay nombres que llevan un guion propio.
+_CODE_GROUP_RE = re.compile(r'\(\s*([A-Z0-9]{3,4})(?:\s*/\s*([A-Z0-9]{3,4}))?\s*\)')
 _RWY_RE  = re.compile(r'(\d+)/(\d+)\s+(\d+)x(\d+)\s+M\s*[-–]\s*([A-Z]+)', re.IGNORECASE)
 _THR_RE  = re.compile(
     r'^(\d+)\s+([\d,]+[NS])\s+([\d,]+[EW])'
@@ -159,10 +168,24 @@ def _parse_madhel_runways(rwy_list: list, thr_list: list) -> List[RunwayInfo]:
 
 def _extract_name(human_readable: str) -> str:
     """
-    'GENERAL ACHA - (ACH / SAEA) - DRCE - ...' → 'GENERAL ACHA'
+    'GENERAL ACHA - (ACH / SAEA) - DRCE - ...'            → 'GENERAL ACHA'
+    'CALCHAQUÍ – (CCI) - DRNE - ...'                      → 'CALCHAQUÍ'
+    'PERITO MORENO - JALIL HAMER (PTM / SAWP) - DRSU ...' → 'PERITO MORENO - JALIL HAMER'
+
+    Algunos registros empiezan con una marca BOM (U+FEFF) que no es espacio y
+    que `strip()` no quita: se elimina antes de extraer.
     """
-    m = _NAME_RE.match(human_readable)
-    return m.group(1).strip() if m else human_readable.strip()
+    texto = human_readable.replace("\ufeff", "").strip()
+    m = _CODE_GROUP_RE.search(texto)
+    if not m:
+        return texto
+    return texto[:m.start()].rstrip(" -–—").strip() or texto
+
+
+def _codes_in_name(human_readable: str) -> set:
+    """Identificadores que el nombre publicado declara entre parentesis."""
+    m = _CODE_GROUP_RE.search(human_readable.replace("\ufeff", ""))
+    return {g for g in m.groups() if g} if m else set()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -178,6 +201,7 @@ def _load_from_madhel(cache_path: str) -> Dict[str, AirportInfo]:
         cache = json.load(f)
 
     airports: Dict[str, AirportInfo] = {}
+    consistentes: Dict[str, bool] = {}
 
     for ap in cache.get("airports", []):
         # Excluir helipuertos — el sistema es exclusivo para aviones de ala fija
@@ -263,6 +287,23 @@ def _load_from_madhel(cache_path: str) -> Dict[str, AirportInfo]:
             particular = norms_block.get("particular", {}) or {}
             if isinstance(particular, dict):
                 norms_part = (particular.get("content", "") or "").strip()
+
+        # El registro oficial trae registros que repiten el identificador, las
+        # coordenadas y la provincia de OTRO aerodromo: solo el nombre declara el
+        # identificador propio. Ante un codigo repetido se conserva el registro
+        # consistente —el que declara su identificador en el nombre— y no el
+        # ultimo que aparece, porque quedarse con el ultimo le cambia el nombre
+        # a un aerodromo real.
+        consistente = bool({local_id, icao} & _codes_in_name(human_readable))
+        if code in airports:
+            if consistente and not consistentes[code]:
+                logger.warning(f"MADHEL: codigo {code} repetido; se reemplaza el "
+                               f"registro inconsistente por {name!r}")
+            else:
+                logger.warning(f"MADHEL: codigo {code} repetido; se descarta {name!r}, "
+                               f"cuyo nombre no declara ese identificador")
+                continue
+        consistentes[code] = consistente
 
         airports[code] = AirportInfo(
             code             = code,
