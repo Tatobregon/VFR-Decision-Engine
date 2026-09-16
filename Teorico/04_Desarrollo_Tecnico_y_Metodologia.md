@@ -323,14 +323,21 @@ los casos que en la operación real son poco frecuentes.
 | Ráfagas | 5 | | | |
 
 Los escenarios se reparten entre los cinco perfiles de aeronave. Cada uno recibe una
-**etiqueta normativa** —GO, CAUTION o NO GO— derivada de una regla explícita e independiente
-del puntaje: para visibilidad y techo, la categoría de vuelo de la regulación ANAC/OACI; para
-los demás factores, umbrales relativos a los límites de cada aeronave; y como veredicto del
-escenario, el más restrictivo de todos. La distribución resultante es de 19 escenarios GO,
-10 CAUTION y 9 NO GO. La independencia de la etiqueta respecto del motor rige para
-visibilidad, techo, fenómenos y tendencia; para el viento cruzado, la referencia aplica los
-mismos cortes que la barrera, de modo que en ese factor la concordancia se da por
-construcción, limitación que el propio módulo declara.
+**etiqueta de referencia** —GO, CAUTION o NO GO— derivada de una regla explícita que no usa
+el puntaje. Para visibilidad y techo, la etiqueta es GO en o por encima del mínimo VFR de la
+regulación —5 km y 1000 ft—, CAUTION entre ese mínimo y el límite de rechazo categórico del
+sistema —3 km y 500 ft— y NO GO por debajo de este; solo el primer corte es norma. Para los
+demás factores, la regla usa umbrales relativos a los límites de cada aeronave, y el
+veredicto del escenario es el más restrictivo de todos. La distribución resultante es de 19
+escenarios GO, 10 CAUTION y 9 NO GO.
+
+La independencia entre la etiqueta y el motor tiene un alcance que conviene precisar. Rige
+para fenómenos y tendencia. En visibilidad y techo, el motor aplica los mismos dos cortes que
+la etiqueta —el rechazo categórico y el piso de precaución bajo el mínimo VFR—, de modo que
+en esos factores la ausencia de sub-avisos es una garantía por construcción, y lo que la
+comparación mide es cuánto sobre-avisa el modelo. En el viento cruzado, la referencia aplica
+los mismos cortes que la barrera, y la concordancia también se da por construcción. Ambas
+limitaciones están declaradas en el propio módulo.
 
 **Calibración de los umbrales.** Los dos umbrales que traducen el puntaje a banda se fijan por
 búsqueda exhaustiva sobre una grilla —el umbral inferior entre 0,05 y 0,45 y el superior hasta
@@ -365,8 +372,10 @@ best = min(candidates, key=_key)
 *Fragmento 4.3. Búsqueda de los umbrales (`risk/calibration.py`, extracto).*
 
 Ante empate de costo se prefiere el par con menos sub-avisos y, después, el más próximo a los
-umbrales vigentes. El resultado adoptado es 0,22 y 0,59; el óptimo no es un punto aislado
-sino un rango, lo que se analiza junto con la concordancia obtenida en el § 5.1.
+umbrales vigentes. Los umbrales adoptados son 0,22 y 0,59. Con el piso de precaución bajo el
+mínimo VFR, la grilla admite además umbrales inferiores más altos, que eliminan un sobre-aviso
+de la batería; no se adoptaron, por la razón que se expone junto con la concordancia
+obtenida en el § 5.1.
 
 **La ausencia de partición, y cómo se compensa.** Un modelo entrenado reserva datos que no vio
 para medir su generalización. Aquí esa separación no es posible: la batería sirve a la vez
@@ -380,13 +389,15 @@ abierto:
   otra por evidencia, producen el mismo veredicto en todos los escenarios (§ 3.1.4.1).
 - **Análisis de sensibilidad.** Se mide cuánto cambia el veredicto al perturbar lo que no
   proviene de la norma: cada peso por separado en ±20 %, los siete pesos a la vez en 5000
-  sorteos aleatorios dentro de ±20 %, los umbrales en ±0,05, los parámetros de forma de las
-  funciones de riesgo y la fracción de precaución de la barrera.
+  sorteos aleatorios dentro de ±20 %, los umbrales en ±0,05, los dos extremos de cada
+  rampa de riesgo y la fracción de precaución de la barrera.
 - **Prueba de regresión.** Una prueba automatizada fija el comportamiento sobre la batería:
   ningún sub-aviso, concordancia mínima del 90 %, rechazo de todos los escenarios con factor
   inhabilitante, estabilidad ante perturbaciones de los pesos y monotonía ante el
-  endurecimiento de los umbrales. Cualquier cambio posterior que altere esas propiedades se
-  detecta de inmediato.
+  endurecimiento de los umbrales. Otra prueba recorre toda la franja comprendida entre el
+  rechazo categórico y el mínimo VFR, con las cinco aeronaves y los tres niveles de
+  experiencia, y verifica que ningún punto dé GO. Cualquier cambio posterior que altere esas
+  propiedades se detecta de inmediato.
 
 Los resultados de los tres controles se presentan en el § 5.1.
 
@@ -399,8 +410,9 @@ procedencia declarada y su efecto sobre el veredicto se acota en el análisis de
 | Parámetro | Valor | Procedencia |
 |---|---|---|
 | Umbrales de decisión | 0,22 y 0,59 | Calibración por anclaje normativo |
-| Rampa de riesgo de visibilidad (máximo / nulo) | 3 km / 8 km | Norma / juicio |
-| Rampa de riesgo de techo (máximo / nulo) | 500 ft / 2000 ft | Norma / juicio |
+| Rechazo categórico de visibilidad y techo | 3 km / 500 ft | Juicio: decisión del sistema |
+| Rampa de riesgo de visibilidad (máximo / nulo) | 3 km / 8 km | Juicio / juicio |
+| Rampa de riesgo de techo (máximo / nulo) | 500 ft / 2000 ft | Juicio / juicio |
 | Rampa de riesgo de niebla, según diferencia entre temperatura y punto de rocío | 2 °C / 5 °C | Juicio |
 | Piso de precaución de la barrera de viento cruzado | 85 % del máximo demostrado | Juicio |
 | Mínimos personales: multiplicadores de visibilidad, techo y cruzado | Alumno 1,6 / 1,5 / 0,6 · PPL 1,2 / 1,2 / 1,0 · Avanzado 1 / 1 / 1 | Juicio |
@@ -408,11 +420,13 @@ procedencia declarada y su efecto sobre el veredicto se acota en el análisis de
 | Vigencia de la observación | 1 hora | Periodicidad del METAR |
 | Horizonte máximo de pronóstico | 48 horas | Disponibilidad de la fuente |
 
-En las rampas de riesgo, el extremo de riesgo máximo coincide con la frontera de la categoría
-IFR de la regulación, y el extremo de riesgo nulo agrega un margen de juicio sobre el mínimo
-VFR. Los mínimos personales endurecen los límites según la experiencia del piloto sin
-modificar los pesos, de modo que el perfil del piloto cambia la exigencia y no la estructura
-del modelo.
+El único valor de esta familia que proviene de la norma no figura en la tabla: el mínimo VFR
+de 5 km y 1000 ft, que la barrera usa como piso de precaución y que queda dentro de las
+rampas de riesgo, no en uno de sus extremos. El extremo de riesgo máximo de cada rampa
+coincide con el límite de rechazo categórico, y el de riesgo nulo agrega un margen de juicio
+sobre el mínimo VFR. Los mínimos personales endurecen los límites según la experiencia del
+piloto sin modificar los pesos, de modo que el perfil del piloto cambia la exigencia y no la
+estructura del modelo.
 
 ### 4.2.4. Configuración y evaluación del asistente de consulta
 
@@ -594,13 +608,13 @@ evaluación la solicita el piloto.
 
 ### 4.3.4. Aseguramiento de la calidad
 
-La calidad del software se sostiene sobre una suite de regresión de 397 pruebas automatizadas,
+La calidad del software se sostiene sobre una suite de regresión de 415 pruebas automatizadas,
 organizadas por capa:
 
 | Archivo | Pruebas | Alcance |
 |---|---|---|
 | `test_features_parsers.py` | 59 | Interpretación de METAR, TAF y pronóstico numérico; cálculo de características |
-| `test_risk.py` | 77 | Pesos, funciones de riesgo, barrera, perfiles de aeronave y mínimos personales |
+| `test_risk.py` | 95 | Pesos, funciones de riesgo, barrera, perfiles de aeronave, mínimos personales y ausencia de GO bajo el mínimo VFR |
 | `test_regression_scenarios.py` | 9 | Comportamiento del veredicto sobre la batería de referencia |
 | `test_engine_data.py` | 85 | Canalización de decisión, registro de aeródromos, selección de fuente, almacenamiento temporal y degradación |
 | `test_route.py` | 34 | Grafo de rutas, admisibilidad de la heurística de A\* para los cinco perfiles y aerovías |

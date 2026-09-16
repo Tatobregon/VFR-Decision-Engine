@@ -739,13 +739,13 @@ separado, describen adecuadamente la decisión de despacho. La arquitectura adop
 combina en tres capas evaluadas en cascada.
 
 **Capa 1 — Reglas de rechazo categórico (*hard blockers*).** Un conjunto acotado de
-condiciones que la regulación o el sentido operacional consideran directamente
-incompatibles con el vuelo visual: presencia de fenómenos peligrosos —tormenta, granizo,
-engelamiento en precipitación, ceniza volcánica, tromba— o valores de visibilidad y techo
-por debajo del mínimo absoluto. Es una capa **conjuntiva** en el sentido de Einhorn: su
-activación produce el veredicto negativo de inmediato y sin calcular puntaje, porque en
-estos casos no hay nada que ponderar. Su justificación es que estas condiciones no
-admiten compensación por definición normativa.
+condiciones directamente incompatibles con el vuelo visual: presencia de fenómenos
+peligrosos —tormenta, granizo, engelamiento en precipitación, ceniza volcánica, tromba— o
+visibilidad y techo tan por debajo del mínimo VFR de la regulación —5 km y 1000 ft— que no
+queda nada que ponderar, límite que el sistema fija en 3 km y 500 ft. Es una capa
+**conjuntiva** en el sentido de Einhorn: su activación produce el veredicto negativo de
+inmediato y sin calcular puntaje, porque ninguna combinación favorable del resto de los
+factores vuelve operable un vuelo visual en esas condiciones.
 
 **Capa 2 — Puntuación compensatoria.** Si ninguna regla categórica se activó, se calcula
 un puntaje de riesgo global como suma ponderada de las funciones de riesgo por factor,
@@ -776,12 +776,16 @@ surge del puntaje y el que impone el piso:
 decisión = peor( banda(R) , piso_conjuntivo )
 ```
 
-Los factores cubiertos por la barrera son aquellos de peso bajo cuyo deterioro es
-abrupto: el viento cruzado —evaluado en su valor de ráfaga— respecto del máximo demostrado
-de la aeronave, la probabilidad de niebla y el deterioro pronosticado. La visibilidad y el
-techo quedan deliberadamente fuera de ella: tienen peso alto —no se diluyen— y su
-degradación es gradual, de modo que el tratamiento compensatorio los describe
-correctamente y ya están cubiertos en su extremo por la capa 1.
+Los factores cubiertos por la barrera son de dos clases. La primera son los de peso bajo
+cuyo deterioro es abrupto: el viento cruzado —evaluado en su valor de ráfaga— respecto del
+máximo demostrado de la aeronave, la probabilidad de niebla y el deterioro pronosticado. La
+segunda es el mínimo VFR de la regulación: con visibilidad menor a 5 km o techo menor a
+1000 ft, el veredicto no puede ser GO. Visibilidad y techo tienen peso alto y degradación
+gradual, y la capa compensatoria los describe bien; pero una suma ponderada no garantiza
+por sí sola que ningún punto por debajo del mínimo quede bajo el primer umbral de decisión,
+y el piso lo impide por construcción. Entre el límite de rechazo categórico y el mínimo VFR
+el sistema advierte, y una advertencia no autoriza el vuelo: la decisión queda en el piloto
+al mando.
 
 Esta arquitectura híbrida es la respuesta directa a la constatación del § 3.1.3 de que la
 decisión de despacho tiene simultáneamente naturaleza compensatoria y no compensatoria.
@@ -1111,7 +1115,7 @@ abstracta, de modo que sustituir el proveedor no afecta a ningún otro component
 | Interactividad | **Alpine.js 3.14.1** | Reactividad declarativa embebida en el propio HTML. Se prefirió sobre React o Vue por no requerir empaquetador ni proceso de construcción, para una interfaz de una sola vista. |
 | Cartografía | **Leaflet 1.9.4** | Biblioteca de mapas interactivos de código abierto, con capa base de teselas oscuras. Se prefirió sobre alternativas comerciales por no requerir clave de servicio ni imponer cuotas. |
 | Modelo de lenguaje | **Google Gemini** (nivel gratuito), por solicitudes HTTP directas | Interpretación de las consultas y redacción de las respuestas del asistente. Se accede mediante una cadena de reserva entre modelos de la misma familia, para tolerar las indisponibilidades intermitentes del nivel gratuito. Si el servicio no está configurado, el resto del sistema funciona normalmente. El proveedor es intercambiable (§ 3.3.1). |
-| Pruebas | **pytest** | Suite de regresión de 397 pruebas, ejecutable sin conexión de red; el modelo de lenguaje se sustituye por un cliente simulado. |
+| Pruebas | **pytest** | Suite de regresión de 415 pruebas, ejecutable sin conexión de red; el modelo de lenguaje se sustituye por un cliente simulado. |
 | Asistencia al desarrollo | **Claude Code** (Anthropic, 2026) | Herramienta de programación asistida por inteligencia artificial, empleada en el desarrollo del sistema y en la redacción y revisión de este documento; no forma parte del sistema entregado. El autor definió los requisitos, tomó las decisiones de diseño y validó los resultados, y todo cambio de código se verificó con la suite de pruebas antes de incorporarse. Su aporte y sus riesgos se analizan en el § 6.2. |
 | Control de versiones | **Git** / **GitHub** | Repositorio público, enlazado en el Anexo conforme a la consigna. |
 | Despliegue | **Render** (plan gratuito) | Despliegue automático a partir del repositorio, definido de manera declarativa en un archivo de configuración versionado. |

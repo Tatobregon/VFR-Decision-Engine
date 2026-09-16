@@ -106,14 +106,20 @@ FOG_RISK_ZERO_C   = 5.0    # (J) spread por encima del cual no se computa riesgo
 # veredicto correcto se deriva de la normativa ANAC/OACI + criterio aeronautico
 # (risk/scenarios.py). La busqueda minimiza un costo asimetrico donde el sub-aviso
 # (el sistema avisa menos que la norma) pesa mucho mas que el sobre-aviso.
-# Resultado: t_go = 0.22, t_caution = 0.59. El optimo es un RANGO
-# (t_go in [0.15, 0.28], t_caution in [0.59, 0.66]), lo que indica robustez.
+# Adoptado: t_go = 0.22, t_caution = 0.59. Hasta el piso del minimo VFR el optimo
+# era un RANGO (t_go in [0.15, 0.28], t_caution in [0.59, 0.66]) que los contenia.
 # Es validez de CONSTRUCTO (reproduce la regulacion), no validez empirica.
 #
 # HISTORIA DE LA CALIBRACION (relevante para la trazabilidad de la tesis):
 #   1. Pesos por juicio experto  -> optimo t_go 0.22 / t_caution 0.50 -> 97%, 0 sub-avisos
 #   2. Pesos derivados de evidencia (ver ahp_weights.py) -> optimo t_go 0.22 /
 #      t_caution 0.59 -> 97%, 0 sub-avisos
+#   3. Piso de CAUTION bajo el minimo VFR (septiembre 2026): con los umbrales
+#      vigentes nada cambia (36/38 sobre la bateria actual, 0 sub-avisos), pero la
+#      grilla pasa a admitir t_go en [0.34, 0.45] con 37/38. La diferencia es un
+#      solo escenario (G2: nieve moderada, vis 6 km, techo 1500 ft, CAUTION -> GO).
+#      SE MANTIENE 0.22 POR DECISION: es mas conservador por encima del minimo VFR,
+#      y subir t_go 0.12 para acertar un unico caso seria ajustar a la bateria.
 # Dos derivaciones independientes de los pesos, recalibradas cada una, producen
 # la MISMA concordancia y los mismos veredictos: el comportamiento decisional
 # del sistema no depende de la ponderacion exacta. t_go ni siquiera se movio.

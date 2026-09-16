@@ -85,8 +85,8 @@ automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a
 | `risk/hard_blockers.py` | **COMPLETO** | Tokens TS/TSRA/TSGR/GR/FC/VA/FZRA/FZDZ + vis<3km + ceil<500ft → NO GO inmediato (limites del sistema, no norma: el minimo VFR es 5 km / 1000 ft). |
 | `risk/soft_scoring.py` | **COMPLETO** | `compute_soft_score(...)` → `SoftScoreResult`. Score compensatorio + **barrera no-compensatoria** (`conjunctive_floor`): `decision = worst(umbral(R), piso)`. Expone `guardrail_floor`/`guardrail_reason`. La unica frontera de viento es `XWIND_CAUTION_FRACTION=0.85` (J), sobre el cruzado calculado con la RAFAGA. **La rafaga no impone piso por si sola** (septiembre 2026): entra por su componente cruzado. Efecto medido en sensitivity [5]: <=2/38 flips ante +/-30%. |
 | `risk/scenarios.py` | **COMPLETO** | Bateria de 38 escenarios de referencia con etiqueta normativa ANAC/OACI (`normative_label`). Fuente compartida por calibracion y sensibilidad. **Declara en su encabezado el ALCANCE de la independencia de la referencia**: vale para vis/techo/wx/TAF, NO para cruzado ni rafaga, donde la etiqueta replica los cortes del motor y la concordancia es por construccion. |
-| `risk/calibration.py` | **COMPLETO** | Calibracion de umbrales por anclaje normativo (grid search + costo asimetrico). Resultado: t_go=0.22, t_caution=0.59 (36/38 = 95% concordancia, 0 sub-avisos, 2 sobre-avisos). Reporta ademas la concordancia **por nivel de minimos personales** (sin minimos 95%, PPL 89%, Alumno 74%) y verifica que en ninguno hay sub-avisos: el desvio es siempre por sobre-aviso. Validez de constructo, no empirica. |
-| `risk/sensitivity.py` | **COMPLETO** | Sensibilidad en 5 ejes: [1] OAT ±20% por peso, [2] Monte Carlo 7 pesos, [3] umbrales, [4] **parametros de forma de las r_i**, [5] **fraccion de CAUTION de la barrera de cruzado** (la rafaga ya no tiene piso propio). Estabilidad del veredicto 99%; 35/36 escenarios nunca cambian. **Hallazgo clave**: los parametros de forma pesan MAS que los pesos (5.6% de flips contra 0.8%). |
+| `risk/calibration.py` | **COMPLETO** | Calibracion de umbrales por anclaje normativo (grid search + costo asimetrico). Resultado: t_go=0.22, t_caution=0.59 (36/38 = 95% concordancia, 0 sub-avisos, 2 sobre-avisos). Reporta ademas la concordancia **por nivel de minimos personales** (sin minimos 95%, PPL 89%, Alumno 71%) y verifica que en ninguno hay sub-avisos: el desvio es siempre por sobre-aviso. Validez de constructo, no empirica. |
+| `risk/sensitivity.py` | **COMPLETO** | Sensibilidad en 5 ejes: [1] OAT ±20% por peso, [2] Monte Carlo 7 pesos, [3] umbrales, [4] **parametros de forma de las r_i**, [5] **fraccion de CAUTION de la barrera de cruzado** (la rafaga ya no tiene piso propio). Estabilidad del veredicto 99%; 37/38 escenarios nunca cambian. **Hallazgo clave**: los parametros de forma pesan MAS que los pesos (5.3% de flips contra 0.8%; desde septiembre de 2026 se perturban los dos extremos de cada rampa). |
 
 ### INTEGRACION
 
@@ -324,9 +324,15 @@ R < 0.22           → GO
 R >= 0.59          → NO GO
 ```
 Los cortes se ajustaron sobre la bateria de referencia (`risk/scenarios.py`) minimizando
-un costo asimetrico (sub-aviso >> sobre-aviso); el optimo es un rango
-(t_go∈[0.15,0.28], t_caution∈[0.59,0.66]) → robusto.
-Es validez de CONSTRUCTO (reproduce la regulacion), no empirica. Concordancia final 97%.
+un costo asimetrico (sub-aviso >> sobre-aviso). Hasta el piso del minimo VFR el optimo era
+un rango (t_go∈[0.15,0.28], t_caution∈[0.59,0.66]) que contenia los valores adoptados.
+Es validez de CONSTRUCTO (reproduce la regulacion), no empirica. Concordancia 36/38 = 95%.
+
+> **Umbrales mantenidos por decision (septiembre 2026).** Con el piso de CAUTION bajo
+> el minimo VFR, la grilla admite t_go en [0.34, 0.45] con 37/38 y 0 sub-avisos: el unico
+> escenario que cambia es G2 (nieve moderada, vis 6 km, techo 1500 ft), de CAUTION a GO.
+> Se mantiene 0.22 a proposito: es mas conservador por encima del minimo, y mover t_go 0.12
+> por un solo escenario seria ajustar a la bateria. `risk/calibration.py` lo avisa.
 
 > **Convergencia (resultado de validacion).** Los umbrales se recalibraron al pasar los
 > pesos de juicio experto a derivacion por evidencia. El optimo se movio de
@@ -1161,7 +1167,7 @@ Sin la variable la app arranca igual: `/api/copilot/status` responde
 `available: false`, el panel del frontend no se muestra y **el resto del sistema
 funciona normalmente**. El copiloto es accesorio y su caida no arrastra a nadie.
 
-Suite de regresion (389 tests, sin red, ~5 s):
+Suite de regresion (415 tests, sin red):
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt

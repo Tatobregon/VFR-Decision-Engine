@@ -183,6 +183,10 @@ if __name__ == "__main__":
     tca_lo = min(m["t_caution"] for m in equi); tca_hi = max(m["t_caution"] for m in equi)
     print(f"    (optimo no es un punto sino un rango: t_go in [{tgo_lo:.2f},{tgo_hi:.2f}], "
           f"t_caution in [{tca_lo:.2f},{tca_hi:.2f}] dan el mismo costo minimo)")
+    if not (tgo_lo <= THRESHOLD_GO <= tgo_hi and tca_lo <= THRESHOLD_CAUTION <= tca_hi):
+        print(f"    NOTA: los umbrales adoptados ({THRESHOLD_GO:.2f} / {THRESHOLD_CAUTION:.2f}) "
+              f"quedan fuera de ese rango por decision declarada:")
+        print("    ver el punto 3 de la historia de la calibracion en risk/weights.py.")
 
     # ── Matrices de confusion ─────────────────────────────────────────────────
     _print_confusion("ANTES", rows, THRESHOLD_GO, THRESHOLD_CAUTION)
