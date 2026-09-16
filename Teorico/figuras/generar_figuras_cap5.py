@@ -379,6 +379,83 @@ ax.text(macro - 0.002, len(ordenadas) - 0.35, f"promedio macro: {coma(macro, 3)}
 ax.set_ylim(-0.6, len(ordenadas) + 0.2)
 guardar(fig, "fig_5_6_f1_asistente.png")
 
+# ══════════════════════════════════════════════════════════════════════════════
+# 5.7 Tiempos de respuesta
+# ══════════════════════════════════════════════════════════════════════════════
+# Lee las mediciones de medir_latencia_cap5.py (que si sale a la red; se corre
+# aparte) y la latencia registrada en la evaluacion del asistente.
+import statistics  # noqa: E402
+
+
+def _leer_medicion(nombre):
+    ruta = os.path.join(SALIDA, nombre)
+    if not os.path.exists(ruta):
+        return None
+    with open(ruta, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+mediciones = [("local", _leer_medicion("latencia_local.json")),
+              ("Render", _leer_medicion("latencia_render.json"))]
+nombres_categoria = {"primera de la ruta": "Primera evaluación de la ruta",
+                     "otra aeronave": "Misma ruta, otra aeronave",
+                     "repetida": "Evaluación repetida"}
+filas_lat = []
+for entorno, med in mediciones:
+    if not med:
+        continue
+    validas = [f for f in med["filas"] if f["estado"] == 200]
+    for categoria, etiqueta in nombres_categoria.items():
+        valores = [f["segundos"] for f in validas if f["categoria"] == categoria]
+        if valores:
+            filas_lat.append((f"Motor en {entorno}", f"{etiqueta} (n = {len(valores)})", valores))
+lat_asistente = [c["latencia_s"] for c in casos if c.get("latencia_s") is not None]
+filas_lat.append(("Asistente", f"Consulta (n = {len(lat_asistente)})", lat_asistente))
+datos["latencia"] = {
+    "mediciones": {e: {"fecha_utc": m["fecha_utc"], "base": m["base"],
+                       "primera_respuesta_s": m["primera_respuesta_s"], "resumen": m["resumen"]}
+                   for e, m in mediciones if m},
+    "asistente": {"n": len(lat_asistente), "media": round(statistics.mean(lat_asistente), 2),
+                  "mediana": round(statistics.median(lat_asistente), 2)},
+}
+
+fig, ax = plt.subplots(figsize=(ANCHO_IN, ANCHO_IN * 0.66))
+ejes_limpios(ax, grilla="x")
+posiciones, etiquetas, grupos_y = [], [], []
+pos, grupo_previo = 0.0, None
+for grupo, etiqueta, _ in filas_lat:
+    if grupo != grupo_previo:
+        if grupo_previo is not None:
+            pos += 0.7
+        grupos_y.append((grupo, pos))
+        grupo_previo = grupo
+    posiciones.append(pos)
+    etiquetas.append(etiqueta)
+    pos += 1
+tope_y = max(posiciones)
+azar = np.random.default_rng(7)
+for (_, _, valores), p in zip(filas_lat, posiciones):
+    y0 = tope_y - p
+    ax.scatter(valores, y0 + azar.uniform(-0.15, 0.15, size=len(valores)), s=22, color=SERIE_1,
+               alpha=0.85, edgecolors=SUPERFICIE, linewidths=1, zorder=3)
+    mediana = float(np.median(valores))
+    ax.plot([mediana, mediana], [y0 - 0.3, y0 + 0.3], color=TINTA, linewidth=1.6, zorder=4)
+    ax.text(mediana, y0 + 0.33, f"mediana {coma(mediana, 1)} s", ha="center", va="bottom",
+            color=TINTA_2, fontsize=7)
+ax.set_yticks([tope_y - p for p in posiciones], etiquetas, fontsize=8)
+for grupo, p in grupos_y:
+    ax.text(-0.02, tope_y - p + 0.62, grupo.upper(), transform=ax.get_yaxis_transform(),
+            ha="right", va="center", color=TENUE, fontsize=7.5, fontweight="bold")
+ax.set_xscale("log")
+ax.set_xticks([0.5, 1, 2, 5, 10, 20, 50, 100])
+ax.xaxis.set_major_formatter(FuncFormatter(lambda v, _: coma(v, 1) if v < 1 else f"{v:g}"))
+ax.xaxis.set_minor_formatter(FuncFormatter(lambda v, _: ""))
+ax.tick_params(axis="x", which="minor", length=0)
+ax.set_xlim(0.4, 120)
+ax.set_ylim(-0.6, tope_y + 0.95)
+ax.set_xlabel("Segundos (escala logarítmica)")
+guardar(fig, "fig_5_7_tiempos_de_respuesta.png")
+
 with open(os.path.join(SALIDA, "datos_cap5.json"), "w", encoding="utf-8") as f:
     json.dump(datos, f, ensure_ascii=False, indent=1)
 print("   datos_cap5.json")

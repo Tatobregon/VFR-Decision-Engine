@@ -1,0 +1,447 @@
+{
+ "etiqueta": "render",
+ "base": "https://vfr-decision-engine.onrender.com",
+ "fecha_utc": "2026-09-16T22:46+00:00",
+ "primera_respuesta_s": 42.67,
+ "rutas": [
+  [
+   "PAMPA",
+   "SACC",
+   "JES"
+  ],
+  [
+   "PAMPA",
+   "SADP",
+   "SAAG"
+  ],
+  [
+   "LITORAL",
+   "SAAR",
+   "SAAP"
+  ],
+  [
+   "LITORAL",
+   "SAAV",
+   "SARE"
+  ],
+  [
+   "NOA",
+   "SASA",
+   "SANT"
+  ],
+  [
+   "NOA",
+   "SANC",
+   "SANE"
+  ],
+  [
+   "CUYO",
+   "SAME",
+   "SAOU"
+  ],
+  [
+   "CUYO",
+   "SANU",
+   "SAMR"
+  ],
+  [
+   "PATAGONIA",
+   "SAZN",
+   "SAZS"
+  ],
+  [
+   "PATAGONIA",
+   "SAVT",
+   "SAVC"
+  ]
+ ],
+ "omitidas": [],
+ "filas": [
+  {
+   "region": "PAMPA",
+   "origen": "SACC",
+   "destino": "JES",
+   "avion": "Cessna 152",
+   "categoria": "primera de la ruta",
+   "estado": 200,
+   "segundos": 9.82
+  },
+  {
+   "region": "PAMPA",
+   "origen": "SACC",
+   "destino": "JES",
+   "avion": "Cessna 152",
+   "categoria": "repetida",
+   "estado": 200,
+   "segundos": 3.11
+  },
+  {
+   "region": "PAMPA",
+   "origen": "SACC",
+   "destino": "JES",
+   "avion": "Diamond DA40",
+   "categoria": "otra aeronave",
+   "estado": 200,
+   "segundos": 2.57
+  },
+  {
+   "region": "PAMPA",
+   "origen": "SACC",
+   "destino": "JES",
+   "avion": "Diamond DA40",
+   "categoria": "repetida",
+   "estado": 200,
+   "segundos": 3.98
+  },
+  {
+   "region": "PAMPA",
+   "origen": "SADP",
+   "destino": "SAAG",
+   "avion": "Cessna 152",
+   "categoria": "primera de la ruta",
+   "estado": 200,
+   "segundos": 9.27
+  },
+  {
+   "region": "PAMPA",
+   "origen": "SADP",
+   "destino": "SAAG",
+   "avion": "Cessna 152",
+   "categoria": "repetida",
+   "estado": 200,
+   "segundos": 3.43
+  },
+  {
+   "region": "PAMPA",
+   "origen": "SADP",
+   "destino": "SAAG",
+   "avion": "Diamond DA40",
+   "categoria": "otra aeronave",
+   "estado": 200,
+   "segundos": 6.37
+  },
+  {
+   "region": "PAMPA",
+   "origen": "SADP",
+   "destino": "SAAG",
+   "avion": "Diamond DA40",
+   "categoria": "repetida",
+   "estado": 200,
+   "segundos": 2.57
+  },
+  {
+   "region": "LITORAL",
+   "origen": "SAAR",
+   "destino": "SAAP",
+   "avion": "Cessna 152",
+   "categoria": "primera de la ruta",
+   "estado": 200,
+   "segundos": 6.63
+  },
+  {
+   "region": "LITORAL",
+   "origen": "SAAR",
+   "destino": "SAAP",
+   "avion": "Cessna 152",
+   "categoria": "repetida",
+   "estado": 200,
+   "segundos": 2.44
+  },
+  {
+   "region": "LITORAL",
+   "origen": "SAAR",
+   "destino": "SAAP",
+   "avion": "Diamond DA40",
+   "categoria": "otra aeronave",
+   "estado": 200,
+   "segundos": 2.27
+  },
+  {
+   "region": "LITORAL",
+   "origen": "SAAR",
+   "destino": "SAAP",
+   "avion": "Diamond DA40",
+   "categoria": "repetida",
+   "estado": 200,
+   "segundos": 2.32
+  },
+  {
+   "region": "LITORAL",
+   "origen": "SAAV",
+   "destino": "SARE",
+   "avion": "Cessna 152",
+   "categoria": "primera de la ruta",
+   "estado": 200,
+   "segundos": 7.79
+  },
+  {
+   "region": "LITORAL",
+   "origen": "SAAV",
+   "destino": "SARE",
+   "avion": "Cessna 152",
+   "categoria": "repetida",
+   "estado": 200,
+   "segundos": 1.38
+  },
+  {
+   "region": "LITORAL",
+   "origen": "SAAV",
+   "destino": "SARE",
+   "avion": "Diamond DA40",
+   "categoria": "otra aeronave",
+   "estado": 200,
+   "segundos": 3.66
+  },
+  {
+   "region": "LITORAL",
+   "origen": "SAAV",
+   "destino": "SARE",
+   "avion": "Diamond DA40",
+   "categoria": "repetida",
+   "estado": 200,
+   "segundos": 2.3
+  },
+  {
+   "region": "NOA",
+   "origen": "SASA",
+   "destino": "SANT",
+   "avion": "Cessna 152",
+   "categoria": "primera de la ruta",
+   "estado": 200,
+   "segundos": 23.92
+  },
+  {
+   "region": "NOA",
+   "origen": "SASA",
+   "destino": "SANT",
+   "avion": "Cessna 152",
+   "categoria": "repetida",
+   "estado": 200,
+   "segundos": 4.56
+  },
+  {
+   "region": "NOA",
+   "origen": "SASA",
+   "destino": "SANT",
+   "avion": "Diamond DA40",
+   "categoria": "otra aeronave",
+   "estado": 200,
+   "segundos": 1.66
+  },
+  {
+   "region": "NOA",
+   "origen": "SASA",
+   "destino": "SANT",
+   "avion": "Diamond DA40",
+   "categoria": "repetida",
+   "estado": 200,
+   "segundos": 1.89
+  },
+  {
+   "region": "NOA",
+   "origen": "SANC",
+   "destino": "SANE",
+   "avion": "Cessna 152",
+   "categoria": "primera de la ruta",
+   "estado": 200,
+   "segundos": 2.39
+  },
+  {
+   "region": "NOA",
+   "origen": "SANC",
+   "destino": "SANE",
+   "avion": "Cessna 152",
+   "categoria": "repetida",
+   "estado": 200,
+   "segundos": 1.72
+  },
+  {
+   "region": "NOA",
+   "origen": "SANC",
+   "destino": "SANE",
+   "avion": "Diamond DA40",
+   "categoria": "otra aeronave",
+   "estado": 200,
+   "segundos": 1.8
+  },
+  {
+   "region": "NOA",
+   "origen": "SANC",
+   "destino": "SANE",
+   "avion": "Diamond DA40",
+   "categoria": "repetida",
+   "estado": 200,
+   "segundos": 1.87
+  },
+  {
+   "region": "CUYO",
+   "origen": "SAME",
+   "destino": "SAOU",
+   "avion": "Cessna 152",
+   "categoria": "primera de la ruta",
+   "estado": 200,
+   "segundos": 7.82
+  },
+  {
+   "region": "CUYO",
+   "origen": "SAME",
+   "destino": "SAOU",
+   "avion": "Cessna 152",
+   "categoria": "repetida",
+   "estado": 200,
+   "segundos": 2.85
+  },
+  {
+   "region": "CUYO",
+   "origen": "SAME",
+   "destino": "SAOU",
+   "avion": "Diamond DA40",
+   "categoria": "otra aeronave",
+   "estado": 200,
+   "segundos": 2.65
+  },
+  {
+   "region": "CUYO",
+   "origen": "SAME",
+   "destino": "SAOU",
+   "avion": "Diamond DA40",
+   "categoria": "repetida",
+   "estado": 200,
+   "segundos": 3.33
+  },
+  {
+   "region": "CUYO",
+   "origen": "SANU",
+   "destino": "SAMR",
+   "avion": "Cessna 152",
+   "categoria": "primera de la ruta",
+   "estado": 200,
+   "segundos": 8.06
+  },
+  {
+   "region": "CUYO",
+   "origen": "SANU",
+   "destino": "SAMR",
+   "avion": "Cessna 152",
+   "categoria": "repetida",
+   "estado": 200,
+   "segundos": 2.38
+  },
+  {
+   "region": "CUYO",
+   "origen": "SANU",
+   "destino": "SAMR",
+   "avion": "Diamond DA40",
+   "categoria": "otra aeronave",
+   "estado": 200,
+   "segundos": 3.23
+  },
+  {
+   "region": "CUYO",
+   "origen": "SANU",
+   "destino": "SAMR",
+   "avion": "Diamond DA40",
+   "categoria": "repetida",
+   "estado": 200,
+   "segundos": 4.22
+  },
+  {
+   "region": "PATAGONIA",
+   "origen": "SAZN",
+   "destino": "SAZS",
+   "avion": "Cessna 152",
+   "categoria": "primera de la ruta",
+   "estado": 200,
+   "segundos": 11.08
+  },
+  {
+   "region": "PATAGONIA",
+   "origen": "SAZN",
+   "destino": "SAZS",
+   "avion": "Cessna 152",
+   "categoria": "repetida",
+   "estado": 200,
+   "segundos": 2.83
+  },
+  {
+   "region": "PATAGONIA",
+   "origen": "SAZN",
+   "destino": "SAZS",
+   "avion": "Diamond DA40",
+   "categoria": "otra aeronave",
+   "estado": 200,
+   "segundos": 3.77
+  },
+  {
+   "region": "PATAGONIA",
+   "origen": "SAZN",
+   "destino": "SAZS",
+   "avion": "Diamond DA40",
+   "categoria": "repetida",
+   "estado": 200,
+   "segundos": 2.73
+  },
+  {
+   "region": "PATAGONIA",
+   "origen": "SAVT",
+   "destino": "SAVC",
+   "avion": "Cessna 152",
+   "categoria": "primera de la ruta",
+   "estado": 200,
+   "segundos": 6.43
+  },
+  {
+   "region": "PATAGONIA",
+   "origen": "SAVT",
+   "destino": "SAVC",
+   "avion": "Cessna 152",
+   "categoria": "repetida",
+   "estado": 200,
+   "segundos": 1.9
+  },
+  {
+   "region": "PATAGONIA",
+   "origen": "SAVT",
+   "destino": "SAVC",
+   "avion": "Diamond DA40",
+   "categoria": "otra aeronave",
+   "estado": 200,
+   "segundos": 2.1
+  },
+  {
+   "region": "PATAGONIA",
+   "origen": "SAVT",
+   "destino": "SAVC",
+   "avion": "Diamond DA40",
+   "categoria": "repetida",
+   "estado": 200,
+   "segundos": 1.67
+  }
+ ],
+ "resumen": {
+  "primera de la ruta": {
+   "n": 10,
+   "media": 9.32,
+   "mediana": 7.94,
+   "p95": 23.92,
+   "min": 2.39,
+   "max": 23.92
+  },
+  "otra aeronave": {
+   "n": 10,
+   "media": 3.01,
+   "mediana": 2.61,
+   "p95": 6.37,
+   "min": 1.66,
+   "max": 6.37
+  },
+  "repetida": {
+   "n": 20,
+   "media": 2.67,
+   "mediana": 2.5,
+   "p95": 4.22,
+   "min": 1.38,
+   "max": 4.56
+  }
+ }
+}

@@ -586,5 +586,76 @@
    }
   ],
   "f1_macro": 0.9568592552708854
+ },
+ "latencia": {
+  "mediciones": {
+   "local": {
+    "fecha_utc": "2026-09-16T22:43+00:00",
+    "base": "http://127.0.0.1:8765",
+    "primera_respuesta_s": 0.0,
+    "resumen": {
+     "primera de la ruta": {
+      "n": 10,
+      "media": 7.04,
+      "mediana": 6.27,
+      "p95": 19.35,
+      "min": 1.33,
+      "max": 19.35
+     },
+     "otra aeronave": {
+      "n": 10,
+      "media": 2.4,
+      "mediana": 2.21,
+      "p95": 5.2,
+      "min": 0.89,
+      "max": 5.2
+     },
+     "repetida": {
+      "n": 20,
+      "media": 1.86,
+      "mediana": 1.69,
+      "p95": 3.54,
+      "min": 0.62,
+      "max": 6.48
+     }
+    }
+   },
+   "Render": {
+    "fecha_utc": "2026-09-16T22:46+00:00",
+    "base": "https://vfr-decision-engine.onrender.com",
+    "primera_respuesta_s": 42.67,
+    "resumen": {
+     "primera de la ruta": {
+      "n": 10,
+      "media": 9.32,
+      "mediana": 7.94,
+      "p95": 23.92,
+      "min": 2.39,
+      "max": 23.92
+     },
+     "otra aeronave": {
+      "n": 10,
+      "media": 3.01,
+      "mediana": 2.61,
+      "p95": 6.37,
+      "min": 1.66,
+      "max": 6.37
+     },
+     "repetida": {
+      "n": 20,
+      "media": 2.67,
+      "mediana": 2.5,
+      "p95": 4.22,
+      "min": 1.38,
+      "max": 4.56
+     }
+    }
+   }
+  },
+  "asistente": {
+   "n": 98,
+   "media": 14.6,
+   "mediana": 9.59
+  }
  }
 }
