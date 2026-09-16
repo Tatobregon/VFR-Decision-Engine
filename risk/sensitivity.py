@@ -36,9 +36,11 @@ try:
     )
     from risk.weights import (
         THRESHOLD_GO, THRESHOLD_CAUTION,
-        VIS_RISK_MAX_KM  as W_VIS_LO,
-        CEIL_RISK_MAX_FT as W_CEIL_LO,
-        FOG_RISK_MAX_C   as W_FOG_LO,
+        VIS_RISK_MAX_KM   as W_VIS_LO,
+        VIS_RISK_ZERO_KM  as W_VIS_HI,
+        CEIL_RISK_MAX_FT  as W_CEIL_LO,
+        CEIL_RISK_ZERO_FT as W_CEIL_HI,
+        FOG_RISK_MAX_C    as W_FOG_LO,
     )
 except ImportError:
     import sys as _sys, os as _os
@@ -49,9 +51,11 @@ except ImportError:
     )
     from risk.weights import (
         THRESHOLD_GO, THRESHOLD_CAUTION,
-        VIS_RISK_MAX_KM  as W_VIS_LO,
-        CEIL_RISK_MAX_FT as W_CEIL_LO,
-        FOG_RISK_MAX_C   as W_FOG_LO,
+        VIS_RISK_MAX_KM   as W_VIS_LO,
+        VIS_RISK_ZERO_KM  as W_VIS_HI,
+        CEIL_RISK_MAX_FT  as W_CEIL_LO,
+        CEIL_RISK_ZERO_FT as W_CEIL_HI,
+        FOG_RISK_MAX_C    as W_FOG_LO,
     )
 
 
@@ -203,19 +207,26 @@ def _ramp(lo: float, hi: float):
     return f
 
 
-# Variantes a probar. Se perturba SOLO el extremo de riesgo nulo, que es el
-# parametro de juicio; el de riesgo maximo es la frontera IFR de la norma.
+# Variantes a probar: los dos extremos de cada rampa. El de riesgo nulo es un
+# margen de juicio sobre el minimo VFR; el de riesgo maximo coincide con el
+# rechazo categorico del sistema, que tampoco es una norma. Mover solo la rampa
+# cambia su pendiente en la franja que el puntaje todavia evalua.
 #
 # La niebla se perturba sobre features/fog_risk.py y NO sobre weights.r_fog: la
 # rampa que el motor aplica es la de ese modulo (weights.r_fog no participa del
 # tiempo de ejecucion).
+# (criterio, etiqueta, extremo de riesgo maximo, extremo de riesgo nulo)
 _SHAPE_VARIANTS = [
-    ("visibility", "vis  8 -> 10 km  (margen 2.0x)",       10.0),
-    ("visibility", "vis  8 ->  6 km  (margen 1.2x)",        6.0),
-    ("ceiling",    "techo 2000 -> 3000 ft (margen 3x)",    3000),
-    ("ceiling",    "techo 2000 -> 1500 ft (margen 1.5x)",  1500),
-    ("fog",        "spread  5 ->  7 C",                     7.0),
-    ("fog",        "spread  5 ->  4 C",                     4.0),
+    ("visibility", "vis  8 -> 10 km  (margen 2.0x)",        W_VIS_LO, 10.0),
+    ("visibility", "vis  8 ->  6 km  (margen 1.2x)",        W_VIS_LO, 6.0),
+    ("visibility", "vis  3 -> 3.6 km (riesgo max +20%)",    3.6, W_VIS_HI),
+    ("visibility", "vis  3 -> 2.4 km (riesgo max -20%)",    2.4, W_VIS_HI),
+    ("ceiling",    "techo 2000 -> 3000 ft (margen 3x)",     W_CEIL_LO, 3000),
+    ("ceiling",    "techo 2000 -> 1500 ft (margen 1.5x)",   W_CEIL_LO, 1500),
+    ("ceiling",    "techo 500 -> 600 ft (riesgo max +20%)", 600, W_CEIL_HI),
+    ("ceiling",    "techo 500 -> 400 ft (riesgo max -20%)", 400, W_CEIL_HI),
+    ("fog",        "spread  5 ->  7 C",                      None, 7.0),
+    ("fog",        "spread  5 ->  4 C",                      None, 4.0),
 ]
 
 
@@ -232,11 +243,11 @@ def shape_analysis(battery, base_w, base_v):
     orig_fog_hi = FR.SPREAD_LOW_RISK_C
     out = []
     try:
-        for criterio, label, hi in _SHAPE_VARIANTS:
+        for criterio, label, lo, hi in _SHAPE_VARIANTS:
             if criterio == "visibility":
-                SS.r_visibility = _ramp(W_VIS_LO, hi)
+                SS.r_visibility = _ramp(lo, hi)
             elif criterio == "ceiling":
-                SS.r_ceiling = _ramp(W_CEIL_LO, hi)
+                SS.r_ceiling = _ramp(lo, hi)
             else:
                 FR.SPREAD_LOW_RISK_C = hi
 
@@ -369,12 +380,12 @@ if __name__ == "__main__":
         print(f"      {name:<16} -> {flips} cambios de veredicto sobre {n}")
 
     # ── 4. Parametros de forma de las r_i ─────────────────────────────────────
-    print("\n  [4] PARAMETROS DE FORMA  (extremo de riesgo nulo de cada rampa)")
-    print(f"      {'variante':<38}{'flips':>8}{'|dR| medio':>13}{'|dR| max':>11}")
-    print(f"      {'-'*37:<38}{'-'*7:>8}{'-'*12:>13}{'-'*10:>11}")
+    print("\n  [4] PARAMETROS DE FORMA  (los dos extremos de cada rampa)")
+    print(f"      {'variante':<40}{'flips':>8}{'|dR| medio':>13}{'|dR| max':>11}")
+    print(f"      {'-'*39:<40}{'-'*7:>8}{'-'*12:>13}{'-'*10:>11}")
     sh = shape_analysis(battery, base_w, base_v)
     for row in sh:
-        print(f"      {row['label']:<38}{row['flips']:>4}/{n:<3}"
+        print(f"      {row['label']:<40}{row['flips']:>4}/{n:<3}"
               f"{row['mean_dr']:>13.4f}{row['max_dr']:>11.4f}")
     peor = max(sh, key=lambda r: r["flips"])
     print(f"\n      Peor caso: {peor['flips']}/{n} = {100*peor['flips']/n:.1f}% de los "
@@ -382,8 +393,8 @@ if __name__ == "__main__":
     print(f"      Comparacion: perturbar los 7 pesos a la vez (+/-20%, OAT) cambia "
           f"{100*total_oat_flips/(14*n):.1f}%")
     print("      -> los parametros de forma son MAS influyentes que los pesos.")
-    print("         Los extremos de riesgo maximo (3 km / 500 ft) no se perturban:")
-    print("         son la frontera IFR de la norma, no una eleccion del modelo.")
+    print("         Se perturban los dos extremos de cada rampa: ninguno es una norma.")
+    print("         El minimo VFR (5 km / 1000 ft) cae dentro de las rampas.")
 
     # ── 5. Fraccion de CAUTION de la barrera ──────────────────────────────────
     print("\n  [5] BARRERA NO-COMPENSATORIA  (fronteras de piso, una por una)")
@@ -408,11 +419,10 @@ if __name__ == "__main__":
     print("  - Los PARAMETROS DE FORMA pesan mas que los pesos: mover un solo punto")
     print("    de quiebre mueve mas veredictos que perturbar los siete pesos a la vez.")
     print("    Es el resultado mas importante de este analisis: acota donde hay que")
-    print("    poner el esfuerzo de justificacion. Lo atenua que los quiebres de riesgo")
-    print("    MAXIMO sean frontera normativa y no eleccion del modelo; lo que queda")
-    print("    como juicio son los extremos de riesgo nulo, medidos arriba.")
-    print("  - La fraccion de CAUTION de la barrera (0.50) es robusta: moverla entre")
-    print("    0.35 y 0.65 cambia a lo sumo un veredicto de la bateria.")
+    print("    poner el esfuerzo de justificacion. Ningun extremo de rampa es una")
+    print("    norma: todos son juicio declarado y todos se miden arriba.")
+    print("  - La fraccion de CAUTION de la barrera de cruzado (0.85) se barre en")
+    print("    +/-20% y +/-30%: ver el bloque [5].")
     print("  - ALCANCE: todo esto vale para la configuracion SIN minimos personales.")
     print("    Con minimos activados el sistema se aparta a proposito de la referencia")
     print("    normativa; risk/calibration.py reporta la concordancia de cada nivel y")

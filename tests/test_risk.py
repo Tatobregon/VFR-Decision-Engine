@@ -123,10 +123,23 @@ def test_todo_fenomeno_peligroso_bloquea(token):
 
 
 def test_limites_absolutos_de_visibilidad_y_techo():
-    assert check_hard_blockers(1.4, None, []).is_blocked
-    assert not check_hard_blockers(1.5, None, []).is_blocked      # justo en el limite
+    assert check_hard_blockers(2.9, None, []).is_blocked
+    assert not check_hard_blockers(3.0, None, []).is_blocked      # justo en el limite
     assert check_hard_blockers(10.0, 499, []).is_blocked
     assert not check_hard_blockers(10.0, 500, []).is_blocked
+
+
+def test_el_rechazo_categorico_coincide_con_el_riesgo_maximo_de_las_rampas():
+    """
+    Por debajo del limite categorico el veredicto es NO GO sin calcular puntaje,
+    y la rampa marca riesgo maximo en ese mismo valor. Si uno se moviera sin el
+    otro, quedaria una franja con riesgo maximo cuyo veredicto todavia sale del
+    puntaje, o una rampa que empieza a subir donde ya no se evalua.
+    """
+    from risk.hard_blockers import VIS_HARD_LIMIT_KM, CEIL_HARD_LIMIT_FT
+    from risk.weights import VIS_RISK_MAX_KM, CEIL_RISK_MAX_FT
+    assert VIS_HARD_LIMIT_KM == VIS_RISK_MAX_KM
+    assert CEIL_HARD_LIMIT_FT == CEIL_RISK_MAX_FT
 
 
 def test_sin_dato_no_bloquea():

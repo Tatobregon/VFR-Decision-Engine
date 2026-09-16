@@ -81,8 +81,8 @@ automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a
 | `risk/aircraft_profiles.py` | **COMPLETO** | `AircraftProfile` dataclass frozen. 5 perfiles + `get_profile(name)` + `PROFILE_NAMES`. Incluye designador OACI y estela para el plan de vuelo. |
 | `risk/personal_minima.py` | **COMPLETO** | Minimos personales por experiencia (Alumno / PPL / Avanzado): endurecen vis, techo y tolerancia al cruzado. NO tocan los pesos AHP. |
 | `risk/ahp_weights.py` | **COMPLETO** | Derivacion AHP de los pesos. Los juicios de a pares NO son a ojo: se derivan de accidentologia con la operacion explicita `a_ij = redondeo_Saaty(I_i/I_j)`, con `I = prob x severidad` (Doc 9859 OACI). Cada entrada declara su procedencia (E evidencia / N norma / D derivada / J juicio). CR=0.069. |
-| `risk/weights.py` | **COMPLETO** | Pesos AHP W_VIS=0.357 W_CEIL=0.357 W_XWIND=0.099 W_FOG=0.071 W_GUST=0.050 W_WX=0.044 W_TAF=0.022. Funciones r_i. Thresholds **calibrados**: t_go=0.22, t_caution=0.59. Los **parametros de forma** de las rampas son constantes nombradas con procedencia declarada (N norma / J juicio): los quiebres de riesgo MAXIMO son la frontera IFR de la norma; los de riesgo NULO son juicio. `r_fog` de este modulo NO corre en runtime (la rampa real esta en `features/fog_risk.py`). |
-| `risk/hard_blockers.py` | **COMPLETO** | Tokens TS/TSRA/TSGR/GR/FC/VA/FZRA/FZDZ + vis<1.5km + ceil<500ft → NO GO inmediato. |
+| `risk/weights.py` | **COMPLETO** | Pesos AHP W_VIS=0.357 W_CEIL=0.357 W_XWIND=0.099 W_FOG=0.071 W_GUST=0.050 W_WX=0.044 W_TAF=0.022. Funciones r_i. Thresholds **calibrados**: t_go=0.22, t_caution=0.59. Los **parametros de forma** de las rampas son constantes nombradas con procedencia declarada (N norma / J juicio): los quiebres de riesgo MAXIMO coinciden con el rechazo categorico del sistema (3 km / 500 ft), que NO es una norma; el minimo VFR de la norma (5 km / 1000 ft) cae dentro de la rampa; los de riesgo NULO son juicio. `r_fog` de este modulo NO corre en runtime (la rampa real esta en `features/fog_risk.py`). |
+| `risk/hard_blockers.py` | **COMPLETO** | Tokens TS/TSRA/TSGR/GR/FC/VA/FZRA/FZDZ + vis<3km + ceil<500ft → NO GO inmediato (limites del sistema, no norma: el minimo VFR es 5 km / 1000 ft). |
 | `risk/soft_scoring.py` | **COMPLETO** | `compute_soft_score(...)` → `SoftScoreResult`. Score compensatorio + **barrera no-compensatoria** (`conjunctive_floor`): `decision = worst(umbral(R), piso)`. Expone `guardrail_floor`/`guardrail_reason`. La unica frontera de viento es `XWIND_CAUTION_FRACTION=0.85` (J), sobre el cruzado calculado con la RAFAGA. **La rafaga no impone piso por si sola** (septiembre 2026): entra por su componente cruzado. Efecto medido en sensitivity [5]: <=2/38 flips ante +/-30%. |
 | `risk/scenarios.py` | **COMPLETO** | Bateria de 38 escenarios de referencia con etiqueta normativa ANAC/OACI (`normative_label`). Fuente compartida por calibracion y sensibilidad. **Declara en su encabezado el ALCANCE de la independencia de la referencia**: vale para vis/techo/wx/TAF, NO para cruzado ni rafaga, donde la etiqueta replica los cortes del motor y la concordancia es por construccion. |
 | `risk/calibration.py` | **COMPLETO** | Calibracion de umbrales por anclaje normativo (grid search + costo asimetrico). Resultado: t_go=0.22, t_caution=0.59 (36/38 = 95% concordancia, 0 sub-avisos, 2 sobre-avisos). Reporta ademas la concordancia **por nivel de minimos personales** (sin minimos 95%, PPL 89%, Alumno 74%) y verifica que en ninguno hay sub-avisos: el desvio es siempre por sobre-aviso. Validez de constructo, no empirica. |
@@ -230,7 +230,10 @@ Activados por tokens en `ParsedWeather.wx_codes` o en periodos TAF activos:
 HARD_BLOCKER_TOKENS = {"TS", "TSRA", "TSGR", "GR", "FC", "VA", "FZRA", "FZDZ"}
 ```
 
-Ademas: `visibility_km < 1.5` o `ceiling_ft < 500` en observacion actual.
+Ademas: `visibility_km < 3.0` o `ceiling_ft < 500` en las condiciones del momento evaluado.
+Estos dos limites son una decision del sistema, no una norma: el minimo VFR de la
+regulacion es 5 km / 1000 ft, y entre ambos el veredicto sale del puntaje y la barrera.
+Hasta septiembre de 2026 el limite de visibilidad era 1.5 km.
 
 Si cualquier hard blocker esta activo → NO GO inmediato, sin calcular score.
 
@@ -463,7 +466,7 @@ y en millas terrestres, SIN sufijo; el parser la tomaba como metros:
 
 ```
 TAF SAEZ: "... 4000 BR ..."        la API devuelve  '2.49'  (millas)
-    parser:  2.49 / 1000 = 0.002 km   -> debajo del bloqueo duro de 1.5 km -> NO GO
+    parser:  2.49 / 1000 = 0.002 km   -> debajo del bloqueo duro de entonces (1.5 km) -> NO GO
     real  :  2.49 x 1.609 = 4.01 km   -> perfectamente operable
 ```
 

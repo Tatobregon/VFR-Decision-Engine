@@ -173,7 +173,7 @@ Ninguna lo hizo.
 ## Cómo decide
 
 **1. Bloqueos absolutos** → NO GO inmediato, sin calcular score: tormenta (TS/TSRA/TSGR),
-granizo, engelamiento (FZRA/FZDZ), ceniza volcánica, tornado, visibilidad < 1.5 km o
+granizo, engelamiento (FZRA/FZDZ), ceniza volcánica, tornado, visibilidad < 3 km o
 techo < 500 ft. También vuelo nocturno en VFR y NOTAM de cierre total.
 
 **2. Score compensatorio** `R = Σ wᵢ·rᵢ`, con pesos derivados por **AHP**

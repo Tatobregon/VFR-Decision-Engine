@@ -19,12 +19,14 @@ construye a partir de la NORMATIVA vigente y del criterio aeronautico estandar:
     La etiqueta es la "verdad" contra la cual se calibra; por eso debe ser
     independiente del propio motor de scoring.
 
-  * La componente de visibilidad/techo se etiqueta con la MISMA categoria
-    ANAC/OACI que ya calcula el sistema (`_compute_flight_category`), de modo
-    que la referencia no introduce un criterio nuevo ni arbitrario:
-        VFR            -> GO      (dentro de minimos legales VFR)
-        VFR marginal   -> CAUTION (por debajo del minimo VFR, aun operable)
-        IFR / bajo min -> NO GO   (claramente fuera de VFR)
+  * La componente de visibilidad/techo se etiqueta con la MISMA categoria de
+    vuelo que ya calcula el sistema (`_compute_flight_category`), de modo que
+    la referencia no introduce un criterio nuevo:
+        VFR            -> GO      (en o sobre el minimo VFR: 5 km y 1000 ft)
+        VFR marginal   -> CAUTION (bajo el minimo VFR: advertencia, no autoriza)
+        IFR / bajo min -> NO GO   (bajo 3 km o 500 ft: rechazo del sistema)
+    Solo el corte de GO es un minimo de la regulacion. El de NO GO es una
+    decision del sistema: la misma que aplica risk/hard_blockers.py.
 
   * El viento cruzado, las rafagas, la niebla, los fenomenos y la tendencia TAF
     votan por umbrales relativos al limite de CADA aeronave (regla de
@@ -41,8 +43,12 @@ es una medida real, no una tautologia.
 ALCANCE DE ESA INDEPENDENCIA — leer antes de citar la concordancia
 ------------------------------------------------------------------
 La afirmacion anterior vale PARA VISIBILIDAD Y TECHO, donde la etiqueta usa los
-cortes de la categoria ANAC/OACI (5 km, 1000 ft) y el motor usa rampas que no
+cortes de la categoria de vuelo (5 km, 1000 ft) y el motor usa rampas que no
 coinciden con ellos. Vale tambien para fenomenos wx y tendencia TAF.
+
+NO vale para el corte de NO GO por visibilidad y techo (3 km, 500 ft): la
+etiqueta y el rechazo categorico del motor aplican el mismo limite, asi que
+ahi la coincidencia tambien es por construccion.
 
 NO vale para VIENTO CRUZADO ni para RAFAGAS. En esos dos factores la etiqueta
 aplica las MISMAS fracciones del limite de la aeronave que la barrera
@@ -164,7 +170,7 @@ def normative_label(sc: Scenario) -> str:
     Veredicto de referencia derivado de normativa + criterio, NO del score.
 
     Es el peor voto entre estas componentes:
-      1. Visibilidad/techo : categoria ANAC/OACI del sistema.
+      1. Visibilidad/techo : categoria de vuelo del sistema.
       2. Viento cruzado    : fraccion del maximo demostrado de la aeronave,
                              calculado sobre la RAFAGA (peor instante).
       3. Niebla            : spread termico <= 2 C -> deterioro probable.
@@ -175,7 +181,7 @@ def normative_label(sc: Scenario) -> str:
     """
     prof = get_profile(sc.aircraft)
 
-    # 1. Referencia visual (categoria ANAC/OACI, misma fuente que el sistema)
+    # 1. Referencia visual (categoria de vuelo, misma fuente que el sistema)
     cat = _compute_flight_category(sc.vis_km, sc.ceiling_ft)
     vote_vis = {
         "VFR":              "GO",

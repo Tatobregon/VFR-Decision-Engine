@@ -6,7 +6,7 @@ necesidad de calcular el soft scoring.
 
 Hard blockers definidos (CLAUDE.md):
   - Tokens wx: TS, TSRA, TSGR, GR, FC, VA, FZRA, FZDZ
-  - Visibilidad < 1.5 km en la observacion actual
+  - Visibilidad < 3 km en la observacion actual
   - Techo < 500 ft AGL en la observacion actual
 
 Si cualquier hard blocker esta activo → NO GO. El risk engine no calcula
@@ -43,8 +43,14 @@ HARD_BLOCKER_TOKENS = frozenset({
     "FZDZ",  # llovizna engelante
 })
 
-VIS_HARD_LIMIT_KM  = 1.5    # km: visibilidad minima absoluta
-CEIL_HARD_LIMIT_FT = 500    # ft: techo minimo absoluto
+# Limites de rechazo categorico de visibilidad y techo. NO son una norma: el
+# minimo VFR de la regulacion es 5 km y 1000 ft, y los minimos IFR dependen de
+# cada procedimiento publicado. Son una decision del sistema: por debajo de
+# estos valores la condicion esta tan lejos del minimo VFR que no queda nada que
+# ponderar. Coinciden con el extremo de riesgo maximo de las rampas de
+# risk/weights.py, y un test verifica que no se separen.
+VIS_HARD_LIMIT_KM  = 3.0    # km
+CEIL_HARD_LIMIT_FT = 500    # ft
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -162,8 +168,8 @@ if __name__ == "__main__":
         ("Lluvia engelante (FZRA)",       10.0, 1000,   ["FZRA"]),
         ("Llovizna engelante (FZDZ)",     10.0, 800,    ["FZDZ"]),
         ("Funnel cloud (FC)",             10.0, None,   ["FC"]),
-        ("Vis < 1.5 km",                   1.2, None,   []),
-        ("Vis exactamente en limite 1.5",  1.5, None,   []),
+        ("Vis < 3 km",                     2.5, None,   []),
+        ("Vis exactamente en limite 3",    3.0, None,   []),
         ("Techo < 500 ft",                10.0, 400,    []),
         ("Techo exactamente en limite",   10.0, 500,    []),
         ("Doble blocker: vis + TSRA",      1.0, None,   ["TSRA"]),
@@ -207,10 +213,10 @@ if __name__ == "__main__":
           check_hard_blockers(10.0, None, ["FC"]).is_blocked)
     check("vis=1.2 km: bloqueado",
           check_hard_blockers(1.2, None, []).is_blocked)
-    check("vis=1.5 km: NO bloqueado (exactamente en limite)",
-          not check_hard_blockers(1.5, None, []).is_blocked)
-    check("vis=1.4 km: bloqueado (< 1.5)",
-          check_hard_blockers(1.4, None, []).is_blocked)
+    check("vis=3.0 km: NO bloqueado (exactamente en limite)",
+          not check_hard_blockers(3.0, None, []).is_blocked)
+    check("vis=2.9 km: bloqueado (< 3)",
+          check_hard_blockers(2.9, None, []).is_blocked)
     check("ceil=400 ft: bloqueado",
           check_hard_blockers(10.0, 400, []).is_blocked)
     check("ceil=500 ft: NO bloqueado (exactamente en limite)",

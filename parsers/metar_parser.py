@@ -384,11 +384,15 @@ def _compute_flight_category(
     Si alguno de los dos valores es None, se asume condicion permisiva para
     esa variable (sin restriccion), consistente con "dato no disponible".
 
-    Umbrales ANAC/OACI:
-        VFR  : vis >= 5 km  AND  ceil >= 1000 ft
+    Umbrales:
+        VFR  : vis >= 5 km  AND  ceil >= 1000 ft   <- minimo VFR de la regulacion
         MVFR : vis >= 3 km  AND  ceil >=  500 ft  (peor que VFR)
         IFR  : vis >= 0.8km AND  ceil >=  200 ft  (peor que MVFR)
         LIFR : vis <  0.8km  OR  ceil <   200 ft
+
+    Solo el corte de VFR es un minimo de la regulacion. Los inferiores son una
+    escala del sistema para graduar cuanto se aleja la condicion de ese minimo:
+    los minimos IFR reales dependen de cada procedimiento publicado.
     """
     vis  = vis_km    if vis_km    is not None else 99.0
     ceil = ceiling_ft if ceiling_ft is not None else 99999

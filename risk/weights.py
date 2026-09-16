@@ -73,21 +73,24 @@ assert abs(W_VIS + W_CEIL + W_XWIND + W_GUST + W_WX + W_FOG + W_TAF - 1.0) < 1e-
 #   (J) JUICIO -> juicio declarado, sin anclaje normativo ni empirico
 #   (A) AERONAVE -> se deriva del perfil; no es un parametro libre del modelo
 #
-# Los limites de riesgo MAXIMO no son arbitrarios: coinciden exactamente con la
-# frontera de la categoria "IFR" de la tabla ANAC/OACI que aplica el sistema
-# (ver _compute_flight_category en parsers/metar_parser.py). Es decir, r_i = 1.0
-# ocurre justo donde la condicion deja de ser legalmente volable en VFR.
+# El minimo VFR de la regulacion es 5 km de visibilidad y 1000 ft de techo, y
+# cae DENTRO de las rampas (r = 0.60 y 0.67), no en uno de sus extremos.
 #
-# Los limites de riesgo NULO si son juicio: expresan "holgadamente por encima
-# del minimo", y el minimo VFR es 5 km / 1000 ft. El margen adoptado es de
-# 1.6x en visibilidad y 2x en techo. No hay norma ni evidencia que fije ese
-# margen; su efecto sobre el veredicto se acota por analisis de sensibilidad.
+# Los limites de riesgo MAXIMO coinciden con los de rechazo categorico del
+# sistema (risk/hard_blockers.py): por debajo de 3 km o de 500 ft el veredicto
+# es NO GO sin calcular puntaje. No son una frontera de la norma —los minimos
+# IFR dependen de cada procedimiento publicado—, sino una decision de diseno
+# declarada. Mover el extremo cambia la pendiente de la rampa por encima de el,
+# y ese efecto se mide en el analisis de sensibilidad.
+#
+# Los limites de riesgo NULO tambien son juicio: expresan "holgadamente por
+# encima del minimo VFR", con un margen de 1.6x en visibilidad y 2x en techo.
 
-VIS_RISK_MAX_KM   = 3.0    # (N) frontera IFR de la categoria ANAC/OACI
+VIS_RISK_MAX_KM   = 3.0    # (J) igual al rechazo categorico de visibilidad
 VIS_RISK_ZERO_KM  = 8.0    # (J) minimo VFR (5 km) con margen de 1.6x
 
-CEIL_RISK_MAX_FT  = 500    # (N) frontera IFR de la categoria ANAC/OACI
-CEIL_RISK_ZERO_FT = 2000   # (J) referencia VFR (1000 ft) con margen de 2x
+CEIL_RISK_MAX_FT  = 500    # (J) igual al rechazo categorico de techo
+CEIL_RISK_ZERO_FT = 2000   # (J) minimo VFR (1000 ft) con margen de 2x
 
 FOG_RISK_MAX_C    = 2.0    # (J) spread al que la condensacion se considera inminente
 FOG_RISK_ZERO_C   = 5.0    # (J) spread por encima del cual no se computa riesgo
@@ -128,7 +131,7 @@ def r_visibility(vis_km: Optional[float]) -> float:
     Score de riesgo por visibilidad.
 
     Rampa lineal:
-      vis <= 3.0 km  → 1.0  (IFR/LIFR, bien por debajo del minimo VFR)
+      vis <= 3.0 km  → 1.0  (por debajo, NO GO por rechazo categorico)
       vis >= 8.0 km  → 0.0  (excelente visibilidad)
       None           → 0.0  (sin dato: tratado como permisivo)
     """
@@ -146,7 +149,7 @@ def r_ceiling(ceil_ft: Optional[int]) -> float:
     Score de riesgo por techo de nubes.
 
     Rampa lineal:
-      ceil <= 500 ft  → 1.0  (muy bajo, IFR)
+      ceil <= 500 ft  → 1.0  (por debajo, NO GO por rechazo categorico)
       ceil >= 2000 ft → 0.0  (holgado para VFR)
       None            → 0.0  (CLR o FEW/SCT: sin techo efectivo)
 
