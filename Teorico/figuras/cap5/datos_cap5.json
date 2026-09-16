@@ -1,0 +1,590 @@
+{
+ "bateria_matriz": {
+  "filas_sistema": [
+   "GO",
+   "CAUTION",
+   "NO GO"
+  ],
+  "columnas_referencia": [
+   "GO",
+   "CAUTION",
+   "NO GO"
+  ],
+  "valores": [
+   [
+    17,
+    0,
+    0
+   ],
+   [
+    2,
+    10,
+    0
+   ],
+   [
+    0,
+    0,
+    9
+   ]
+  ],
+  "umbrales": [
+   0.22,
+   0.59
+  ]
+ },
+ "curva_umbral": {
+  "t_caution": 0.59,
+  "t_go": [
+   0.05,
+   0.06,
+   0.07,
+   0.08,
+   0.09,
+   0.1,
+   0.11,
+   0.12,
+   0.13,
+   0.14,
+   0.15,
+   0.16,
+   0.17,
+   0.18,
+   0.19,
+   0.2,
+   0.21,
+   0.22,
+   0.23,
+   0.24,
+   0.25,
+   0.26,
+   0.27,
+   0.28,
+   0.29,
+   0.3,
+   0.31,
+   0.32,
+   0.33,
+   0.34,
+   0.35,
+   0.36,
+   0.37,
+   0.38,
+   0.39,
+   0.4,
+   0.41,
+   0.42,
+   0.43,
+   0.44,
+   0.45,
+   0.46,
+   0.47,
+   0.48,
+   0.49,
+   0.5,
+   0.51,
+   0.52,
+   0.53,
+   0.54,
+   0.55,
+   0.56,
+   0.57,
+   0.58
+  ],
+  "sobre_avisos": [
+   7,
+   5,
+   3,
+   3,
+   3,
+   3,
+   3,
+   3,
+   3,
+   3,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   2,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "sub_avisos": [
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "concordancia": [
+   31,
+   33,
+   35,
+   35,
+   35,
+   35,
+   35,
+   35,
+   35,
+   35,
+   36,
+   36,
+   36,
+   36,
+   36,
+   36,
+   36,
+   36,
+   36,
+   36,
+   36,
+   36,
+   36,
+   36,
+   36,
+   36,
+   36,
+   36,
+   36,
+   37,
+   37,
+   37,
+   37,
+   37,
+   37,
+   37,
+   37,
+   37,
+   37,
+   37,
+   37,
+   37,
+   37,
+   37,
+   37,
+   37,
+   38,
+   38,
+   38,
+   38,
+   38,
+   38,
+   38,
+   38
+  ],
+  "t_go_adoptado": 0.22,
+  "rango_optimo_grilla": [
+   0.34,
+   0.45
+  ],
+  "t_go_max_grilla": 0.45
+ },
+ "concordancia_por_nivel": [
+  {
+   "nivel": "(sin minimos)",
+   "acuerdos": 36,
+   "sobre_avisos": 2,
+   "sub_avisos": 0
+  },
+  {
+   "nivel": "Alumno",
+   "acuerdos": 27,
+   "sobre_avisos": 11,
+   "sub_avisos": 0
+  },
+  {
+   "nivel": "PPL",
+   "acuerdos": 34,
+   "sobre_avisos": 4,
+   "sub_avisos": 0
+  },
+  {
+   "nivel": "Avanzado",
+   "acuerdos": 36,
+   "sobre_avisos": 2,
+   "sub_avisos": 0
+  }
+ ],
+ "sensibilidad": {
+  "escenarios": 38,
+  "barras": [
+   {
+    "grupo": "Pesos",
+    "perturbacion": "Un peso por vez, ±20 % (peor caso)",
+    "cambios": 1
+   },
+   {
+    "grupo": "Pesos",
+    "perturbacion": "Siete pesos a la vez, ±20 % (peor sorteo)",
+    "cambios": 1
+   },
+   {
+    "grupo": "Umbrales",
+    "perturbacion": "Umbral inferior −0,05",
+    "cambios": 0
+   },
+   {
+    "grupo": "Umbrales",
+    "perturbacion": "Umbral inferior +0,05",
+    "cambios": 0
+   },
+   {
+    "grupo": "Umbrales",
+    "perturbacion": "Umbral superior −0,05",
+    "cambios": 1
+   },
+   {
+    "grupo": "Umbrales",
+    "perturbacion": "Umbral superior +0,05",
+    "cambios": 0
+   },
+   {
+    "grupo": "Rampas",
+    "perturbacion": "Visibilidad, riesgo nulo 8 → 10 km",
+    "cambios": 2
+   },
+   {
+    "grupo": "Rampas",
+    "perturbacion": "Visibilidad, riesgo nulo 8 → 6 km",
+    "cambios": 1
+   },
+   {
+    "grupo": "Rampas",
+    "perturbacion": "Visibilidad, riesgo máximo 3 → 3,6 km",
+    "cambios": 1
+   },
+   {
+    "grupo": "Rampas",
+    "perturbacion": "Visibilidad, riesgo máximo 3 → 2,4 km",
+    "cambios": 0
+   },
+   {
+    "grupo": "Rampas",
+    "perturbacion": "Techo, riesgo nulo 2000 → 3000 ft",
+    "cambios": 2
+   },
+   {
+    "grupo": "Rampas",
+    "perturbacion": "Techo, riesgo nulo 2000 → 1500 ft",
+    "cambios": 1
+   },
+   {
+    "grupo": "Rampas",
+    "perturbacion": "Techo, riesgo máximo 500 → 600 ft",
+    "cambios": 1
+   },
+   {
+    "grupo": "Rampas",
+    "perturbacion": "Techo, riesgo máximo 500 → 400 ft",
+    "cambios": 0
+   },
+   {
+    "grupo": "Rampas",
+    "perturbacion": "Niebla, riesgo nulo 5 → 7 °C",
+    "cambios": 1
+   },
+   {
+    "grupo": "Rampas",
+    "perturbacion": "Niebla, riesgo nulo 5 → 4 °C",
+    "cambios": 0
+   },
+   {
+    "grupo": "Barrera",
+    "perturbacion": "Piso de cruzado 0,85 → 0,60",
+    "cambios": 2
+   },
+   {
+    "grupo": "Barrera",
+    "perturbacion": "Piso de cruzado 0,85 → 0,68",
+    "cambios": 0
+   },
+   {
+    "grupo": "Barrera",
+    "perturbacion": "Piso de cruzado 0,85 → 1,02",
+    "cambios": 1
+   },
+   {
+    "grupo": "Barrera",
+    "perturbacion": "Piso de cruzado 0,85 → 1,11",
+    "cambios": 1
+   }
+  ],
+  "oat_cambios_totales": 4,
+  "oat_evaluaciones": 532,
+  "monte_carlo": {
+   "sorteos": 5000,
+   "estabilidad": 0.9907526315789473,
+   "peor_sorteo_sin_cambio": 0.9736842105263158,
+   "escenarios_que_nunca_cambian": 37
+  }
+ },
+ "asistente": {
+  "generado_unix": 1789152132,
+  "casos": 98,
+  "aciertos": 94,
+  "matriz": [
+   [
+    11,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    0,
+    17,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    1,
+    0,
+    13,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    0,
+    0,
+    0,
+    8,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    10,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    0,
+    10,
+    0,
+    0,
+    0
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    7,
+    0,
+    0
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    9,
+    0
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    9
+   ]
+  ],
+  "intenciones": [
+   "buscar_aerodromo",
+   "contacto_aerodromo",
+   "servicios_aerodromo",
+   "combustible_cercano",
+   "evaluar_meteo",
+   "atmosfera_en_punto",
+   "mejor_hora_para_salir",
+   "proponer_cambio_de_ruta",
+   "fuera_de_alcance"
+  ],
+  "metricas": [
+   {
+    "intencion": "buscar_aerodromo",
+    "casos": 11,
+    "precision": 0.9166666666666666,
+    "exhaustividad": 1.0,
+    "f1": 0.9565217391304348
+   },
+   {
+    "intencion": "contacto_aerodromo",
+    "casos": 17,
+    "precision": 1.0,
+    "exhaustividad": 1.0,
+    "f1": 1.0
+   },
+   {
+    "intencion": "servicios_aerodromo",
+    "casos": 15,
+    "precision": 1.0,
+    "exhaustividad": 0.8666666666666667,
+    "f1": 0.9285714285714286
+   },
+   {
+    "intencion": "combustible_cercano",
+    "casos": 8,
+    "precision": 0.8888888888888888,
+    "exhaustividad": 1.0,
+    "f1": 0.9411764705882353
+   },
+   {
+    "intencion": "evaluar_meteo",
+    "casos": 10,
+    "precision": 0.9090909090909091,
+    "exhaustividad": 1.0,
+    "f1": 0.9523809523809523
+   },
+   {
+    "intencion": "atmosfera_en_punto",
+    "casos": 10,
+    "precision": 0.9090909090909091,
+    "exhaustividad": 1.0,
+    "f1": 0.9523809523809523
+   },
+   {
+    "intencion": "mejor_hora_para_salir",
+    "casos": 8,
+    "precision": 1.0,
+    "exhaustividad": 0.875,
+    "f1": 0.9333333333333333
+   },
+   {
+    "intencion": "proponer_cambio_de_ruta",
+    "casos": 10,
+    "precision": 1.0,
+    "exhaustividad": 0.9,
+    "f1": 0.9473684210526316
+   },
+   {
+    "intencion": "fuera_de_alcance",
+    "casos": 9,
+    "precision": 1.0,
+    "exhaustividad": 1.0,
+    "f1": 1.0
+   }
+  ],
+  "f1_macro": 0.9568592552708854
+ }
+}
