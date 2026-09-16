@@ -42,13 +42,15 @@ es una medida real, no una tautologia.
 
 ALCANCE DE ESA INDEPENDENCIA — leer antes de citar la concordancia
 ------------------------------------------------------------------
-La afirmacion anterior vale PARA VISIBILIDAD Y TECHO, donde la etiqueta usa los
-cortes de la categoria de vuelo (5 km, 1000 ft) y el motor usa rampas que no
-coinciden con ellos. Vale tambien para fenomenos wx y tendencia TAF.
+La afirmacion anterior vale plenamente para FENOMENOS WX y TENDENCIA TAF.
 
-NO vale para el corte de NO GO por visibilidad y techo (3 km, 500 ft): la
-etiqueta y el rechazo categorico del motor aplican el mismo limite, asi que
-ahi la coincidencia tambien es por construccion.
+Para VISIBILIDAD Y TECHO vale solo a medias. Los cortes de la etiqueta los
+aplica tambien el motor: el rechazo categorico bajo 3 km / 500 ft y el piso de
+CAUTION bajo el minimo VFR de 5 km / 1000 ft. Por eso en esos factores la
+ausencia de sub-avisos es una garantia por construccion, no un resultado. Lo
+que el motor sigue decidiendo por su cuenta, con rampas que no coinciden con
+esos cortes, es cuanto SOBRE-avisa: NO GO dentro de la franja de advertencia,
+o CAUTION por encima del minimo.
 
 NO vale para VIENTO CRUZADO ni para RAFAGAS. En esos dos factores la etiqueta
 aplica las MISMAS fracciones del limite de la aeronave que la barrera

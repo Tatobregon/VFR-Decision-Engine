@@ -232,7 +232,8 @@ HARD_BLOCKER_TOKENS = {"TS", "TSRA", "TSGR", "GR", "FC", "VA", "FZRA", "FZDZ"}
 
 Ademas: `visibility_km < 3.0` o `ceiling_ft < 500` en las condiciones del momento evaluado.
 Estos dos limites son una decision del sistema, no una norma: el minimo VFR de la
-regulacion es 5 km / 1000 ft, y entre ambos el veredicto sale del puntaje y la barrera.
+regulacion es 5 km / 1000 ft, y entre ambos el veredicto sale del puntaje y la barrera,
+con piso de CAUTION bajo el minimo VFR.
 Hasta septiembre de 2026 el limite de visibilidad era 1.5 km.
 
 Si cualquier hard blocker esta activo → NO GO inmediato, sin calcular score.
@@ -302,7 +303,13 @@ solo 0.099 y daria GO). La barrera impone un PISO por factor y
 ```
 cruzado efectivo >= limite avion       → NO GO   cruzado >= 85%  del limite  → CAUTION
 niebla probable (r_fog >= 0.9)     → CAUTION     deterioro TAF (r_taf >= 0.6) → CAUTION
+vis < 5 km o techo < 1000 ft (bajo el minimo VFR, norma)              → CAUTION
 ```
+El piso del **minimo VFR** (septiembre 2026) existe porque la suma ponderada no lo
+garantizaba: con nivel Avanzado, visibilidad de 4.92 a 4.99 km y el resto ideal
+daba GO. Usa las mismas constantes que la categoria de vuelo (`VFR_MIN_VIS_KM`,
+`VFR_MIN_CEIL_FT` en `parsers/metar_parser.py`), asi que en visibilidad y techo **la
+ausencia de sub-avisos es una garantia por construccion**, no un resultado medido.
 El **cruzado efectivo se calcula sobre la RAFAGA**, no sobre el viento sostenido:
 es el peor instante que el avion va a encontrar. Por eso la rafaga no necesita un
 piso aparte — y tenerlo producia vetos con el viento alineado con la pista (ver

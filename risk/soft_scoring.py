@@ -14,8 +14,9 @@ Decision (compensatoria, umbrales calibrados en risk/calibration.py):
 
 La decision final combina esta decision compensatoria con una BARRERA
 NO-COMPENSATORIA (piso conjuntivo, ver conjunctive_floor): un factor showstopper
-individual (cruzado sobre el limite del avion, rafaga excesiva, niebla probable,
-deterioro TAF) impone un veredicto minimo, de modo que no quede diluido por el
+individual (cruzado sobre el limite del avion, visibilidad o techo bajo el minimo
+VFR, niebla probable, deterioro TAF) impone un veredicto minimo, de modo que no
+quede diluido por el
 promedio ponderado. decision = worst(umbral(R), piso_conjuntivo).
 
 Este modulo NO evalua hard blockers. El llamador debe verificar
@@ -48,6 +49,7 @@ try:
     from features.crosswind     import compute_crosswind_from_weather
     from features.fog_risk      import compute_fog_risk_from_weather
     from risk.personal_minima   import NEUTRAL
+    from parsers.metar_parser   import VFR_MIN_VIS_KM, VFR_MIN_CEIL_FT
 except ImportError:
     import sys as _sys
     import os as _os
@@ -61,6 +63,7 @@ except ImportError:
     from features.crosswind     import compute_crosswind_from_weather
     from features.fog_risk      import compute_fog_risk_from_weather
     from risk.personal_minima   import NEUTRAL
+    from parsers.metar_parser   import VFR_MIN_VIS_KM, VFR_MIN_CEIL_FT
 
 logger = logging.getLogger(__name__)
 
@@ -173,6 +176,19 @@ XWIND_CAUTION_FRACTION = 0.85     # >= 0.85 del limite -> CAUTION
 GUST_CAUTION_FRACTION = 0.85      # escala de referencia de r_gust (ya no veta)
 GUST_NOGO_FACTOR      = 1.5       # idem
 
+# ── Minimo VFR: piso de CAUTION ───────────────────────────────────────────────
+# PROCEDENCIA: (N) NORMA. El minimo VFR de la regulacion es 5 km de visibilidad
+# y 1000 ft de techo (VFR_MIN_VIS_KM y VFR_MIN_CEIL_FT, las mismas constantes que
+# usa la categoria de vuelo).
+#
+# Por debajo del minimo el veredicto nunca puede ser GO, y la suma ponderada no
+# lo garantizaba por si sola: con nivel Avanzado, visibilidad de 4.92 a 4.99 km y
+# el resto ideal, R quedaba apenas bajo el umbral de GO. El piso es CAUTION y no
+# NO GO: por encima del rechazo categorico (3 km / 500 ft) el sistema advierte, y
+# una advertencia no autoriza el vuelo. Se evalua sobre el valor observado o
+# pronosticado y no sobre el ajustado por minimos personales: la norma es la misma
+# para todos los pilotos.
+
 
 def conjunctive_floor(
     xw_eff_kt   : float,           # cruzado efectivo (con rafaga si la hay)
@@ -187,6 +203,10 @@ def conjunctive_floor(
     # un "Xwind 4.6 kt" en pantalla y los dos numeros parecen contradecirse,
     # cuando en realidad miden cosas distintas (sostenido contra rafaga).
     xw_con_rafaga : bool = False,
+    # Condiciones observadas o pronosticadas, SIN ajustar por minimos personales.
+    # None = sin dato: no impone piso, igual que en el resto del modelo.
+    visibility_km : float = None,
+    ceiling_ft    : int   = None,
 ) -> tuple:
     """
     Piso no-compensatorio. Devuelve (veredicto_piso, motivo).
@@ -196,6 +216,7 @@ def conjunctive_floor(
       - Cruzado efectivo >= XWIND_CAUTION_FRACTION del limite     -> CAUTION
       - Niebla probable (r_fog >= 0.9, spread bajo)               -> CAUTION
       - Deterioro pronosticado en TAF (r_taf >= 0.6)              -> CAUTION
+      - Visibilidad < 5 km o techo < 1000 ft (bajo el minimo VFR) -> CAUTION
 
     La RAFAGA no tiene piso propio: entra por su componente cruzado, que es lo
     que mide `xw_eff_kt`. Ver la justificacion en el bloque de constantes.
@@ -231,6 +252,16 @@ def conjunctive_floor(
     if r_taf >= 0.6:
         floor = _worst_verdict(floor, "CAUTION")
         reasons.append("deterioro pronosticado en el TAF (ventana de vuelo)")
+
+    # ── Minimo VFR (norma): nunca GO por debajo ───────────────────────────────
+    if visibility_km is not None and visibility_km < VFR_MIN_VIS_KM:
+        floor = _worst_verdict(floor, "CAUTION")
+        vis_txt = f"{visibility_km:.2f}".rstrip("0").rstrip(".")
+        reasons.append(f"visibilidad {vis_txt} km bajo el minimo VFR "
+                       f"({VFR_MIN_VIS_KM:g} km)")
+    if ceiling_ft is not None and ceiling_ft < VFR_MIN_CEIL_FT:
+        floor = _worst_verdict(floor, "CAUTION")
+        reasons.append(f"techo {ceiling_ft} ft bajo el minimo VFR ({VFR_MIN_CEIL_FT} ft)")
 
     return floor, "; ".join(reasons)
 
@@ -369,6 +400,8 @@ def compute_soft_score(
         gust_max_kt = aircraft.gust_max_kt,
         r_fog       = _r_fog,
         r_taf       = _r_taf,
+        visibility_km = weather.visibility_km,
+        ceiling_ft    = weather.ceiling_ft,
     )
 
     # Decision final = peor entre el score compensatorio y el piso conjuntivo.

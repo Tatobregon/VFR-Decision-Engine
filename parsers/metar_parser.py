@@ -374,6 +374,13 @@ def _is_variable_wind(raw_string: Optional[str], wind_dir: Optional[int]) -> boo
     return False
 
 
+# Minimo VFR de la regulacion: por debajo de cualquiera de los dos valores la
+# condicion no es VFR. Lo usan la categoria de vuelo y la barrera no-compensatoria
+# (risk/soft_scoring.py), para que las dos apliquen exactamente el mismo corte.
+VFR_MIN_VIS_KM  = 5.0
+VFR_MIN_CEIL_FT = 1000
+
+
 def _compute_flight_category(
     vis_km     : Optional[float],
     ceiling_ft : Optional[int],
@@ -402,7 +409,7 @@ def _compute_flight_category(
         return "IFR bajo mínimos"
     if vis < 3.0 or ceil < 500:
         return "IFR"
-    if vis < 5.0 or ceil < 1000:
+    if vis < VFR_MIN_VIS_KM or ceil < VFR_MIN_CEIL_FT:
         return "VFR marginal"
     return "VFR"
 

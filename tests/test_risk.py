@@ -441,3 +441,59 @@ def test_el_cruzado_que_veta_es_el_de_la_rafaga(weather):
     res = compute_soft_score(w, runway_heading=360, aircraft=ac)
     assert res.decision == "NO GO"
     assert "con rafaga" in res.guardrail_reason
+
+
+# ── Minimo VFR: nunca GO por debajo ───────────────────────────────────────────
+
+def _condicion_ideal(vis_km=10.0, techo_ft=None):
+    from parsers.metar_parser import ParsedWeather
+    return ParsedWeather(source="metar", station_id="TEST", obs_time=0,
+                         wind_dir=360, wind_spd_kt=5.0,
+                         visibility_km=vis_km, ceiling_ft=techo_ft,
+                         temp_c=20.0, dewpoint_c=10.0, spread_c=10.0, wx_codes=[])
+
+
+@pytest.mark.parametrize("perfil", PROFILE_NAMES)
+@pytest.mark.parametrize("nivel", ["Alumno", "PPL", "Avanzado"])
+def test_bajo_el_minimo_vfr_el_veredicto_nunca_es_go(perfil, nivel):
+    """
+    La suma ponderada sola no lo garantizaba: con nivel Avanzado, visibilidad de
+    4.92 a 4.99 km y el resto ideal, R quedaba apenas bajo el umbral de GO. Se
+    recorre toda la franja entre el rechazo categorico y el minimo VFR.
+    """
+    ac, pm = get_profile(perfil), get_minima(nivel)
+    visibilidades = [round(3.0 + i * 0.01, 2) for i in range(200)]    # 3.00 a 4.99 km
+    techos = list(range(500, 1000, 10))                                 # 500 a 990 ft
+    for vis in visibilidades:
+        r = compute_soft_score(_condicion_ideal(vis_km=vis), runway_heading=360,
+                               aircraft=ac, personal_minima=pm)
+        assert r.decision != "GO", f"GO con visibilidad {vis} km"
+    for techo in techos:
+        r = compute_soft_score(_condicion_ideal(techo_ft=techo), runway_heading=360,
+                               aircraft=ac, personal_minima=pm)
+        assert r.decision != "GO", f"GO con techo {techo} ft"
+
+
+def test_en_el_minimo_vfr_el_piso_no_actua():
+    piso, motivo = conjunctive_floor(
+        xw_eff_kt=0.0, xw_limit_kt=12.0, gust_kt=None, spd_kt=None,
+        gust_max_kt=20.0, r_fog=0.0, r_taf=0.0,
+        visibility_km=5.0, ceiling_ft=1000,
+    )
+    assert piso == "GO" and motivo == ""
+
+
+def test_el_piso_vfr_y_la_categoria_usan_el_mismo_corte():
+    """Si se separaran, la bateria y el motor dejarian de medir lo mismo."""
+    from parsers.metar_parser import (
+        VFR_MIN_VIS_KM, VFR_MIN_CEIL_FT, _compute_flight_category,
+    )
+    assert _compute_flight_category(VFR_MIN_VIS_KM, VFR_MIN_CEIL_FT) == "VFR"
+    assert _compute_flight_category(VFR_MIN_VIS_KM - 0.01, None) != "VFR"
+    assert _compute_flight_category(None, VFR_MIN_CEIL_FT - 1) != "VFR"
+    piso, motivo = conjunctive_floor(
+        xw_eff_kt=0.0, xw_limit_kt=12.0, gust_kt=None, spd_kt=None,
+        gust_max_kt=20.0, r_fog=0.0, r_taf=0.0,
+        visibility_km=VFR_MIN_VIS_KM - 0.01, ceiling_ft=None,
+    )
+    assert piso == "CAUTION" and "minimo VFR" in motivo
