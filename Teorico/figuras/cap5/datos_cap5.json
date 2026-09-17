@@ -405,7 +405,7 @@
   }
  },
  "asistente": {
-  "generado_unix": 1789152132,
+  "generado_unix": 1789670516,
   "casos": 98,
   "aciertos": 94,
   "matriz": [
@@ -422,14 +422,14 @@
    ],
    [
     0,
-    17,
+    16,
     0,
     0,
     0,
     0,
     0,
     0,
-    0
+    1
    ],
    [
     1,
@@ -492,9 +492,9 @@
     0,
     0,
     0,
-    1,
     0,
-    9,
+    0,
+    10,
     0
    ],
    [
@@ -532,8 +532,8 @@
     "intencion": "contacto_aerodromo",
     "casos": 17,
     "precision": 1.0,
-    "exhaustividad": 1.0,
-    "f1": 1.0
+    "exhaustividad": 0.9411764705882353,
+    "f1": 0.9696969696969697
    },
    {
     "intencion": "servicios_aerodromo",
@@ -559,9 +559,9 @@
    {
     "intencion": "atmosfera_en_punto",
     "casos": 10,
-    "precision": 0.9090909090909091,
+    "precision": 1.0,
     "exhaustividad": 1.0,
-    "f1": 0.9523809523809523
+    "f1": 1.0
    },
    {
     "intencion": "mejor_hora_para_salir",
@@ -574,18 +574,18 @@
     "intencion": "proponer_cambio_de_ruta",
     "casos": 10,
     "precision": 1.0,
-    "exhaustividad": 0.9,
-    "f1": 0.9473684210526316
+    "exhaustividad": 1.0,
+    "f1": 1.0
    },
    {
     "intencion": "fuera_de_alcance",
     "casos": 9,
-    "precision": 1.0,
+    "precision": 0.9,
     "exhaustividad": 1.0,
-    "f1": 1.0
+    "f1": 0.9473684210526316
    }
   ],
-  "f1_macro": 0.9568592552708854
+  "f1_macro": 0.9587832571948872
  },
  "latencia": {
   "mediciones": {
@@ -654,8 +654,8 @@
   },
   "asistente": {
    "n": 98,
-   "media": 14.6,
-   "mediana": 9.59
+   "media": 5.75,
+   "mediana": 3.62
   }
  }
 }

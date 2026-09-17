@@ -27,6 +27,20 @@ Uso
     python -m copilot.evaluate              # corre y cachea
     python -m copilot.evaluate --forzar     # ignora el cache y vuelve a correr
     python -m copilot.evaluate --limite 10  # solo los primeros N casos
+    python -m copilot.evaluate --modelo gemini-3.5-flash-lite   # modelo fijado
+    python -m copilot.evaluate --cadena     # con la cadena de reserva del producto
+
+Un solo modelo por corrida
+--------------------------
+La cadena de reserva entre modelos es una caracteristica del PRODUCTO: si el
+primero no responde, contesta el siguiente y el piloto igual recibe su respuesta.
+Para MEDIR, en cambio, mezclar modelos invalida la metrica: un F1 calculado sobre
+respuestas de dos modelos distintos no describe a ninguno de los dos.
+
+Por eso la evaluacion fija un modelo unico y, ante una caida del proveedor,
+reintenta el MISMO caso en lugar de pasar al siguiente modelo. Si tras los
+reintentos sigue sin responder, la corrida se detiene: los casos ya resueltos
+quedan guardados y se retoma con el mismo comando, sin --forzar.
 
 El cache evita repetir la corrida completa contra el nivel gratuito, que a
 15 solicitudes por minuto tarda varios minutos.
@@ -45,13 +59,13 @@ from typing import Any, Dict, List, Optional
 
 try:
     from copilot.agent import CopilotAgent
-    from copilot.client import GeminiClient
+    from copilot.client import DEFAULT_MODELS, GeminiClient
     from copilot.eval_set import CASES, EvalCase
     from copilot.tools import INTENTS
 except ImportError:                                    # ejecucion como script
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from copilot.agent import CopilotAgent
-    from copilot.client import GeminiClient
+    from copilot.client import DEFAULT_MODELS, GeminiClient
     from copilot.eval_set import CASES, EvalCase
     from copilot.tools import INTENTS
 
@@ -83,8 +97,21 @@ RE_RECONOCE_AUSENCIA = re.compile(
 # Corrida
 # ──────────────────────────────────────────────────────────────────────────────
 
-def run(casos: List[EvalCase], forzar: bool = False) -> List[Dict[str, Any]]:
-    """Corre el conjunto contra el agente real, reutilizando el cache."""
+def run(
+    casos      : List[EvalCase],
+    forzar     : bool = False,
+    modelo     : str = "",
+    reintentos : int = 4,
+    espera_s   : float = 30.0,
+) -> List[Dict[str, Any]]:
+    """
+    Corre el conjunto contra el agente real, reutilizando el cache.
+
+    `modelo` fija un modelo unico para toda la corrida, sin cadena de reserva, de
+    modo que la metrica describa a un solo modelo. Ante una caida del proveedor se
+    reintenta el MISMO caso hasta `reintentos` veces, esperando `espera_s` entre
+    intentos: contar esa caida como error de clasificacion mediria otra cosa.
+    """
     previos: Dict[str, Dict[str, Any]] = {}
     if os.path.exists(RESULTS_PATH) and not forzar:
         try:
@@ -94,7 +121,8 @@ def run(casos: List[EvalCase], forzar: bool = False) -> List[Dict[str, Any]]:
         except (OSError, ValueError, KeyError):
             previos = {}
 
-    agente = CopilotAgent(GeminiClient())
+    cliente = GeminiClient(models=(modelo,)) if modelo else GeminiClient()
+    agente  = CopilotAgent(cliente)
     salida: List[Dict[str, Any]] = []
     nuevos = 0
 
@@ -109,8 +137,26 @@ def run(casos: List[EvalCase], forzar: bool = False) -> List[Dict[str, Any]]:
         print(f"  [{i:3d}/{len(casos)}] {c.pregunta[:58]:58s}", end="", flush=True)
         # El contexto de pantalla es parte del caso: hay intenciones que solo
         # existen con un vuelo cargado, y evaluarlas sin el mediria otra cosa.
-        ans = agente.ask(c.pregunta, context=c.contexto)
+        for intento in range(1, reintentos + 1):
+            ans = agente.ask(c.pregunta, context=c.contexto)
+            if not ans.error:
+                break
+            if intento < reintentos:
+                print(f" proveedor caido, reintento {intento}/{reintentos - 1} en {espera_s:.0f}s")
+                time.sleep(espera_s)
+                print(f"  [{i:3d}/{len(casos)}] {c.pregunta[:58]:58s}", end="", flush=True)
         nuevos += 1
+
+        if ans.error:
+            _guardar(salida)
+            raise SystemExit(
+                f"\n\n  El proveedor no respondio tras {reintentos} intentos en el caso {i}.\n"
+                f"  La corrida se detiene para no mezclar modelos ni contar la caida\n"
+                f"  como un error de clasificacion. Los {len(salida)} casos ya resueltos\n"
+                f"  quedaron guardados: volve a correr el mismo comando SIN --forzar\n"
+                f"  para retomar desde aca.\n"
+                f"  Ultimo error: {ans.error}\n"
+            )
 
         registro = {
             "pregunta"         : c.pregunta,
@@ -138,6 +184,15 @@ def run(casos: List[EvalCase], forzar: bool = False) -> List[Dict[str, Any]]:
         _guardar(salida)
 
     _guardar(salida)
+
+    usados = {r.get("modelo") for r in salida if r.get("modelo")}
+    if len(usados) > 1:
+        raise SystemExit(
+            f"\n  Los resultados mezclan modelos: {sorted(usados)}.\n"
+            f"  Una metrica consolidada sobre respuestas de modelos distintos no\n"
+            f"  describe a ninguno de ellos. Corre de nuevo con --forzar y un solo\n"
+            f"  --modelo.\n"
+        )
     return salida
 
 
@@ -244,7 +299,12 @@ def reportar(casos: List[Dict[str, Any]]) -> None:
     print("  EVALUACION DEL COPILOTO VFR")
     print("=" * 78)
     modelos = Counter(r.get("modelo") or "?" for r in casos)
-    print(f"\n  Casos: {n}   |   modelo: {', '.join(m for m, _ in modelos.most_common(2))}")
+    if len(modelos) == 1:
+        print(f"\n  Casos: {n}   |   modelo unico: {next(iter(modelos))}")
+    else:
+        print(f"\n  Casos: {n}   |   ATENCION: varios modelos {dict(modelos)}")
+        print("  Una metrica consolidada sobre modelos distintos no describe a ninguno:")
+        print("  volve a correr con --forzar y un solo --modelo.")
 
     # ── [1] Matriz de confusion ──────────────────────────────────────────────
     print("\n" + "-" * 78)
@@ -392,6 +452,13 @@ if __name__ == "__main__":
     ap.add_argument("--limite", type=int, default=0, help="solo los primeros N casos")
     ap.add_argument("--solo-reporte", action="store_true",
                     help="no consulta el modelo, solo reporta el cache")
+    ap.add_argument("--modelo", default=DEFAULT_MODELS[0],
+                    help="modelo unico de la corrida; por defecto, el titular de la cadena")
+    ap.add_argument("--cadena", action="store_true",
+                    help="usa la cadena de reserva del producto; la metrica resultante "
+                         "NO describe a un solo modelo")
+    ap.add_argument("--reintentos", type=int, default=4,
+                    help="intentos por caso ante una caida del proveedor")
     args = ap.parse_args()
 
     casos = list(CASES)[:args.limite] if args.limite else list(CASES)
@@ -400,8 +467,11 @@ if __name__ == "__main__":
         with open(RESULTS_PATH, encoding="utf-8") as fh:
             resultados = json.load(fh)["casos"]
     else:
+        modelo = "" if args.cadena else args.modelo
         print(f"\n  Corriendo {len(casos)} casos "
-              f"(pausa {_PAUSA_S}s por el limite del nivel gratuito)...\n")
-        resultados = run(casos, forzar=args.forzar)
+              f"(pausa {_PAUSA_S}s por el limite del nivel gratuito)")
+        print(f"  Modelo: {modelo or 'cadena de reserva del producto'}\n")
+        resultados = run(casos, forzar=args.forzar, modelo=modelo,
+                         reintentos=args.reintentos)
 
     reportar(resultados)

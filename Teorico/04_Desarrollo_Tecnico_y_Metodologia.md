@@ -437,9 +437,11 @@ cómo se construyeron y cómo se midió el resultado.
 
 **Acceso al modelo.** El modelo de lenguaje se consulta por solicitudes HTTP directas, con una
 cadena de reserva de tres modelos de la misma familia ordenada según la disponibilidad y la
-latencia medidas en el nivel gratuito del proveedor. Cada consulta admite hasta 600
-caracteres, conserva hasta 12 turnos de historial, tiene un tiempo máximo de espera de 15
-segundos por solicitud y un tope de tres vueltas de herramienta.
+latencia medidas en el nivel gratuito del proveedor. Esa cadena es una decisión de
+disponibilidad del producto y se desactiva durante la evaluación, como se explica más
+adelante. Cada consulta admite hasta 600 caracteres, conserva hasta 12 turnos de historial,
+tiene un tiempo máximo de espera de 15 segundos por solicitud y un tope de tres vueltas de
+herramienta.
 
 | Orden | Modelo |
 |---|---|
@@ -510,9 +512,11 @@ Sobre ese conjunto se calculan la matriz de confusión de intenciones, la precis
 exhaustividad y el F1 por intención, la exactitud en la resolución del aeródromo, la tasa de
 invención sobre datos ausentes, la integridad del veredicto y de los códigos, la latencia y el
 desagregado por región. Los resultados se almacenan en un archivo versionado y se presentan en
-el § 5.1. Una corrida se considera interpretable solo si ningún caso registra
-indisponibilidad del proveedor, porque el agente convierte esa indisponibilidad en una
-respuesta de fuera de alcance que la métrica computaría como error de clasificación.
+el § 5.1. La evaluación se corre con un **modelo único**, sin cadena de reserva: una métrica
+consolidada sobre respuestas de modelos distintos no describe a ninguno de ellos. Ante una
+indisponibilidad del proveedor, el evaluador reintenta el mismo caso en lugar de aceptar la
+respuesta de otro modelo, y si los reintentos se agotan detiene la corrida y la retoma después,
+de modo que una caída nunca se computa como error de clasificación ni mezcla modelos.
 
 **Una limitación del procedimiento.** El conjunto de evaluación se utilizó también durante el
 desarrollo: el ajuste de las descripciones de las herramientas se midió sobre él. No hay, por

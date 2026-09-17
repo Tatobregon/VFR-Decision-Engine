@@ -1025,35 +1025,39 @@ unico; exigir exclusividad producia una correccion falsa.
 de reserva) · `gemini-flash-lite-latest` rechaza `thinkingBudget=0` con 400 ·
 hay que reenviar el `content` del modelo TAL CUAL porque lleva `thoughtSignature`.
 
-**Resultados medidos** sobre los 98 casos de `copilot/eval_set.py`
-(modelo `gemini-flash-lite-latest`, que resuelve a `gemini-3.5-flash-lite`):
+**Resultados medidos** sobre los 98 casos de `copilot/eval_set.py`, 17/09/2026,
+**modelo unico `gemini-3.5-flash-lite`** (el titular de la cadena,
+`gemini-flash-lite-latest`, resuelve a ese mismo modelo):
 
 | Metrica | Valor |
 |---|---|
 | Exactitud de clasificacion de intencion | **94/98 = 95.9 %** |
-| F1 macro-promedio (9 intenciones) | **0.957** |
-| Exactitud de resolucion de aerodromo | **82/83 = 98.8 %** |
+| F1 macro-promedio (9 intenciones) | **0.959** |
+| Exactitud de resolucion de aerodromo | **81/82 = 98.8 %** |
 | **Tasa de invencion sobre datos ausentes** | **0 %** (0 de 9 con deteccion objetiva) |
-| Reconocimiento explicito de la ausencia | **11/11 = 100 %** |
+| Reconocimiento explicito de la ausencia | **10/11** (en el restante repregunto) |
 | Veredictos que hubo que forzar | **0 de 11** |
 | Codigos fabricados que hubo que corregir | **0** |
-| Latencia (media / mediana / p95) | 14.60 s / 9.59 s / 39.89 s |
+| Latencia (media / mediana / p95) | 5.75 s / 3.62 s / 19.68 s |
 
-> **La corrida tiene que estar limpia de caidas para poder leerse.** El nivel
-> gratuito devuelve 503 intermitentes y el agente degrada convirtiendo ese turno
-> en `fuera_de_alcance`, que la metrica cuenta como error de clasificacion. Una
-> corrida con 8 caidas dio 87.8 % y otra con 0, sobre el mismo codigo, dio
-> 95.9 %: la diferencia no era del clasificador. Antes de reportar un numero hay
-> que verificar cuantos casos traen el texto de indisponibilidad; el reporte
-> los distingue. Lo mismo vale al comparar entre versiones.
+> **Un solo modelo por corrida, y las caidas se reintentan.** La cadena de reserva
+> es del PRODUCTO: para medir, `--modelo` fija uno solo, porque un F1 sobre
+> respuestas de dos modelos distintos no describe a ninguno. Ante un 503, el
+> evaluador reintenta el MISMO caso (4 intentos, 30 s entre ellos) en vez de dejar
+> que conteste el siguiente modelo; si se agotan, corta la corrida y se retoma sin
+> `--forzar`. Si los resultados mezclan modelos, el reporte se niega a consolidar.
+> Historico: una corrida con 8 caidas degradadas daba 87.8 % y otra con 0, sobre el
+> mismo codigo, 95.9 %; esa diferencia no era del clasificador.
 
 **Comparacion con la version anterior**, que tenia 7 herramientas y 89 casos:
-intencion 96.6 % -> **95.9 %** y F1 macro 0.969 -> **0.957**, con una intencion
+intencion 96.6 % -> **95.9 %** y F1 macro 0.969 -> **0.959**, con una intencion
 mas y nueve casos mas. Practicamente plano: agregar la modificacion de ruta no
-degrado la clasificacion de las otras ocho. **La latencia si subio** (4.80 ->
-14.60 s de media) y tiene causa conocida: `proponer_cambio_de_ruta` calcula DOS
-rutas completas —la actual y la propuesta— y, si es escala, corre ademas una
-evaluacion meteorologica. Es el precio de que la propuesta traiga su costo y su
+degrado la clasificacion de las otras ocho. **La latencia** con modelo unico es de
+5.75 s de media; la corrida anterior, con cadena de reserva, daba 14.60 s porque
+sumaba los intentos fallidos contra el primer modelo. `proponer_cambio_de_ruta`
+sigue siendo la consulta mas cara: calcula DOS rutas completas —la actual y la
+propuesta— y, si es escala, corre ademas una evaluacion meteorologica. Es el
+precio de que la propuesta traiga su costo y su
 veredicto en vez de ser un boton a ciegas.
 
 **Contrastar las descripciones es lo que separa las intenciones vecinas**, y se
@@ -1061,11 +1065,13 @@ aplico dos veces con el mismo efecto y sin cambiar de modelo: primero al trio
 meteorologico (que `evaluar_meteo` es de SUPERFICIE contra una pista y
 `atmosfera_en_punto` es del AIRE sobre un punto de paso) y despues al agregar la
 modificacion de ruta, que competia con esas dos por las mismas frases. Las tres
-meteorologicas quedan ahora en F1 0.933-0.952 —bajaron de 1.000 al aparecer una
-cuarta vecina— y `fuera_de_alcance` y `contacto_aerodromo` dan 1.000.
+meteorologicas quedan en F1 0.933 (`mejor_hora_para_salir`), 0.952
+(`evaluar_meteo`) y 1.000 (`atmosfera_en_punto`); `proponer_cambio_de_ruta`
+tambien da 1.000, o sea que la cuarta vecina no se come a las otras.
 
-Por region: CUYO 12/12, LITORAL 14/14, PAMPA 30/30, PATAGONIA 18/19, NOA 10/12 —
-el comportamiento no depende de la region (regla de alcance).
+Por region: CUYO 12/12, LITORAL 14/14, PAMPA 29/30, PATAGONIA 18/19, NOA 11/12 y
+10/11 en los casos sin region asociada — el comportamiento no depende de la
+region (regla de alcance).
 
 **Los 4 desaciertos, analizados uno por uno** (la matriz de confusion NO se
 retoca, se informa el analisis por separado):
@@ -1079,19 +1085,22 @@ retoca, se informa el analisis por separado):
 3. *"como viene el dia en Piedra del Aguila?"* -> uso `evaluar_meteo` en vez de
    `mejor_hora_para_salir`. Las dos hablan del veredicto del mismo aerodromo;
    la respuesta fue correcta para un momento en vez de para el dia.
-4. *"puedo pasar por arriba de Tucuman sin aterrizar?"* -> uso
-   `atmosfera_en_punto` en vez de proponer el sobrevuelo. Es el borde que queda
-   entre las dos: la frase se puede leer como "que me encuentro ahi arriba" o
-   como "agregame ese punto". Contrastar las descripciones resolvio los otros
-   casos de esa familia, no este.
+4. *"a quien llamo en Cordoba?"* -> **pidio aclaracion** en vez de invocar
+   `contacto_aerodromo`, sin herramienta: "Cordoba" nombra mas de un aerodromo.
+   Repreguntar ante una ambiguedad es la conducta correcta, pero la metrica la
+   cuenta como desacierto porque no coincide con la intencion esperada. El
+   reporte los separa (`[PIDIO ACLARACION]` contra `[CONFUSION]`) y NO retoca
+   el conteo.
 
-Ninguno de los cuatro produjo una respuesta incorrecta o peligrosa.
+Ninguno de los cuatro produjo una respuesta incorrecta o peligrosa. El
+desacierto de *"puedo pasar por arriba de Tucuman sin aterrizar?"*, que la
+version anterior tenia, ya no aparece: `proponer_cambio_de_ruta` da F1 1.000.
 
-**La unica falla de resolucion** fue *"volvamos a la ruta directa, sacale el
-punto de paso"*, que **no nombra ningun aerodromo**: exigirle un codigo mide si
-el modelo lo INFIERE del contexto, que es otra cosa que la resolucion de
-entidad. La etiqueta se corrigio a `None` para las proximas corridas; el 98.8 %
-reportado es el medido antes de corregirla, o sea conservador.
+**La unica falla de resolucion** fue *"a quien llamo en Cordoba?"*: el conjunto
+espera SACO y el asistente **repregunto cual de los aerodromos de Cordoba**, sin
+invocar herramienta. Es conducta segura ante un nombre ambiguo, pero la metrica la
+cuenta como falla de resolucion y como desacierto de intencion, y por eso tambien
+el reconocimiento de ausencia queda en 10/11. El numero reportado es conservador.
 
 **Fuera de alcance, explicitamente**: uso en vuelo, GPS y cualquier fuente de datos
 nueva. La modificacion de ruta por lenguaje natural era la fase 2 y ya esta hecha,
@@ -1195,9 +1204,14 @@ Test standalone de un modulo (se conservan, son parte de la convencion del proye
 Evaluacion cuantitativa del copiloto (**si** sale a la red, ~7 min por el limite de
 15 solicitudes/min del nivel gratuito; cachea en `copilot/eval_results.json`):
 ```powershell
-.\.venv\Scripts\python.exe -m copilot.evaluate                # corre y cachea
+.\.venv\Scripts\python.exe -m copilot.evaluate                # corre y cachea (modelo titular)
 .\.venv\Scripts\python.exe -m copilot.evaluate --solo-reporte # solo reporta el cache
+.\.venv\Scripts\python.exe -m copilot.evaluate --forzar --modelo gemini-3.5-flash-lite
 ```
+Corre con un modelo unico y reintenta el MISMO caso ante un 503 (`--reintentos`,
+4 por defecto); si se agotan, corta y se retoma con el mismo comando SIN
+`--forzar`. `--cadena` usa la cadena de reserva del producto, pero entonces la
+metrica resultante **no describe a un solo modelo** y no se reporta.
 
 Si `python` o `git` no se reconocen en una terminal nueva, refrescar el PATH:
 ```powershell

@@ -1,5 +1,5 @@
 {
- "generado": 1789152132,
+ "generado": 1789670516,
  "casos": [
   {
    "pregunta": "cual es el codigo de La Cumbre?",
@@ -12,14 +12,14 @@
    "region": "PAMPA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "El aeródromo de La Cumbre tiene el código **SACC** (LA CUMBRE, Córdoba).",
+   "texto": "El aeródromo de La Cumbre tiene el código **SACC** (LA CUMBRE, CÓRDOBA).",
    "herramientas": [
     "buscar_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 2.11,
+   "latencia_s": 4.31,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -34,15 +34,15 @@
    "region": "LITORAL",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "El aeródromo de Apóstoles (código **APO**) se encuentra en la provincia de **Misiones**. Es un aeródromo privado y su elevación es de 384 pies.",
+   "texto": "El aeródromo de Apóstoles figura como **APO** (Apóstoles), ubicado en la provincia de Misiones. Su elevación es de 384 pies y es de condición privado.",
    "herramientas": [
     "buscar_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 35.81,
-   "modelo": "gemini-3.1-flash-lite",
+   "latencia_s": 3.5,
+   "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
   {
@@ -63,14 +63,14 @@
    "region": "LITORAL",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "En Misiones hay estos aeródromos registrados:\n\n* **SARI (Cataratas del Iguazú / My. D. C. E. Krause)** - Público\n* **SARP (Posadas / Libertador Gral. D. J. de San Martín)** - Público\n* **SATD (Aeroclub Alto Paraná El Dorado)** - Público\n* **SATI (Bernardo de Irigoyen)** - Público\n* **SATO (Oberá)** - Privado\n* **VTE (San Vicente)** - Público\n* **APO (Apóstoles)** - Privado\n* **JDA (Jardín de América)** - Privado",
+   "texto": "Encontré estos aeródromos en la provincia de Misiones:\n\n* **SARI** - Cataratas del Iguazú / My. D. C. E. Krause (Público)\n* **SARP** - Posadas / Libertador Gral. D. J. de San Martín (Público)\n* **SATD** - Aeroclub Alto Paraná El Dorado (Público)\n* **SATI** - Bernardo de Irigoyen (Público)\n* **SATO** - Oberá (Privado)\n* **VTE** - San Vicente (Público)\n* **APO** - Apóstoles (Privado)\n* **JDA** - Jardín de América (Privado)",
    "herramientas": [
     "buscar_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 3.94,
+   "latencia_s": 8.13,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -85,15 +85,15 @@
    "region": "PATAGONIA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "El aeródromo es **PUERTO DESEADO** y su código es **SAWD**.",
+   "texto": "El aeródromo de Puerto Deseado es **SAWD** (PUERTO DESEADO), provincia de Santa Cruz.",
    "herramientas": [
     "buscar_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 26.91,
-   "modelo": "gemini-3.1-flash-lite",
+   "latencia_s": 2.96,
+   "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
   {
@@ -107,14 +107,14 @@
    "region": "NOA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "El aeródromo registrado en la provincia de Salta es:\n\n* **SASA** - **SALTA / GENERAL D. MARTÍN MIGUEL DE GÜEMES** (Público, elevación 4088 ft). \n\nSi buscabas algún otro punto en la provincia que no aparezca con ese nombre, pasame la localidad exacta y lo busco.",
+   "texto": "Encontré un aerodromo en la provincia de Salta:\n\n* **SASA** (SALTA / GENERAL D. MARTÍN MIGuel DE GÜEMES) - Público (Elevación: 4088 ft)\n\nSi buscabas alguno en particular o querés consultar servicios, combustible o clima de este u otro aerodromo, decime.",
    "herramientas": [
     "buscar_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 10.25,
+   "latencia_s": 3.17,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -129,14 +129,14 @@
    "region": "NOA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "El aeródromo de Andalgalá, en la provincia de Catamarca, se identifica con el código **AND** (condición privado, elevación 2953 ft).",
+   "texto": "El aeródromo de Andalgalá se identifica con el código **AND**, ubicado en la provincia de Catamarca. Es de condición privado y su elevación es de 2953 pies.",
    "herramientas": [
     "buscar_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 11.09,
+   "latencia_s": 4.47,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -151,14 +151,14 @@
    "region": "PAMPA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Encontré el aeródromo **ATE** (**ZÁRATE**, provincia de Buenos Aires). Es de condición público y su elevación es de 85 ft.",
+   "texto": "Encontré el aerodromo **ATE** (ZÁRATE), ubicado en la provincia de BUENOS AIRES. Es de uso PÚBLICO y su elevación es de 85 ft.",
    "herramientas": [
     "buscar_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 38.17,
+   "latencia_s": 3.3,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -177,14 +177,14 @@
    "region": "PATAGONIA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Estos son los aeródromos registrados en la provincia de Tierra del Fuego, Antártida e Islas del Atlántico Sur:\n\n* **SAWE** (RÍO GRANDE) - Público\n* **SAWH** (USHUAIA / MALVINAS ARGENTINAS) - Público\n* **SAWB** (VICECOMODORO MARAMBIO) - Público\n* **SAWL** (TOLHUIN) - Privado\n* **EAU** (USHUAIA / EST. AERONAVAL) - Privado",
+   "texto": "Estos son los aeródromos registrados en la provincia de Tierra del Fuego, Antártida e Islas del Atlántico Sur:\n\n* **SAWE** - Río Grande (Público)\n* **SAWH** - Ushuaia / Malvinas Argentinas (Público)\n* **SAWB** - Vicecomodoro Marambio (Público)\n* **SAWL** - Tolhuin (Privado)\n* **EAU** - Ushuaia / Est. Aeronaval (Privado)\n\n¿Querés consultar los servicios, pistas o el estado de alguno en particular?",
    "herramientas": [
     "buscar_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 7.56,
+   "latencia_s": 3.71,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -199,14 +199,14 @@
    "region": "PATAGONIA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "El aeródromo de Alto Río Senguer es **SAVR** (ALTO RÍO SENGUER / D.C. SZLAPELIS), ubicado en la provincia de Chubut.",
+   "texto": "El código de Alto Río Senguer es **SAVR**, correspondiente al aeródromo **SAVR (ALTO RÍO SENGUER / D.C. SZLAPELIS)** en la provincia de Chubut.",
    "herramientas": [
     "buscar_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 36.46,
+   "latencia_s": 3.34,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -221,15 +221,15 @@
    "region": "PAMPA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "El aeródromo **AMG** (Ameghino, provincia de Buenos Aires) es de carácter privado y tiene una elevación de 361 pies.",
+   "texto": "El aeródromo **AMG** (AMEGHINO), en la provincia de Buenos Aires, es de condición privado y está a una elevación de 361 pies.",
    "herramientas": [
     "buscar_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 20.22,
-   "modelo": "gemini-3.1-flash-lite",
+   "latencia_s": 2.76,
+   "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
   {
@@ -243,14 +243,14 @@
    "region": "PAMPA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "En **ALT (Cruz Alta, Córdoba)** tenés los siguientes teléfonos publicados:\n\n* (03467) 421222\n* (03467) 401658\n* (03467) 15-438878 (Jefe de Aeródromo)",
+   "texto": "Para **ALT** (Cruz Alta, Córdoba), los teléfonos publicados son:\n\n* (03467) 421222\n* (03467) 401658\n* (03467) 15-438878 (Jefe de Aeródromo)",
    "herramientas": [
     "contacto_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 3.63,
+   "latencia_s": 42.7,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -265,15 +265,15 @@
    "region": "PAMPA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "El teléfono del jefe de aeródromo en **SACC (La Cumbre, Córdoba)** es **(03548) 15-463885**, a nombre de André Hediger. También figura el número (03548) 452544.",
+   "texto": "El teléfono publicado para el jefe de aeródromo de SACC (La Cumbre, Córdoba) es:\n\n* **(03548) 15-463885** (André Hediger - Jefe de Aeródromo)\n* **(03548) 452544** (alternativo publicado)",
    "herramientas": [
     "contacto_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 18.77,
-   "modelo": "gemini-3.1-flash-lite",
+   "latencia_s": 2.14,
+   "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
   {
@@ -287,14 +287,14 @@
    "region": "PATAGONIA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para contactar el aeródromo de **SAWD (PUERTO DESEADO, Santa Cruz)**:\n\n* Teléfono: (0297) 4872333",
+   "texto": "Para contactar el aeródromo **SAWD** (PUERTO DESEADO, Santa Cruz):\n\n* **Teléfono:** (0297) 4872333",
    "herramientas": [
     "contacto_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 3.21,
+   "latencia_s": 20.31,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -309,14 +309,14 @@
    "region": "PAMPA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Teléfonos publicados para **AGR** (Alta Gracia / Comandante Edmundo Osvaldo Weiss):\n\n* **(0351) 15-3487637** – Javier Masin (Jefe de Aeródromo)\n* **(0351) 15-8647779** – Lucas Laforte (Vicepresidente Aeroclub)\n* **(0351) 15-8014541** – Administración Aeroclub\n* **(0351) 15-3097464** – Encargado del Aeroclub\n* **(0351) 15-3487628** – Paracaidismo Alta Gracia",
+   "texto": "AGR (Alta Gracia / Comandante Edmundo Osvaldo Weiss):\n\n* (0351) 15-8647779 - Lucas Laforte (Vicepresidente Aeroclub)\n* (0351) 15-3487637 - Javier Masin (Jefe de Aeródromo)\n* (0351) 15-3487628 - Paracaidismo Alta Gracia\n* (0351) 15-3097464 - Encargado del Aeroclub\n* (0351) 15-8014541 - Administración Aeroclub",
    "herramientas": [
     "contacto_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 3.73,
+   "latencia_s": 18.94,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -331,14 +331,14 @@
    "region": "LITORAL",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "APO (Apóstoles, Misiones):\n\n* **(03758) 424731**\n* **(03758) 15-403309** - Jefe de Aeródromo",
+   "texto": "El aeródromo **APO** (Apóstoles, Misiones) tiene los siguientes teléfonos publicados:\n\n* (03758) 424731\n* (03758) 15-403309 (Jefe de Aeródromo)",
    "herramientas": [
     "contacto_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 8.24,
+   "latencia_s": 4.26,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -353,15 +353,15 @@
    "region": "NOA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para aterrizar en el aeródromo de **Andalgalá (AND)**, podés comunicarte con la Dirección Provincial de Aeronáutica de Catamarca al **(0383) 4437575/76**.",
+   "texto": "Para aterrizar en AND (ANDALGALÁ, Catamarca), el teléfono publicado es:\n\n* **Dirección Provincial de Aeronáutica de Catamarca:** (0383) 4437575/76.",
    "herramientas": [
     "contacto_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 20.56,
-   "modelo": "gemini-3.1-flash-lite",
+   "latencia_s": 8.53,
+   "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
   {
@@ -375,15 +375,15 @@
    "region": "PATAGONIA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para el aeródromo **SAVA (Piedra del Águila, Neuquén)**, el registro cuenta con el siguiente contacto:\n\n*   Teléfono: (02942) 493152",
+   "texto": "SAVA (Piedra del Águila):\n\n* Teléfono: (02942) 493152",
    "herramientas": [
     "contacto_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 19.43,
-   "modelo": "gemini-3.1-flash-lite",
+   "latencia_s": 18.84,
+   "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
   {
@@ -397,37 +397,32 @@
    "region": "PAMPA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Acá tenés los teléfonos publicados para **ARY (ARROYITO / ARCOR)**, Córdoba:\n\n* (03576) 15-653338\n* (03541) 15-595857 - Santiago Bernardi Bruera (Jefe de Aeródromo)\n* (03576) 421301",
+   "texto": "El teléfono publicado para **ARY** (ARROYITO / ARCOR, Córdoba):\n\n* (03576) 15-653338\n* (03541) 15-595857 - Santiago Bernardi Bruera (Jefe de Aeródromo)\n* (03576) 421301",
    "herramientas": [
     "contacto_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 7.08,
+   "latencia_s": 2.24,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
   {
    "pregunta": "a quien llamo en Cordoba?",
    "intent_esperado": "contacto_aerodromo",
-   "intent_obtenido": "contacto_aerodromo",
+   "intent_obtenido": "fuera_de_alcance",
    "codigo_esperado": "SACO",
-   "codigos_resueltos": [
-    "SACO"
-   ],
+   "codigos_resueltos": [],
    "region": "PAMPA",
    "sin_dato": true,
    "prohibido": "\\(\\s*\\d{3,5}\\s*\\)\\s*[\\d\\s\\-]{6,}|\\b\\d{2,4}\\s*-\\s*\\d{6,}\\b|\\b\\d{4}\\s*-\\s*\\d{4}\\b",
-   "texto": "Para **SACO (CÓRDOBA / ING. AER. A.L.V. TARAVELLA)**: el registro MADHEL no publica teléfonos (es un aeródromo controlado y sus datos de contacto se gestionan a través del AIP/AIS).",
-   "herramientas": [
-    "buscar_aerodromo",
-    "contacto_aerodromo"
-   ],
-   "grounded": true,
+   "texto": "¿A qué aeródromo de Córdoba te referís? Decime el nombre o el código y te busco los teléfonos.",
+   "herramientas": [],
+   "grounded": false,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 13.8,
+   "latencia_s": 1.19,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -442,14 +437,14 @@
    "region": "PATAGONIA",
    "sin_dato": true,
    "prohibido": "\\(\\s*\\d{3,5}\\s*\\)\\s*[\\d\\s\\-]{6,}|\\b\\d{2,4}\\s*-\\s*\\d{6,}\\b|\\b\\d{4}\\s*-\\s*\\d{4}\\b",
-   "texto": "El registro MADHEL no publica telefonos para el aerodromo **SAZS** (San Carlos de Bariloche, Río Negro) porque es un aerodromo controlado (estos datos suelen encontrarse en el AIP/AIS). Que no figuren aca no significa que no existan.",
+   "texto": "Para **SAZS (SAN CARLOS DE BARILOCHE)**, Río Negro, el registro MADHEL no publica teléfonos (es un aeródromo controlado y esos datos suelen estar en el AIP/AIS). Que no figuren acá no significa que no existan.",
    "herramientas": [
     "contacto_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 19.64,
+   "latencia_s": 3.26,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -464,14 +459,14 @@
    "region": "NOA",
    "sin_dato": true,
    "prohibido": "\\(\\s*\\d{3,5}\\s*\\)\\s*[\\d\\s\\-]{6,}|\\b\\d{2,4}\\s*-\\s*\\d{6,}\\b|\\b\\d{4}\\s*-\\s*\\d{4}\\b",
-   "texto": "Para el aeródromo SANC (Catamarca / Coronel Felipe Varela), el registro MADHEL no publica teléfonos (es un aeródromo controlado y esos datos figuran en el AIP/AIS). Que no figuren acá no significa que no existan.",
+   "texto": "Para **SANC** (CATAMARCA / Coronel Felipe Varela), el registro MADHEL no publica telefonos directos porque es un aerodromo controlado (estos datos figuran en el AIP/AIS). Que no figure aca no significa que no tenga.",
    "herramientas": [
     "contacto_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 2.39,
+   "latencia_s": 3.53,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -486,15 +481,15 @@
    "region": "LITORAL",
    "sin_dato": true,
    "prohibido": "\\(\\s*\\d{3,5}\\s*\\)\\s*[\\d\\s\\-]{6,}|\\b\\d{2,4}\\s*-\\s*\\d{6,}\\b|\\b\\d{4}\\s*-\\s*\\d{4}\\b",
-   "texto": "El registro MADHEL/ANAC no publica un número de contacto para el aeródromo de **Curuzú Cuatiá (SATU)**.",
+   "texto": "SATU (Curuzú Cuatiá, Corrientes): el registro MADHEL/ANAC no publica teléfonos para este aeródromo.",
    "herramientas": [
     "contacto_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 20.87,
-   "modelo": "gemini-3.1-flash-lite",
+   "latencia_s": 2.6,
+   "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
   {
@@ -508,14 +503,14 @@
    "region": "PAMPA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para **SACC (La Cumbre / Córdoba)**, el registro publica dos cabeceras de pista (misma pista en sentidos opuestos):\n\n* **Pista 14 / 32**: 1.250 metros de largo por 45 metros de ancho, superficie de tierra.",
+   "texto": "En **SACC (LA CUMBRE, CÓRDOBA)** tenés las siguientes pistas:\n\n* **Pista 14** (140°): 1250 m x 45 m, superficie **TIERRA**.\n* **Pista 32** (320°): 1250 m x 45 m, superficie **TIERRA**.",
    "herramientas": [
     "servicios_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 7.24,
+   "latencia_s": 15.96,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -530,14 +525,14 @@
    "region": "PAMPA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para ALT (Cruz Alta, Córdoba), las pistas son de **tierra** (799 x 20 metros).",
+   "texto": "La pista del aeródromo ALT (Cruz Alta, Córdoba) es de **tierra**.",
    "herramientas": [
     "servicios_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 6.02,
+   "latencia_s": 1.84,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -552,14 +547,14 @@
    "region": "NOA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "AND (Andalgalá, Catamarca) está a una elevación de **2.953 pies**.",
+   "texto": "El aeródromo de ANDALGALÁ (**AND**), en Catamarca, está a una elevación de **2.953 pies**.",
    "herramientas": [
     "servicios_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 3.6,
+   "latencia_s": 2.46,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -581,7 +576,7 @@
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 8.23,
+   "latencia_s": 3.07,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -596,14 +591,14 @@
    "region": "PATAGONIA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para el aeródromo **SAWD (PUERTO DESEADO)**, Santa Cruz:\n\n* **Pista 06 / 24:** 1.500 metros de largo y 30 metros de ancho, de asfalto (ASPH).",
+   "texto": "Para el aeródromo **SAWD (PUERTO DESEADO)**, provincia de Santa Cruz:\n\n* **Pista 06 / 24:** 1.500 metros de largo por 30 metros de ancho (superficie asfaltada - ASPH).",
    "herramientas": [
     "servicios_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 10.48,
+   "latencia_s": 2.79,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -618,14 +613,14 @@
    "region": "PAMPA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "En el aeródromo **SACC (LA CUMBRE)**, provincia de CÓRDOBA, hay una norma particular publicada:\n\n> Por encontrarse debajo del TMA la HGT MAX en el circuito de tránsito será de 1500 FT excepto que se obtenga el permiso de tránsito de la dependencia de control de tránsito aéreo correspondiente.",
+   "texto": "En SACC (LA CUMBRE, Córdoba) hay normas particulares publicadas:\n\n> Por encontrarse debajo del TMA la HGT MAX en el circuito de tránsito será de 1500 FT excepto que se obtenga el permiso de tránsito de la dependencia de control de tránsito aéreo correspondiente.",
    "herramientas": [
     "servicios_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 2.99,
+   "latencia_s": 2.24,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -640,15 +635,15 @@
    "region": "PATAGONIA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "El aerodromo de **Piedra del Águila (SAVA)** no es controlado (NON-CONTROLLED).",
+   "texto": "No, SAVA (PIEDRA DEL ÁGUILA, Neuquén) es no controlado (`NON-CONTROLLED`).",
    "herramientas": [
     "servicios_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 27.44,
-   "modelo": "gemini-3.1-flash-lite",
+   "latencia_s": 2.7,
+   "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
   {
@@ -662,14 +657,14 @@
    "region": "PAMPA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para el aeródromo **ATE** (ZÁRATE, Buenos Aires), las pistas registradas son:\n\n* Pista 010° (1200 m x 40 m, tierra)\n* Pista 190° (1200 m x 40 m, tierra)\n* Pista 090° (1350 m x 40 m, tierra)\n* Pista 270° (1350 m x 40 m, tierra)",
+   "texto": "En el aeródromo **ATE** (ZÁRATE, Buenos Aires), las pistas son de tierra y tienen los siguientes rumbos magnéticos:\n\n- Pista 01 / 19: rumbos 010° y 190° (1200 m x 40 m).\n- Pista 09 / 27: rumbos 090° y 270° (1350 m x 40 m).",
    "herramientas": [
     "servicios_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 6.09,
+   "latencia_s": 2.21,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -684,14 +679,14 @@
    "region": "PATAGONIA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "El aeródromo **SAVR** (Alto Río Senguer / D.C. Szlapelis) cuenta con dos pistas de **tierra**, ambas de 1400 metros de largo por 40 metros de ancho (rumbo 08/26).",
+   "texto": "Para el aeródromo **SAVR** (ALTO RÍO SENGUER / D.C. SZLAPELIS), Chubut:\n\n* **Pista 08 / 26**: 1400 m x 40 m de **tierra**.",
    "herramientas": [
     "servicios_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 6.42,
+   "latencia_s": 1.99,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -706,15 +701,15 @@
    "region": "PAMPA",
    "sin_dato": true,
    "prohibido": "\\bAVGAS\\b|\\bJET\\s*A\\b|\\b100\\s*LL\\b",
-   "texto": "En el aeródromo SACC (La Cumbre, Córdoba), el registro MADHEL/ANAC no publica el dato de combustible.\n\nTené en cuenta que la cobertura del registro es despareja y que el hecho de que no figure publicado no significa que no haya; te sugiero contactar directamente al aeródromo para confirmarlo. ¿Querés que busque un teléfono de contacto?",
+   "texto": "En **SACC (LA CUMBRE, CÓRDOBA)**, el registro MADHEL/ANAC no publica este dato para el aeródromo. \n\nRecordá que los aeródromos grandes o controlados suelen figurar vacíos porque sus datos se publican en el AIP, y que la cobertura del registro es parcial.",
    "herramientas": [
     "servicios_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 26.74,
-   "modelo": "gemini-3.1-flash-lite",
+   "latencia_s": 3.53,
+   "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
   {
@@ -728,14 +723,14 @@
    "region": "NOA",
    "sin_dato": true,
    "prohibido": "\\bAVGAS\\b|\\bJET\\s*A\\b|\\b100\\s*LL\\b",
-   "texto": "En AND (Andalgalá, Catamarca), el registro MADHEL/ANAC no publica este dato. Tampoco se encontraron aerodromos cercanos con combustible publicado en un radio de 150 km.\n\nAcordate que el registro MADHEL/ANAC tiene cobertura despareja: que un aerodromo no aparezca no significa que no tenga, sino que puede no estar publicado. Conviene confirmarlo por teléfono.",
+   "texto": "Para **AND (ANDALGALÁ)**, Catamarca, el registro MADHEL/ANAC no publica este dato (figura `publicado: false`). \n\nOjo: que no aparezca publicado no significa que no tenga nafta, ya que solo una minoría de aeródromos declara este dato en el registro y muchos operan con combustible pero no lo informan formalmente. \n\nTe sugiero verificar por teléfono antes de planificar la escala. ¿Querés que busque los teléfonos de contacto de Andalgala?",
    "herramientas": [
     "combustible_cercano"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 15.02,
+   "latencia_s": 2.63,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -750,14 +745,14 @@
    "region": "LITORAL",
    "sin_dato": true,
    "prohibido": null,
-   "texto": "Para el aeródromo APO (Apóstoles, Misiones), el registro MADHEL/ANAC no publica el horario de atención.",
+   "texto": "En el aeródromo APO (Apóstoles, Misiones), el registro MADHEL/ANAC no publica el horario de atención.",
    "herramientas": [
     "servicios_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 17.18,
+   "latencia_s": 2.56,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -777,14 +772,14 @@
    "region": "PAMPA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para SACC (LA CUMBRE, CÓRDOBA), el registro MADHEL/ANAC no publica el dato de combustible. \n\nCerca tenés estas opciones publicadas:\n\n* **JCM** (JUÁREZ CELMAN / BRIG. MY. JUAN IGNACIO SAN MARTÍN, CÓRDOBA) — a 42.1 km (AVGAS 100 LL)\n* **SACA** (CÓRDOBA / CAPITÁN D. OMAR DARÍO GELARDI - FADEA, CÓRDOBA) — a 55 km (AVGAS 100 LL / JET A-1)\n* **ESC** (CÓRDOBA / ESCUELA DE AVIACIÓN MILITAR, CÓRDOBA) — a 55.8 km (JET A1 - 100LL. Disponible O/R 24 HR antes, COOR (0351) 4333960 / (0351) 4333900 - RTI: 37238 / 37297.)\n* **RCR** (RÍO TERCERO, CÓRDOBA) — a 136.4 km (AVGAS 100 LL)\n* **OLV** (OLIVA, CÓRDOBA) — a 149.8 km (AVGAS 100 LL)\n\n*Importante:* Esta lista sale del registro MADHEL/ANAC, donde solo 110 de 561 aerodromos declaran combustible. Que un aerodromo no aparezca NO significa que no tenga: puede ser que no lo publique. Hay que confirmar por telefono antes de planificar la etapa.",
+   "texto": "Para **SACC (La Cumbre, Córdoba)** el registro no publica datos de combustible. Cerca tenés:\n\n* **JCM (Juárez Celman / Brig. My. Juan Ignacio San Martín)** a 42.1 km – AVGAS 100 LL\n* **SACA (Córdoba / Capitán D. Omar Darío Gelardi - Fadea)** a 55 km – AVGAS 100 LL / JET A-1\n* **ESC (Córdoba / Escuela de Aviación Militar)** a 55.8 km – JET A1 - 100LL (Disponible O/R 24 HR antes, COOR (0351) 4333960 / (0351) 4333900)\n* **RCR (Río Tercero)** a 136.4 km – AVGAS 100 LL\n* **OLV (Oliva)** a 149.8 km – AVGAS 100 LL\n\n*Atención: Esta lista sale del registro MADHEL/ANAC, donde solo 1 de cada 5 aeródromos declara combustible. Que un aeródromo no aparezca no significa que no tenga, sino que no lo publica. Confirmá siempre por teléfono antes de planificar.*",
    "herramientas": [
     "combustible_cercano"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 12.72,
+   "latencia_s": 3.99,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -807,15 +802,15 @@
    "region": "PAMPA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "En las cercanías de **ALT (Cruz Alta, Córdoba)**, que tiene **AVGAS 100 LL** publicado, encontré las siguientes opciones con combustible declarado en un radio de 150 km:\n\n*   **BTS (Corral de Bustos, Córdoba):** AVGAS 100 LL\n*   **GOM (Cañada de Gómez, Santa Fé):** AVGAS 100 LL\n*   **ILD (Casilda, Santa Fé):** AVGAS 100 LL\n*   **FIM (Firmat, Santa Fé):** AVGAS 100 LL\n*   **PLL (Pujato / La Lucía, Santa Fé):** AVGAS 100LL / JET A-1\n*   **VNO (Venado Tuerto, Santa Fé):** AVGAS 100 LL / JET A-1\n*   **PUP (Pujato / Pettilep, Santa Fé):** AVGAS 100LL\n*   **ETB (El Trébol, Santa Fé):** AVGAS 100 LL\n\n**Importante:** Esta lista sale del registro MADHEL/ANAC, donde solo 110 de 561 aeródromos declaran combustible. Que un aeródromo no aparezca en esta lista NO significa que no tenga: puede ser que simplemente no lo publique. Siempre debes confirmar por teléfono antes de planificar la escala. ¿Querés que busque el contacto de alguno de estos aeródromos?",
+   "texto": "**ALT (Cruz Alta, Córdoba)** tiene publicado AVGAS 100 LL. \n\nEn un radio de 150 km tenés estas opciones con combustible publicado:\n\n* **BTS (Corral de Bustos, Córdoba)** – Privado - 42.2 km (AVGAS 100 LL)\n* **GOM (Cañada de Gómez, Santa Fé)** – Público - 49.2 km (AVGAS 100 LL)\n* **ILD (Casilda, Santa Fé)** – Público - 58.8 km (AVGAS 100 LL)\n* **FIM (Firmat, Santa Fé)** – Privado - 60 km (AVGAS 100 LL)\n* **PLL (Pujato / La Lucía, Santa Fé)** – Privado - 72.2 km (AVGAS 100LL / JET A-1.)\n* **VNO (Venado Tuerto, Santa Fé)** – Público - 75.4 km (AVGAS 100 LL / JET A-1)\n* **PUP (Pujato / Pettilep, Santa Fé)** – Privado - 76.4 km (AVGAS 100LL)\n* **ETB (El Trébol, Santa Fé)** – Público - 88.7 km (AVGAS 100 LL)\n\n*Atento: esta lista sale del registro MADHEL/ANAC, donde solo una fracción de los aeródromos declara combustible. Que uno no aparezca no significa que no tenga, sino que no lo publica. Confirmá siempre por teléfono antes de planificar.*",
    "herramientas": [
     "combustible_cercano"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 25.75,
-   "modelo": "gemini-3.1-flash-lite",
+   "latencia_s": 2.98,
+   "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
   {
@@ -829,15 +824,15 @@
    "region": "PATAGONIA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "No se encontraron aeródromos con combustible publicado en un radio de 150 km de **SAWD (Puerto Deseado)**.\n\nTené en cuenta que esta información proviene del registro MADHEL/ANAC, donde solo 1 de cada 5 aeródromos declara sus servicios. Que un lugar no aparezca en esta búsqueda no significa que no tenga combustible, sino que no lo publica en el registro. **Es obligatorio confirmar por teléfono antes de planificar la etapa.**\n\n¿Querés que busque el teléfono de algún aeródromo cercano para que consultes?",
+   "texto": "El registro MADHEL/ANAC no publica combustible para Puerto Deseado (SAWD) ni arroja aeródromos con combustible publicado en un radio de 150 km.\n\nRecordá que el registro tiene cobertura despareja (solo 1 de cada 5 aeródromos declara combustible) y que no figure no significa que no tenga: hay que confirmar siempre por teléfono antes de planificar la etapa.",
    "herramientas": [
     "combustible_cercano"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 21.2,
-   "modelo": "gemini-3.1-flash-lite",
+   "latencia_s": 2.29,
+   "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
   {
@@ -852,14 +847,14 @@
    "region": "LITORAL",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para el aeródromo APO (Apóstoles, Misiones), el registro no publica datos de combustible. \n\nEn un radio de 150 km, el único que figura con combustible publicado es:\n- **SATO (Oberá, Misiones)**: privado, a 76.3 km. Tiene FUEL 100 LL (O/R).\n\nRecordá que esta lista sale del registro MADHEL/ANAC, donde solo 110 de 561 aeródromos declaran combustible. Que un aeródromo no aparezca no significa que no tenga, sino que puede no publicarlo. Con 刺繍 por teléfono antes de planificar la etapa.",
+   "texto": "Encontré la referencia **APO (APÓSTOLES)** en Misiones.\n\nAeródromo con combustible publicado en un radio de 150 km:\n\n* **SATO (OBERÁ)** (Misiones) — A 76.3 km. Combustible: FUEL 100 LL (O/R).\n\n*Advertencia de cobertura:* Esta lista sale del registro MADHEL/ANAC, donde solo 110 de 561 aeródromos declaran combustible. Que un aeródromo no aparezca NO significa que no tenga: puede ser que no lo publique. Hay que confirmar por teléfono antes de planificar la etapa.",
    "herramientas": [
     "combustible_cercano"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 36.99,
+   "latencia_s": 5.58,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -874,14 +869,14 @@
    "region": "NOA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para ANDALGALÁ (AND), Catamarca, el registro MADHEL/ANAC no publica combustible. \n\nEn un radio de 150 km no hay aeródromos con combustible publicado en el sistema. \n\n**Importante:** Esta lista sale del registro MADHEL/ANAC, donde solo 110 de 561 aeródromos declaran combustible. Que un aeródromo no aparezca NO significa que no tenga: puede ser que no lo publique. Hay que confirmar por teléfono antes de planificar la etapa.",
+   "texto": "En **AND (Andalgalá, Catamarca)** el registro MADHEL/ANAC no publica el dato de combustible. \n\nBuscando en un radio de 150 km, no hay aeródromos en la zona con combustible declarado en el registro.\n\n*Atención:* Esta lista sale del registro MADHEL/ANAC, donde solo 110 de 561 aeródromos declaran combustible. Que un aeródromo no aparezca en esta lista **no** significa que no tenga: puede ser que simplemente no lo publique. Hay que confirmar por teléfono antes de planificar la etapa.",
    "herramientas": [
     "combustible_cercano"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 11.83,
+   "latencia_s": 2.27,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -904,14 +899,14 @@
    "region": "PAMPA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para **ATE (ZÁRATE, Buenos Aires)**, el registro MADHEL/ANAC no publica el dato de combustible. \n\nAcá tenés las opciones publicadas más cerca en un radio de 150 km:\n\n* **GIL (SAN ANDRÉS DE GILES)** — 50.2 km | AVGAS 100 LL | Público\n* **CIF (ARRECIFES / AEROCLUB)** — 88.8 km | AVGAS 100LL | Privado\n* **SSK (SALTO / SKARE)** — 102.2 km | AVGAS 100 LL / JET A-1. | Público\n* **SRDB (BERAZATEGUI / ALAS DE MALVINAS)** — 106.7 km | AVGAS 100 LL (DLY 09:00 a 19:00 HR) | Público\n* **CNA (CAÑUELAS)** — 115.2 km | AVGAS 100 LL | Público\n* **BOS (LOBOS)** — 121.6 km | AVGAS 100 LL | Público\n* **CHY (CHIVILCOY)** — 128 km | AVGAS 100 LL | Público\n\n*Aviso:* Esta lista sale del registro MADHEL/ANAC, donde solo 110 de 561 aeródromos declaran combustible. Que un aeródromo no aparezca NO significa que no tenga: puede ser que no lo publique. Hay que confirmar por teléfono antes de planificar la etapa.",
+   "texto": "Para ZÁRATE (ATE), el registro MADHEL/ANAC no publica este dato.\n\nCerca de ahí (en un radio de 150 km) figuran estos aeródromos con AVGAS publicado:\n\n* **GIL (SAN ANDRÉS DE GILES)** - Público, a 50.2 km: AVGAS 100 LL\n* **CIF (ARRECIFES / AEROCLUB)** - Privado, a 88.8 km: AVGAS 100LL\n* **SSK (SALTO / SKARE)** - Público, a 102.2 km: AVGAS 100 LL / JET A-1.\n* **SRDB (BERAZATEGUI / ALAS DE MALVINAS)** - Público, a 106.7 km: AVGAS 100 LL (DLY 09:00 a 19:00 HR)\n* **CNA (CAÑUELAS)** - Público, a 115.2 km: AVGAS 100 LL\n* **BOS (LOBOS)** - Público, a 121.6 km: AVGAS 100 LL\n* **CHY (CHIVILCOY)** - Público, a 128 km: AVGAS 100 LL\n\n*(Nota: esta lista sale del registro MADHEL/ANAC, donde solo 110 de 561 aeródromos declaran combustible. Que un aeródromo no aparezca no significa que no tenga: puede ser que no lo publique. Hay que confirmar por teléfono antes de planificar la etapa).*",
    "herramientas": [
     "combustible_cercano"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 8.92,
+   "latencia_s": 4.64,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -927,15 +922,15 @@
    "region": "PATAGONIA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Encontré una opción con combustible publicado en un radio de 200 km de **SAVA (Piedra del Águila)**:\n\n*   **SAZW (Cutral Có)**: A 153.2 km, cuenta con **JET A1**.\n\n**Atención**: Esta lista proviene del registro MADHEL/ANAC, donde solo 110 de 561 aeródromos declaran combustible. Que un aeródromo no aparezca en esta lista no significa que no tenga: simplemente no lo publica. **Es obligatorio confirmar por teléfono antes de planificar la etapa.**",
+   "texto": "Para **SAVA (PIEDRA DEL ÁGUILA)**, Neuquén, el registro no publica datos de combustible. \n\nEn un radio de 200 km, el aeródromo con combustible publicado es:\n\n* **SAZW (CUTRAL CÓ)**, Neuquén (Público, a 153.2 km): JET A1.\n\n*Atención:* Esta lista sale del registro MADHEL/ANAC, donde solo 1 de cada 5 aeródromos declara combustible. Que un aeródromo no figure acá **no** significa que no tenga: puede ser que no lo publique. Confirmalo siempre por teléfono antes de planificar la etapa.",
    "herramientas": [
     "combustible_cercano"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 26.3,
-   "modelo": "gemini-3.1-flash-lite",
+   "latencia_s": 9.09,
+   "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
   {
@@ -949,14 +944,14 @@
    "region": "PAMPA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para SACC (LA CUMBRE, CÓRDOBA) mañana a las 09:00:\n\nVeredicto: **NO GO**.\n\nFactor dominante: Visibilidad 0.7 km < mínimo 1.5 km | Techo 120 ft < mínimo 500 ft.\nDato proveniente de pronóstico numérico NWP (no es una observación directa).",
+   "texto": "Para mañana a las 09:00 hora local en **SACC (La Cumbre, Córdoba)**, el sistema indica un veredicto **GO**. \n\nEl factor dominante evaluado es el viento cruzado y el dato proviene de un pronóstico numérico NWP. Tené en cuenta que la decisión final al mando es siempre tuya.",
    "herramientas": [
     "evaluar_meteo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 18.54,
+   "latencia_s": 8.03,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -971,7 +966,7 @@
    "region": "PAMPA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para el aeródromo **ALT** (Cruz Alta, Córdoba), el veredicto es **CAUTION**.\n\n* **Factor dominante:** crosswind (viento cruzado con ráfaga de 16 kt y riesgo de niebla por spread térmico bajo).\n* **Fuente:** pronóstico numérico NWP (no es una observación directa).",
+   "texto": "Para **ALT (Cruz Alta, Córdoba)**, el veredicto es **GO** (factor dominante: viento cruzado). \n\nEl dato proviene del pronóstico numérico NWP (pronóstico numérico, no una observación directa) evaluado para dentro de una hora.",
    "herramientas": [
     "buscar_aerodromo",
     "evaluar_meteo"
@@ -979,7 +974,7 @@
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 35.48,
+   "latencia_s": 6.91,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -994,14 +989,14 @@
    "region": "LITORAL",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para **APO (APÓSTOLES**, Misiones):\n\nVeredicto: **GO** (factor dominante: *crosswind*).\nFuente: pronóstico numérico NWP (no es una observación directa), evaluado para dentro de una hora.",
+   "texto": "**GO**. El veredicto para APO (Apóstoles, Misiones) hoy a las 15:31 es **GO**.\n\nEl dato surge del pronóstico numérico (NWP) y el factor dominante evaluado es el viento cruzado. La decisión final es siempre tuya al mando.",
    "herramientas": [
     "evaluar_meteo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 39.89,
+   "latencia_s": 3.74,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1016,14 +1011,14 @@
    "region": "PATAGONIA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para **SAWD (PUERTO DESEADO)**, Santa Cruz:\n\n* **Veredicto:** GO\n* **Factor dominante:** Viento cruzado\n* **Fuente:** Pronóstico numérico NWP (no es una observación directa)",
+   "texto": "Para SAWD (PUERTO DESEADO), Santa Cruz, el resultado para esta tarde es **NO GO**.\n\n* **Factor dominante:** crosswind\n* **Motivo:** viento cruzado con ráfaga 26 kt supera el límite del avión (18 kt)\n* **Fuente:** pronóstico numérico NWP (no es una observación directa)\n\nRecordá que la decisión final siempre es tuya. ¿Querés revisar otro horario o aeródromo?",
    "herramientas": [
     "evaluar_meteo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 68.08,
+   "latencia_s": 5.54,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1038,15 +1033,16 @@
    "region": "NOA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para el aeródromo AND (Andalgalá, Catamarca) mañana a las 08:00, el veredicto es **CAUTION**.\n\nEl factor dominante es **visibility**. Este informe proviene del pronóstico numérico NWP y no de una observación directa.",
+   "texto": "Para **AND (Andalgalá, Catamarca)** mañana a las 08:00 (mañana temprano), el veredicto es **GO**. \n\nEl dato surge del pronóstico numérico NWP (no es una observación directa) y el factor dominante evaluado fue el viento cruzado.",
    "herramientas": [
+    "buscar_aerodromo",
     "evaluar_meteo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 37.57,
-   "modelo": "gemini-3.1-flash-lite",
+   "latencia_s": 4.8,
+   "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
   {
@@ -1060,14 +1056,14 @@
    "region": "PAMPA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para **ATE (ZÁRATE, BUENOS AIRES)** con un Cessna 172 Skyhawk:\n\n* **Veredicto:** **GO**\n* **Factor dominante:** crosswind (viento cruzado)\n* **Fuente:** pronóstico numérico NWP (no es una observación directa).\n\nEvaluado para dentro de una hora. Recordá que la decisión final es siempre tuya al mando.",
+   "texto": "Para el aeródromo **ATE (ZÁRATE, BUENOS AIRES)** con un **Cessna 172 Skyhawk**, el veredicto es **GO**. \n\nEl factor dominante evaluado fue ráfagas, obtenido a través de un pronóstico numérico NWP (no es una observación directa).",
    "herramientas": [
     "evaluar_meteo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 7.89,
+   "latencia_s": 3.11,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1082,14 +1078,14 @@
    "region": "PATAGONIA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Evalué el aeródromo **SAVA (PIEDRA DEL ÁGUILA)**, Neuquén.\n\nVeredicto: **GO**  \nFactor dominante: **crosswind**  \nFuente: **pronóstico numérico NWP (no es una observación directa)**",
+   "texto": "Para SAVA (PIEDRA DEL ÁGUILA, Neuquén):\n\n* **Veredicto:** **GO**\n* **Factor dominante:** gusts (ráfagas)\n* **Fuente:** pronóstico numérico NWP (no es una observación directa)",
    "herramientas": [
     "evaluar_meteo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 17.57,
+   "latencia_s": 22.64,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1104,15 +1100,15 @@
    "region": "PAMPA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para el aerodromo **AGR (Alta Gracia / Comandante Edmundo Osvaldo Weiss)**, el veredicto es **GO**.\n\nEl factor dominante informado por el pronóstico numérico NWP es **crosswind**. Tené en cuenta que esta evaluación se basa en datos meteorológicos proyectados y no en una observación directa.",
+   "texto": "**AGR (ALTA GRACIA / COMANDANTE EDMUNDO OSVALDO WEISS)**: **GO**.\n\nFactor dominante: crosswind. Fuente: pronóstico numérico NWP (no es una observación directa).",
    "herramientas": [
     "evaluar_meteo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 24.88,
-   "modelo": "gemini-3.1-flash-lite",
+   "latencia_s": 3.1,
+   "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
   {
@@ -1126,14 +1122,14 @@
    "region": "PATAGONIA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para **SAVR (ALTO RÍO SENGUER / D.C. SZLAPELIS)**, Chubut, con un Diamond DA40:\n\n* **Veredicto:** **GO**\n* **Factor dominante:** crosswind\n* **Fuente:** pronóstico numérico NWP (no es una observación directa).",
+   "texto": "Para **SAVR (ALTO RÍO SENGUER / D.C. SZLAPELIS)**, Chubut, con el Diamond DA40:\n\n* **Veredicto:** **GO**\n* **Factor dominante:** ráfagas (`gusts`)\n* **Fuente:** pronóstico numérico NWP (no es una observación directa).",
    "herramientas": [
     "evaluar_meteo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 5.84,
+   "latencia_s": 8.29,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1146,12 +1142,12 @@
    "region": "-",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Eso no está en mi alcance. Puedo buscarte aerodromos, darte servicios, pistas, teléfonos, ver dónde cargar combustible, o evaluar las condiciones meteorológicas GO/CAUTION/NO GO para tu vuelo. ¿Te ayudo con algo de eso?",
+   "texto": "No me compete responder sobre geografía. Estoy para ayudarte con la planificación de vuelos VFR, aeródromos, meteorología, servicios y contactos en Argentina. \n\n¿Querés que busquemos algún aerodromo o consultemos el clima?",
    "herramientas": [],
    "grounded": false,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 1.4,
+   "latencia_s": 9.81,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1164,12 +1160,12 @@
    "region": "-",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "No tengo acceso a los NOTAM activos. Mi alcance incluye buscar aerodromos, ver sus servicios, teléfonos, estado del combustible, evaluar condiciones meteorológicas o consultar el estado del aire en altura. \n\n¿Querés que busque información operativa o el clima de algún aeródromo en Córdoba?",
+   "texto": "No tengo acceso a los NOTAM activos, ya que esa información no está en mi alcance. \n\nPuedo ayudarte a buscar aeródromos, consultar servicios, pistas, combustible, contactos, evaluar las condiciones meteorológicas (GO / CAUTION / NO GO) para un aeródromo o ver el estado del aire en altura. ¿Querés que busquemos algo de eso sobre Córdoba?",
    "herramientas": [],
    "grounded": false,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 2.18,
+   "latencia_s": 11.51,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1182,12 +1178,12 @@
    "region": "-",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Eso no está en mi alcance. No calculo peso y balance. \n\nSí puedo buscarte aeródromos, darte teléfonos, servicios y pistas, ver dónde repostar, evaluar el estado meteorológico GO / CAUTION / NO GO de un aeródromo, decirte a qué hora conviene salir o informarte el estado del aire en altura. ¿Te ayudo con algo de eso?",
+   "texto": "Eso está fuera de mi alcance. No puedo calcular peso y balance. \n\nSí puedo ayudarte con aeródromos argentinos (buscar códigos, ver pistas, servicios y teléfonos), informarte dónde hay combustible cerca, evaluar las condiciones meteorológicas (GO / CAUTION / NO GO) para despegar o aterrizar, decirte a qué hora conviene salir o darte el estado del aire en altura. ¿Te sirve alguna de esas cosas?",
    "herramientas": [],
    "grounded": false,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 1.96,
+   "latencia_s": 8.35,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1200,12 +1196,12 @@
    "region": "-",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Eso está fuera de mi alcance: no interpreto METARs crudos ni reportes meteorológicos en bruto. \n\nSí puedo evaluar las condiciones meteorológicas GO / CAUTION / NO GO para un aerodromo, ver la mejor hora para salir, o consultar el estado del aire en altura. ¿Querés que revise las condiciones de SACO u otro aeródromo?",
+   "texto": "Eso está fuera de mi alcance. No interpreto METARs crudos. \n\nSi querés saber si se puede operar en Córdoba (SACO), decime con qué aeronave volás y a qué hora tenés pensado salir, y te corro la evaluación meteorológica GO / CAUTION / NO GO.",
    "herramientas": [],
    "grounded": false,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 1.4,
+   "latencia_s": 1.29,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1218,12 +1214,12 @@
    "region": "-",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Eso está fuera de mi alcance: no doy consejos de pilotaje ni técnicas de vuelo. \n\nLo que sí puedo hacer es evaluar si las condiciones meteorológicas actuales de un aerodromo son aptas para operar tu aeronave, o buscarte servicios, pistas y contactos. ¿Querés que revise las condiciones en algún aeródromo en particular?",
+   "texto": "Eso está fuera de mi alcance: no doy consejos de pilotaje ni técnicas de vuelo. \n\nPuedo ayudarte a buscar aeródromos, ver sus servicios y pistas, consultar teléfonos, chequear si hay combustible cerca, evaluar la meteorología GO/CAUTION/NO GO para un vuelo o informarte el estado del aire en altura. ¿Te sirve algo de eso?",
    "herramientas": [],
    "grounded": false,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 1.93,
+   "latencia_s": 17.99,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1236,12 +1232,12 @@
    "region": "-",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "No tengo acceso a la normativa completa de las RAAC. Mi alcance se limita a buscar aerodromos, dar sus servicios, telefonos, veredictos meteorológicos de despegue y aterrizaje, y condiciones del aire en ruta. \n\nSi necesitás consultar sobre un aeródromo, ver su estado meteorológico o buscar combustible, decime y lo revisamos.",
+   "texto": "Eso no está en mi alcance. No tengo acceso a la normativa de las RAAC. \n\nTe puedo ayudar a buscar aeródromos, ver sus servicios, consultar teléfonos, evaluar condiciones meteorológicas para despegue o aterrizaje, buscar dónde cargar combustible o revisar el estado del aire en altura. ¿Querés que veamos algo de eso?",
    "herramientas": [],
    "grounded": false,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 11.98,
+   "latencia_s": 1.16,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1254,12 +1250,12 @@
    "region": "-",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "No puedo escribir poemas. Mi alcance es exclusivamente la planificacion de vuelo VFR en Argentina: busqueda de aerodromos, servicios, contactos, combustible, evaluacion meteorologica, analisis de puntos en altura y cambios de ruta. \n\nSi queres, decime de donde a donde vas a volar y revisamos las condiciones.",
+   "texto": "Eso está fuera de mi alcance: no escribo poesía ni textos creativos. \n\nPuedo ayudarte a buscar aeródromos, consultar servicios, ver teléfonos, evaluar condiciones meteorológicas para despegue o aterrizaje, buscar dónde cargar combustible o revisar el estado del aire en altura. Decime qué necesitas para planificar tu vuelo.",
    "herramientas": [],
    "grounded": false,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 1.46,
+   "latencia_s": 12.34,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1272,12 +1268,12 @@
    "region": "-",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Eso queda fuera de mi alcance. No manejo precios de mercado ni compraventa de aeronaves. \n\nTe puedo ayudar con datos operativos: buscar aeródromos, consultar servicios, pistas, teléfonos de contacto, ver dónde hay combustible publicado, evaluar la meteorología (GO / CAUTION / NO GO) para un aeródromo, o ver el estado del aire en altura. ¿Te sirve algo de eso?",
+   "texto": "Eso está fuera de mi alcance. No tengo información sobre mercado, precios de aeronaves ni costos de compraventa.\n\nPuedo ayudarte con información sobre aeródromos, teléfonos de contacto, servicios, combustible publicado, evaluación meteorológica para despegue y aterrizaje, o estado del aire en ruta. ¿Te sirve algo de eso?",
    "herramientas": [],
    "grounded": false,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 3.81,
+   "latencia_s": 1.14,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1290,12 +1286,12 @@
    "region": "-",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Eso no está a mi alcance. No tengo acceso al sistema de presentación de planes de vuelo ante ANAC. \n\nLo que sí puedo hacer es ayudarte con la planificación previa: evaluar las condiciones meteorológicas (GO / CAUTION / NO GO) para despegue y aterrizaje en un aeródromo, ver servicios y combustible publicados, buscar teléfonos o consultar el estado del aire en altura. \n\n¿Querés que revise las condiciones de algún aeródromo para tu vuelo?",
+   "texto": "No tengo acceso a los planes de vuelo presentados ante ANAC ni puedo consultar el sistema de despacho. Mi alcance es la planificación meteorológica y operativa de aeródromos (GO/CAUTION/NO GO), estado del aire en altura y servicios en tierra. \n\nSi necesitás verificar las condiciones meteorológicas, combustible o servicios de algún aeródromo para tu vuelo, decime el código o la ciudad y lo consultamos.",
    "herramientas": [],
    "grounded": false,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 11.04,
+   "latencia_s": 1.42,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1308,14 +1304,14 @@
    "region": "-",
    "sin_dato": true,
    "prohibido": "\\(\\s*\\d{3,5}\\s*\\)\\s*[\\d\\s\\-]{6,}|\\b\\d{2,4}\\s*-\\s*\\d{6,}\\b|\\b\\d{4}\\s*-\\s*\\d{4}\\b",
-   "texto": "El aerodromo San Fantasma no figura en el registro MADHEL/ANAC. Revisá el nombre o la ciudad para buscarlo de nuevo.",
+   "texto": "El aeródromo \"San Fantasma\" no figura en el registro MADHEL/ANAC. Revisá el nombre o decime otro para buscar el contacto.",
    "herramientas": [
     "contacto_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 2.82,
+   "latencia_s": 1.93,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1328,14 +1324,14 @@
    "region": "-",
    "sin_dato": true,
    "prohibido": null,
-   "texto": "El aeródromo de Wakanda no figura en el registro MADHEL/ANAC. Revisá el nombre o probá con otro aeródromo.",
+   "texto": "El aeródromo de Wakanda no figura en el registro MADHEL/ANAC. Revisá el nombre o probá con otro aeródromo para que pueda buscarte sus datos.",
    "herramientas": [
     "buscar_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 5.36,
+   "latencia_s": 2.15,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1348,14 +1344,14 @@
    "region": "PAMPA",
    "sin_dato": true,
    "prohibido": "\\(\\s*\\d{3,5}\\s*\\)\\s*[\\d\\s\\-]{6,}|\\b\\d{2,4}\\s*-\\s*\\d{6,}\\b|\\b\\d{4}\\s*-\\s*\\d{4}\\b",
-   "texto": "No figura ningún aerodromo llamado Los Cardales en el registro MADHEL/ANAC. Revisá el nombre o probá con la localidad o código cercano.",
+   "texto": "No figura ningún aeródromo llamado Los Cardales en el registro MADHEL. Revisá el nombre o probá con la localidad o código cercano.",
    "herramientas": [
     "contacto_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 8.48,
+   "latencia_s": 4.34,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1370,14 +1366,14 @@
    "region": "CUYO",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "El código de Chilecito es **SANO** (CHILECITO / BRIG. MY. JUAN FACUNDO QUIROGA, La Rioja).",
+   "texto": "El aeródromo de Chilecito es **SANO** (CHILECITO / BRIG. MY. JUAN FACUNDO QUIROGA), en la provincia de La Rioja.",
    "herramientas": [
     "buscar_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 57.37,
+   "latencia_s": 1.94,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1392,14 +1388,14 @@
    "region": "CUYO",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "En SACT (Chamical / Gobernador Gordillo) tenés los siguientes teléfonos publicados:\n\n* (03826) 429608\n* (03826) 429609\n* (03826) 429610\n* (011) 43176000 - (Conmutador) Int. 39810",
+   "texto": "Para **SACT (Chamical / Gobernador Gordillo)** tenés los siguientes teléfonos publicados:\n\n* (03826) 429608\n* (03826) 429609\n* (03826) 429610\n* (011) 43176000 (Conmutador, Int. 39810)",
    "herramientas": [
     "contacto_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 5.53,
+   "latencia_s": 2.14,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1414,14 +1410,14 @@
    "region": "CUYO",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para **TLS (TILISARAO, SAN LUIS)**, el registro publica los siguientes teléfonos:\n\n* (02652) 15-298046 - Eduardo Plaza (Jefe de Aeródromo)\n* (0266) 4865012\n* (0358) 15-6543449",
+   "texto": "Para **TLS (Tilisarao, San Luis)**, los teléfonos publicados son:\n\n* (02652) 15-298046 — Eduardo Plaza (Jefe de Aeródromo)\n* (0266) 4865012\n* (0358) 15-6543449",
    "herramientas": [
     "contacto_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 3.65,
+   "latencia_s": 2.19,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1436,15 +1432,15 @@
    "region": "CUYO",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "El aerodromo de **Chilecito / Brig. My. Juan Facundo Quiroga (SANO)** cuenta con una pista asfaltada (ASPH) de 2100 metros de largo por 34 metros de ancho, con designaciones 17 (rumbo 170°) y 35 (rumbo 350°).",
+   "texto": "SANO (CHILECITO / BRIG. MY. JUAN FACUNDO QUIROGA):\n\n* **Pista 17**: 170° de rumbo magnético, 2100 m de largo por 34 m de ancho, superficie de asfalto (ASPH).\n* **Pista 35**: 350° de rumbo magnético, 2100 m de largo por 34 m de ancho, superficie de asfalto (ASPH).",
    "herramientas": [
     "servicios_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 20.16,
-   "modelo": "gemini-3.1-flash-lite",
+   "latencia_s": 2.12,
+   "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
   {
@@ -1458,14 +1454,14 @@
    "region": "CUYO",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para **SACT (CHAMICAL / GOBERNADOR GORDILLO)**, el registro publica las siguientes normas particulares:\n\n* **Normas particulares:** Uso exclusivo para operaciones militares. Podrán operar otras aeronaves, expresamente autorizadas por la Fuerza Aérea Argentina y con una antelación de 24 hs.",
+   "texto": "En SACT (CHAMICAL / GOBERNADOR GORDILLO) hay normas particulares publicadas:\n\n* Uso exclusivo para operaciones militares. Podrán operar otras aeronaves, expresamente autorizadas por la Fuerza Aérea Argentina y con una antelación de 24 hs.",
    "herramientas": [
     "servicios_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 42.89,
+   "latencia_s": 2.66,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1480,14 +1476,14 @@
    "region": "CUYO",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "En **SACT (CHAMICAL / GOBERNADOR GORDILLO)**, el registro MADHEL/ANAC no publica este dato para el aerodromo.\n\nBuscando en un radio de 150 km, no hay aeródromos con combustible publicado en el registro.\n\n*Esta lista sale del registro MADHEL/ANAC, donde solo 110 de 561 aeródromos declaran combustible. Que un aeródromo no aparezca NO significa que no tenga: puede ser que no lo publique. Hay que confirmar por teléfono antes de planificar la etapa.*",
+   "texto": "Para SACT (CHAMICAL / GOBERNADOR GORDILLO, La Rioja), el registro MADHEL/ANAC no publica datos de combustible. \n\nEn un radio de 150 km no hay aeródromos con combustible declarado en el sistema.\n\n*Atención:* Esta lista sale del registro MADHEL/ANAC, donde solo 110 de 561 aeródromos declaran combustible. Que un aeródromo no aparezca NO significa que no tenga: puede ser que no lo publique. Hay que confirmar por teléfono antes de planificar la etapa.",
    "herramientas": [
     "combustible_cercano"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 3.42,
+   "latencia_s": 2.97,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1502,14 +1498,14 @@
    "region": "CUYO",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para SANO (CHILECITO / BRIG. MY. JUAN FACUNDO QUIROGA), La Rioja, el sistema devuelve **NO GO** para mañana a las 08:00 hora local.\n\nEl factor dominante es que el techo está en 240 ft, por debajo del mínimo de 500 ft. La fuente del dato es pronóstico numérico NWP (no es una observación directa).",
+   "texto": "Para mañana a las 08:00 en **SANO (CHILECITO / BRIG. MY. JUAN FACUNDO QUIROGA)**, el motor meteorológico arroja un veredicto **GO**. \n\nEl factor dominante fue gusts y el dato salió de pronóstico numérico NWP (no es una observación directa).",
    "herramientas": [
     "evaluar_meteo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 5.76,
+   "latencia_s": 4.11,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1524,14 +1520,14 @@
    "region": "CUYO",
    "sin_dato": true,
    "prohibido": "\\(\\s*\\d{3,5}\\s*\\)\\s*[\\d\\s\\-]{6,}|\\b\\d{2,4}\\s*-\\s*\\d{6,}\\b|\\b\\d{4}\\s*-\\s*\\d{4}\\b",
-   "texto": "El aerodromo es **SAMR (SAN RAFAEL / S. A. SANTIAGO GERMANO)**, en Mendoza. \n\nEl registro MADHEL no publica telefonos para este aerodromo. Como es un aerodromo controlado, los contactos suelen encontrarse en el AIP/AIS.",
+   "texto": "SAMR (SAN RAFAEL / S. A. SANTIAGO GERMANO): el registro MADHEL no publica teléfonos para este aeródromo porque se trata de una instalación controlada y sus datos se actualizan en el AIP.",
    "herramientas": [
     "contacto_aerodromo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 29.62,
+   "latencia_s": 2.82,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1546,15 +1542,15 @@
    "region": "PAMPA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Sobre Junin (SAAJ, Buenos Aires), a la altitud de **7500 pies** elegida por vos, el aire presenta las siguientes condiciones (según el pronóstico numérico para la próxima hora):\n\n*   **Viento:** 100° a 7.9 kt.\n*   **Temperatura:** -0.4°C (bajo cero).\n*   **Punto de rocío:** -2.4°C.\n*   **Humedad relativa:** 86%.\n*   **Nubosidad en el nivel:** 26%.\n\nEl nivel de presión de 800 hPa se encuentra a una altitud real de **6509 pies**. \n\n*Nota: La visibilidad no está disponible para este nivel de presión y el informe proviene de un pronóstico numérico (NWP), no de un sondeo real.*",
+   "texto": "Sobre SAAJ (Junín / Buenos Aires), a 7500 pies (altitud elegida por el piloto, correspondiente al nivel de presión de 800 hPa ubicado a 6735 pies reales):\n\n* **Viento:** 347° con 10.8 kt.\n* **Temperatura:** 10 °C (por encima de 0 °C).\n* **Punto de rocío:** -10.8 °C.\n* **Humedad relativa:** 22 %.\n* **Nubosidad en el nivel:** 0 %.\n* **Visibilidad:** El modelo no publica visibilidad por nivel de presión.\n\n*Fuente: pronóstico numérico NWP en el nivel de presión.*",
    "herramientas": [
     "atmosfera_en_punto"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 22.92,
-   "modelo": "gemini-3.1-flash-lite",
+   "latencia_s": 4.1,
+   "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
   {
@@ -1568,14 +1564,14 @@
    "region": "PAMPA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Sobre **SAAN (PERGAMINO)** a 6500 ft (altitud elegida por el piloto), con el nivel de presión real a 6502 ft:\n\n- **Viento:** de 109° a 6.6 kt.\n- **Temperatura:** 0.3 °C (no está bajo cero).\n- **Punto de rocío:** -2.5 °C.\n- **Humedad relativa:** 82%.\n- **Nubosidad en el nivel:** 17%.\n- **Visibilidad:** el pronóstico no publica este dato por nivel de presión y la de superficie no sirve como sustituto.",
+   "texto": "Sobre **SAAN (PERGAMINO)** a **6500 ft** (altitud elegida por vos, con el nivel de presión estándar real a 6738 ft), las condiciones pronosticadas para dentro de una hora son:\n\n* **Viento:** 360° a 10.8 kt.\n* **Temperatura:** 10.5 °C (no está bajo cero).\n* **Humedad relativa:** 18% (punto de rocío -12.9 °C).\n* **Nubosidad en el nivel:** 0%.\n* **Visibilidad:** El modelo no publica visibilidad por nivel de presión y la de superficie no se utiliza como sustituto.\n\n*(Fuente: pronóstico numérico NWP en el nivel de presión).*",
    "herramientas": [
     "atmosfera_en_punto"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 5.51,
+   "latencia_s": 5.41,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1590,14 +1586,14 @@
    "region": "PAMPA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "¿A qué altitud vas a pasar por Venado Tuerto?",
+   "texto": "¿A qué altitud vas a pasar sobre VNO (Venado Tuerto / SANTA FÉ)?",
    "herramientas": [
     "atmosfera_en_punto"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 4.58,
+   "latencia_s": 1.87,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1612,14 +1608,14 @@
    "region": "CUYO",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para SANO (CHILECITO / BRIG. MY. JUAN FACUNDO QUIROGA), La Rioja, a **10.000 pies** (altitud elegida por vos, con el nivel real de presión a 10.088 pies):\n\n* **Viento:** 7° / 2.7 kt\n* **Temperatura:** 0°C (no está bajo cero)\n* **Punto de rocío:** -14.3°C\n* **Humedad relativa:** 33%\n* **Nubosidad en el nivel:** 0%\n* **Visibilidad:** No disponible para este nivel de presión según la fuente.",
+   "texto": "Sobre SANO (CHILECITO / BRIG. MY. JUAN FACUNDO QUIROGA, La Rioja), a 10.000 pies (altitud elegida por vos, con el nivel de presión a 10.285 pies), el pronóstico numérico NWP indica:\n\n- **Viento:** 349° a 8.5 nudos\n- **Temperatura:** 8.2 °C (positivo)\n- **Punto de rocío:** -12.8 °C\n- **Humedad relativa:** 21%\n- **Nubosidad en el nivel:** 0%",
    "herramientas": [
     "atmosfera_en_punto"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 14.51,
+   "latencia_s": 3.71,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1634,15 +1630,15 @@
    "region": "NOA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para el vuelo IFR sobre **SANC (Catamarca)**, a 8500 pies (tomando como referencia la MEA de la aerovía W3, nivel que en presión real se encuentra a 10085 pies), el informe meteorológico para la próxima hora indica:\n\n* **Viento:** 284° a 8.3 kt.\n* **Temperatura:** -0.6 °C (bajo cero).\n* **Punto de rocío:** -3.4 °C.\n* **Humedad relativa:** 81%.\n* **Nubosidad en el nivel:** 20%.\n* **Visibilidad:** El modelo no provee este dato en altura.\n\nEl origen de la altitud es la MEA de la aerovía W3 en el tramo KAKAN-CAT. La fuente del informe es un pronóstico numérico (NWP) en el nivel de presión indicado.",
+   "texto": "Sobre **SANC (CATAMARCA / Coronel Felipe Varela)**, volando en régimen IFR, tomé la MEA de la aerovía W3 en el tramo KAKAN-CAT (8500 pies). El nivel de presión evaluado real está a 10295 pies.\n\nEl estado del aire es el siguiente:\n- **Viento:** 25° a 6.3 kt\n- **Temperatura:** 9.9 °C\n- **Humedad relativa:** 26 % (punto de rocío -9 °C)\n- **Nubosidad en el nivel:** 0 %\n\n*Fuente: pronóstico numérico NWP en el nivel de presión indicado (no es una observación directa ni un sondeo real).*",
    "herramientas": [
     "atmosfera_en_punto"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 25.02,
-   "modelo": "gemini-3.1-flash-lite",
+   "latencia_s": 3.72,
+   "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
   {
@@ -1656,14 +1652,14 @@
    "region": "LITORAL",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Sobre **APO (APÓSTOLES / Misiones)**, a los **8000 ft** (altitud elegida por el piloto):\n\n* **Viento:** de los 238° a 31.8 kt.\n* **Temperatura:** 12.3 °C.\n* **Humedad relativa:** 42% (punto de rocío -0.2 °C).\n* **Nubosidad en el nivel:** 0%.\n\n*Nota:* El nivel de presión estándar de 800 hPa está realmente a 6440 ft (desvío de -1560 ft respecto de lo pedido). Fuente: pronóstico numérico NWP.",
+   "texto": "Para el aeródromo **APO** (Apóstoles, Misiones) a 8000 ft (altitud elegida por el piloto), con un nivel real de presión a 6784 ft, tenés los siguientes datos para el paso sobre la zona:\n\n- **Viento:** 55° y 5.6 kt\n- **Temperatura:** 7.8 °C\n- **Humedad relativa:** 91 %\n- **Punto de rocío:** 6.4 °C\n- **Nubosidad en el nivel:** 41 %\n- **Fuente:** Pronóstico numérico NWP en el nivel de presión indicado.",
    "herramientas": [
     "atmosfera_en_punto"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 5.04,
+   "latencia_s": 5.09,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1678,14 +1674,14 @@
    "region": "PATAGONIA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "A 9.000 pies sobre el aeródromo SAVA (PIEDRA DEL ÁGUILA, Neuquén), altitud elegida por vos, el pronóstico numérico indica:\n\n- **Viento:** 121° a 9 kt.\n- **Temperatura:** -14,8 °C (bajo cero).\n- **Punto de rocío:** -16,8 °C.\n- **Humedad relativa:** 84%.\n- **Nubosidad en el nivel:** 27%.\n\nEl nivel de presión real está a 10.075 pies (desvío de 1.075 pies respecto a los 9.000 pedidos).",
+   "texto": "A 9000 pies MSL (altitud elegida por vos) sobre **SAVA (PIEDRA DEL ÁGUILA, Neuquén)**, según el pronóstico numérico NWP para el nivel de presión:\n\n- **Viento:** 300° a 20.9 kt.\n- **Temperatura:** 1.2 °C (positivo).\n- **Humedad relativa:** 32%.\n- **Nubosidad en el nivel:** 0%.\n\n*Nota:* El nivel de presión evaluado corresponde en realidad a 10121 pies MSL.",
    "herramientas": [
     "atmosfera_en_punto"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 4.06,
+   "latencia_s": 5.9,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1700,7 +1696,7 @@
    "region": "CUYO",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para el punto **SACT (CHAMICAL / GOBERNADOR GORDILLO)**, en La Rioja:\n\n* **Altitud consultada:** 8.500 ft (elegida por el piloto).\n* **Nivel real evaluado:** Nivel de presión de 700 hPa (equivalente a 10.075 ft, con una diferencia de 1.575 ft respecto a lo pedido).\n* **Viento:** De 233° a 10.5 kt.\n* **Temperatura:** -2.6 °C (bajo cero).\n* **Punto de rocío:** -15 °C.\n* **Humedad relativa:** 38%.\n* **Nubosidad en el nivel:** 0%.\n\n*Nota:* Fuente pronóstico numérico NWP. La visibilidad en este nivel no está publicada por la fuente.",
+   "texto": "Para **SACT (CHAMICAL / GOBERNADOR GORDILLO)**, La Rioja, a los **8500 ft** (altitud elegida por el piloto, correspondiente al nivel de presión de 700 hPa a una altitud real de 10285 ft), el pronóstico numérico NWP indica:\n\n* **Viento:** De los 344° a 7.3 kt.\n* **Temperatura:** 9 °C (humedad relativa 12%, punto de rocío -18.8 °C).\n* **Nubosidad en el nivel:** 0%.\n* **Visibilidad:** No disponible en altura por el modelo.",
    "herramientas": [
     "atmosfera_en_punto"
    ],
@@ -1722,14 +1718,14 @@
    "region": "PATAGONIA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para **SAWD (PUERTO DESEADO)**, provincia de Santa Cruz, a **7000 pies** (altitud elegida por el piloto, correspondiente al nivel de presión de 800 hPa, ubicado realmente a 6646 pies):\n\n- **Viento:** 235° con 19.8 kt\n- **Temperatura:** -7.4 °C (**bajo cero**)\n- **Humedad relativa:** 15 %\n- **Punto de rocío:** -29.7 °C\n- **Nubosidad en el nivel:** 0 %",
+   "texto": "Sobre **SAWD (PUERTO DESEADO)**, Santa Cruz, a los **7.000 pies** (altitud elegida por el piloto; el nivel de presión real está a 6.354 pies):\n\n- **Viento:** 280° a 16.2 kt\n- **Temperatura:** -2,6 °C (bajo cero)\n- **Punto de rocío:** -14,4 °C\n- **Humedad relativa:** 40%\n- **Nubosidad en el nivel:** 0%\n\n*Fuente: pronóstico numérico NWP en el nivel de presión indicado (no es una observación directa ni un sondeo real).*",
    "herramientas": [
     "atmosfera_en_punto"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 17.05,
+   "latencia_s": 4.39,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1744,14 +1740,14 @@
    "region": "NOA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Estado del aire sobre AND (ANDALGALÁ, Catamarca) a **12.000 pies** (altitud elegida por el piloto; el nivel de presión estándar de 700 hPa está a 10.101 pies):\n\n* **Viento:** De los 56° a 4,8 kt.\n* **Temperatura:** 1,8 °C (no está bajo cero).\n* **Humedad relativa:** 40% (punto de rocío -10,4 °C).\n* **Nubosidad en el nivel:** 0%.\n* **Visibilidad:** No disponible en altura por el modelo.\n\n*Fuente: Pronóstico numérico NWP.*",
+   "texto": "Sobre **AND (ANDALGALÁ, Catamarca)** a 12.000 pies MSL (altitud elegida por vos, con el nivel de presión estándar real a 10.282 pies):\n\n* **Viento:** 070° / 16 kt\n* **Temperatura:** 9,4 °C\n* **Punto de rocío:** -7,8 °C (humedad relativa 29%)\n* **Nubosidad:** 0% en ese nivel\n\n*(Fuente: pronóstico numérico NWP)*",
    "herramientas": [
     "atmosfera_en_punto"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 61.91,
+   "latencia_s": 3.42,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1766,14 +1762,14 @@
    "region": "PAMPA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para salir desde SACC (La Cumbre):\n\nLas condiciones en **GO** van desde las 16:00 hasta las 18:00, siendo **18:00** la mejor hora. A partir de las 19:00 desmejora a **CAUTION** y desde las 00:00 pasa a **NO GO**.\n\n*Aeronave de referencia: Pipistrel Alpha Trainer. Fuente: meteo superficie aeródromo.*",
+   "texto": "Para SACC (LA CUMBRE, CÓRDOBA) con el perfil de aeronave por defecto (Pipistrel Alpha Trainer):\n\n* **16:00**: **CAUTION**\n* De **17:00** a **02:00**: **NO GO**\n* **03:00**: **CAUTION**\n\nNo hay horas con veredicto **GO** en las próximas 12 horas. Las condiciones actuales dan **CAUTION** a las 16:00, desmejoran a **NO GO** a partir de las 17:00 y recién vuelven a **CAUTION** a las 03:00.",
    "herramientas": [
     "mejor_hora_para_salir"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 17.55,
+   "latencia_s": 4.52,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1788,14 +1784,14 @@
    "region": "PAMPA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para **ALT (Cruz Alta, Córdoba)**, tenés **GO** ahora a las 16:00, y después vuelve a dar **GO** a las 18:00. El resto de las próximas horas se mantiene en **CAUTION** (con un **NO GO** a las 03:00). \n\nLa primera ventana en **GO** la tenés ahora mismo a las 16:00.",
+   "texto": "Para ALT (Cruz Alta, Córdoba), el pronóstico da **GO** en todas las horas analizadas para las próximas 12 horas, desde hoy a las 16:00 hasta mañana a las 03:00 (hora local). No hay restricciones registradas para operar.",
    "herramientas": [
     "mejor_hora_para_salir"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 4.18,
+   "latencia_s": 4.4,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1810,14 +1806,14 @@
    "region": "LITORAL",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para **APO** (APÓSTOLES, Misiones), las condiciones están **GO** desde ahora y hasta las 19:00. \n\nConviene salir a partir de las 16:00, siendo las 18:00 la hora óptima. A partir de las 20:00 desmejora a **CAUTION**.",
+   "texto": "En **APO (APÓSTOLES**, Misiones) tenés condiciones **GO** durante todo el bloque analizado de las próximas 12 horas. \n\nYa está apto para operar ahora mismo y se mantiene así, con el mejor momento hacia las 20:00.",
    "herramientas": [
     "mejor_hora_para_salir"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 4.1,
+   "latencia_s": 3.36,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1832,14 +1828,14 @@
    "region": "PATAGONIA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para **SAWD (Puerto Deseado, Santa Cruz)**, con una aeronave Pipistrel Alpha Trainer, la evolucion para las proximas 12 horas es la siguiente:\n\n* Tenés **GO** desde ahora (16:00) y se mantiene favorable durante toda la tarde hasta las 22:00.\n* Entre las 23:00 y las 00:00 pasa a **CAUTION**.\n* Vuelve a estar en **GO** a partir de la 01:00.",
+   "texto": "Para **SAWD (PUERTO DESEADO)**, la evolucion meteorológica para las próximas horas da **GO** desde las 16:00 hasta las 21:00. \n\nA partir de las 22:00 desmejora a **CAUTION** y desde las 00:00 pasa a **NO GO**. \n\nTe conviene planificar la operación dentro de la ventana favorable de la tarde.",
    "herramientas": [
     "mejor_hora_para_salir"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 3.68,
+   "latencia_s": 5.65,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1854,14 +1850,14 @@
    "region": "NOA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para **AND (ANDALGALÁ, Catamarca)** tenés condiciones **GO** durante todo el bloque analizado de las próximas 12 horas, desde ahora hasta las 03:00 local.",
+   "texto": "Para **AND (Andalgalá, Catamarca)** con una Pipistrel Alpha Trainer, tenés condición **GO** durante todas las próximas 12 horas evaluadas, desde las 16:00 de hoy hasta las 03:00 de mañana.",
    "herramientas": [
     "mejor_hora_para_salir"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 15.52,
+   "latencia_s": 4.82,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1876,14 +1872,14 @@
    "region": "CUYO",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para **SANO (Chilecito / Brig. My. Juan Facundo Quiroga)**, las próximas 12 horas (desde las 16:00 de hoy hasta las 03:00 de mañana) se mantienen con veredicto **GO** de forma continua, según el análisis meteorológico para la aeronave de referencia. No se registran restricciones ni momentos críticos en este período.",
+   "texto": "Para **SANO (Chilecito / Brig. My. Juan Facundo Quiroga, La Rioja)**, el pronóstico para las próximas 12 horas da **GO** en todas las franjas horarias analizadas (desde hoy a las 16:00 hasta mañana a las 03:00 local), sin restricciones de superficie según el perfil evaluado.",
    "herramientas": [
     "mejor_hora_para_salir"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 11.69,
+   "latencia_s": 4.75,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1898,7 +1894,7 @@
    "region": "PAMPA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para **ATE (Zárate / Buenos Aires)**, las condiciones son **GO** a las 16:00, 17:00 y 18:00 hs. Tenés un **CAUTION** entre las 19:00 y las 20:00 hs, vuelve a **GO** a las 21:00 hs y luego pasa a **CAUTION** a las 22:00 hs.\n\nTe conviene salir ahora a las 16:00 hs o aprovechar hasta las 18:00 hs mientras las condiciones se mantengan en **GO**.",
+   "texto": "Para **ATE (ZÁRATE, BUENOS AIRES)** con Pipistrel Alpha Trainer, tenés **GO** durante todo el bloque analizado de las próximas 6 horas (desde las 16:00 hasta las 22:00 local). \n\nPodés salir en cualquier momento, ya que las condiciones son favorables para operar.",
    "herramientas": [
     "buscar_aerodromo",
     "mejor_hora_para_salir"
@@ -1906,7 +1902,7 @@
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 15.71,
+   "latencia_s": 5.7,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1921,14 +1917,15 @@
    "region": "PATAGONIA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para SAVA (PIEDRA DEL ÁGUILA, Neuquén):\n\n**Veredicto:** GO  \n**Factor dominante:** crosswind  \n**Fuente:** pronostico numerico NWP (no es una observacion directa)",
+   "texto": "Para **SAVA (PIEDRA DEL ÁGUILA, Neuquén)**, el veredicto actual es **GO**.\n\nEl dato surge del pronóstico numérico NWP (no es una observación directa) y el factor dominante en juego son las ráfagas.",
    "herramientas": [
+    "buscar_aerodromo",
     "evaluar_meteo"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 7.87,
+   "latencia_s": 27.78,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1943,14 +1940,14 @@
    "region": "LITORAL",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Te propongo pasar por **SAAR (ROSARIO / ISLAS MALVINAS)** en sobrevuelo. \n\nEsto te suma **8,6 km**, **1,4 litros** de combustible y unos **3 minutos** de vuelo. El combustible se mantiene dentro de la autonomía.\n\nPulsá el botón en pantalla para confirmar el cambio.",
+   "texto": "Te propongo agregar a **SAAR (ROSARIO / ISLAS MALVINAS)** como sobrevuelo. \n\nEsto te suma **8.6 km**, **1.4 litros** de combustible y **3 minutos** de vuelo. La autonomía final queda OK. \n\nAceptá la propuesta con el botón en pantalla para aplicarla a tu ruta.",
    "herramientas": [
     "proponer_cambio_de_ruta"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 13.16,
+   "latencia_s": 4.17,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1965,14 +1962,14 @@
    "region": "PAMPA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Propuse agregar una escala en **SAOD (VILLA DOLORES, CÓRDOBA)**. \n\nEl veredicto meteorológico para esa escala a las 10:33 hora local es **NO GO** (pronóstico NWP). \n\nCon esta modificación, el vuelo sumaría 148,6 km y 44 minutos extra, requiriendo 23,4 litros adicionales de combustible (la autonomía se mantiene dentro de los márgenes).\n\nPodes aplicar o descartar el cambio desde el botón en pantalla.",
+   "texto": "Propongo agregar una escala en **SAOD (VILLA DOLORES, CÓRDOBA)**.\n\n- **Veredicto de la escala:** **GO** (fuente: pronóstico NWP para el 18/09/2026 a las 10:33 hora local).\n- **Impacto en el vuelo:** Suma 148.6 km, 44 minutos y 23.4 litros de combustible. No rompe la autonomía.\n\nPara aplicar el cambio, confirmalo con el botón en tu pantalla.",
    "herramientas": [
     "proponer_cambio_de_ruta"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 5.26,
+   "latencia_s": 7.8,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -1987,14 +1984,14 @@
    "region": "PAMPA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Te propongo agregar a **SAOC (RÍO CUARTO / ÁREA DE MATERIAL)** como sobrevuelo en la ruta a SAEZ (EZEIZA / MINISTRO PISTARINI).\n\nEsto te suma **104 km** (unos 31 minutos de vuelo) y **16,2 litros** de combustible extra. Con tu Cessna 172 Skyhawk vas a seguir con autonomía de sobra.\n\nConfirmalo con el botón de la interfaz para aplicarlo al vuelo.",
+   "texto": "Te armé una propuesta para sobrevolar **SAOC (RÍO CUARTO / ÁREA DE MATERIAL)**. \n\nEsto te suma:\n- **Distancia:** 104 km extra\n- **Tiempo:** 31 minutos más de vuelo\n- **Combustible:** 16.2 litros adicionales (la autonomía se mantiene bien).\n\nTocá el botón en pantalla para confirmar el cambio de ruta.",
    "herramientas": [
     "proponer_cambio_de_ruta"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 3.54,
+   "latencia_s": 3.05,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -2009,14 +2006,14 @@
    "region": "LITORAL",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Te armé la propuesta para sacar SAAR (ROSARIO / ISLAS MALVINAS) de la ruta. \n\nAl quitarlo:\n- Distancia: -8,6 km\n- Combustible: -1,4 l\n- Tiempo: -3 min\n\nLa ruta resultante queda directa de SACO a SAEZ. \n\nPodés confirmar el cambio con el botón en pantalla.",
+   "texto": "Te preparé la propuesta para sacar SAAR (ROSARIO / ISLAS MALVINAS) de la ruta. Con este cambio te ahorrás 8.6 km (unos 3 minutos) y 1.4 litros de combustible, volviendo directo de SACO a SAEZ.\n\nConfirmalo con el botón en pantalla para aplicarlo.",
    "herramientas": [
     "proponer_cambio_de_ruta"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 3.28,
+   "latencia_s": 2.96,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -2031,14 +2028,14 @@
    "region": "CUYO",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para sumar una escala en **SAOU (SAN LUIS / BRIG. My D. CÉSAR R. OJEDA)**:\n\n- **Distancia extra:** 381 km\n- **Tiempo extra:** 1h 12m\n- **Combustible extra:** 60 litros (la autonomía da bien)\n- **Veredicto para la escala:** NO GO a las 11:27 HL (pronóstico NWP).\n\nConfirmá el cambio con el botón en pantalla si querés aplicarlo.",
+   "texto": "Te propongo hacer escala en **SAOU (SAN LUIS / BRIG. My D. CÉSAR R. OJEDA)**. \n\nEsto te suma 381 km, unas 1h 52m de vuelo y 59.8 litros extra, manteniendo autonomía OK. El veredicto para esa escala a las 11:27 hora local es **CAUTION** (fuente: pronóstico NWP, pronóstico numérico).\n\nConfirmalo con el botón de la pantalla para aplicarlo a la ruta.",
    "herramientas": [
     "proponer_cambio_de_ruta"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 28.48,
+   "latencia_s": 4.91,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -2053,14 +2050,14 @@
    "region": "PAMPA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "¿Querés pasar por arriba (sobrevuelo) o vas a hacer escala en SAZR (Santa Rosa / La Pampa)?",
+   "texto": "Para SAZR (Santa Rosa / La Pampa), ¿querés hacer **sobrevolar** (pasar por arriba sin aterrizar) o **escala** (aterrizar)?",
    "herramientas": [
     "proponer_cambio_de_ruta"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 15.49,
+   "latencia_s": 19.68,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -2075,14 +2072,14 @@
    "region": "PATAGONIA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Te armé una propuesta para agregar una escala en **SAZN (Neuquén / Presidente Perón)**. \n\nEl veredicto para esa escala es **GO** (pronóstico TAF, evaluado a las 14:31 hora local).\n\nEsto modifica la ruta sumando 1.235 km extra, 194 litros de combustible y unas 6 horas de vuelo. La autonomía se banca bien.\n\nConfirmalo con el botón en pantalla para aplicarlo.",
+   "texto": "Te propongo agregar una escala en **SAZN (NEUQUÉN / PRESIDENTE PERÓN)**. \n\nPara esta escala el veredicto es **GO** (evaluado para el 18/09/2026 a las 14:31 hora local según pronóstico TAF).\n\nEl cambio implica 1.235 km extra, 194 litros más de combustible y 364 minutos adicionales de vuelo. \n\nPodés confirmar la modificación desde el botón en pantalla.",
    "herramientas": [
     "proponer_cambio_de_ruta"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 6.63,
+   "latencia_s": 5.04,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
@@ -2090,26 +2087,26 @@
    "pregunta": "volvamos a la ruta directa, sacale el punto de paso",
    "intent_esperado": "proponer_cambio_de_ruta",
    "intent_obtenido": "proponer_cambio_de_ruta",
-   "codigo_esperado": "SAAR",
+   "codigo_esperado": null,
    "codigos_resueltos": [],
    "region": "LITORAL",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "No pude procesar el cambio de ruta. Intentá nuevamente especificando el punto que querés quitar.",
+   "texto": "No pude procesar el cambio de ruta en este momento. Volve a intentarlo o indicame el punto que querés sacar.",
    "herramientas": [
     "proponer_cambio_de_ruta"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 2.91,
+   "latencia_s": 2.69,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
   {
    "pregunta": "puedo pasar por arriba de Tucuman sin aterrizar?",
    "intent_esperado": "proponer_cambio_de_ruta",
-   "intent_obtenido": "atmosfera_en_punto",
+   "intent_obtenido": "proponer_cambio_de_ruta",
    "codigo_esperado": "SANT",
    "codigos_resueltos": [
     "SANT"
@@ -2117,15 +2114,15 @@
    "region": "NOA",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Para poder informarte sobre las condiciones en el aire sobre **SANT (TUCUMÁN / TENIENTE BENJAMÍN MATIENZO)**, necesito saber a qué altitud tenés pensado pasar.\n\n¿A cuántos pies MSL tenés planificado sobrevolarlo?",
+   "texto": "Te armé una propuesta para agregar **SANT (TUCUMÁN / TENIENTE BENJAMÍN MATIENZO)** como sobrevuelo en tu ruta hacia SAEZ. \n\nOjo: pasar por ahí te agrega 934 km y 275 minutos de vuelo. Con los 146.7 litros extra que consume, **rompe la autonomía** actual de tu Cessna 172 Skyhawk.\n\nPulsá el botón en la pantalla para confirmar el cambio si querés aplicarlo de todas formas.",
    "herramientas": [
-    "atmosfera_en_punto"
+    "proponer_cambio_de_ruta"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 5.55,
-   "modelo": "gemini-3.1-flash-lite",
+   "latencia_s": 3.49,
+   "modelo": "gemini-3.5-flash-lite",
    "error": null
   },
   {
@@ -2139,14 +2136,14 @@
    "region": "LITORAL",
    "sin_dato": false,
    "prohibido": null,
-   "texto": "Te propongo pasar por **SAAR (ROSARIO / ISLAS MALVINAS)** en sobrevuelo. \n\nEsto te suma **8.6 km** (unos 3 minutos de vuelo) y un consumo extra de **1.4 litros**. \n\nPodés confirmar el cambio con el botón en pantalla.",
+   "texto": "Te armé una propuesta para sobrevolar **SAAR (ROSARIO / ISLAS MALVINAS)**. \n\nEsto te suma **8.6 km** (3 minutos de vuelo) y un consumo extra de **1.4 litros** de combustible, manteniendo autonomía de sobra. \n\nSi querés aplicarlo, confirmalo con el botón que te aparece en pantalla.",
    "herramientas": [
     "proponer_cambio_de_ruta"
    ],
    "grounded": true,
    "verdict_enforced": false,
    "code_corrected": false,
-   "latencia_s": 7.79,
+   "latencia_s": 2.24,
    "modelo": "gemini-3.5-flash-lite",
    "error": null
   }

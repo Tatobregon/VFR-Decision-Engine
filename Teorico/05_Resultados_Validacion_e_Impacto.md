@@ -120,17 +120,21 @@ ellos donde debe concentrarse el esfuerzo de justificación.
 
 ### 5.1.4. Asistente de consulta
 
-La evaluación se realizó el 11/09/2026 sobre los 98 casos del § 4.2.4, y ningún caso quedó
-afectado por una indisponibilidad del proveedor: cuando el primer modelo de la cadena de
-reserva no respondió, respondió el segundo. El primero atendió 80 casos y el segundo, 18.
+La evaluación se realizó el 17/09/2026 sobre los 98 casos del § 4.2.4, con un **único modelo**
+fijado para toda la corrida: `gemini-3.5-flash-lite`. La cadena de reserva entre modelos que
+el sistema usa en operación (§ 3.3.2) se desactiva para medir, porque una métrica consolidada
+sobre respuestas de modelos distintos no describiría a ninguno de ellos. Cuando el proveedor
+no respondió, el evaluador reintentó el mismo caso en lugar de pasar al modelo siguiente:
+cuatro de los 98 casos necesitaron reintento y los cuatro se resolvieron dentro de los
+intentos previstos.
 
 | Métrica | Resultado |
 |---|---|
 | Exactitud de clasificación de intención | 94/98 (95,9 %) |
-| F1 macro-promedio (9 intenciones) | 0,957 |
-| Exactitud de resolución del aeródromo | 82/83 (98,8 %) |
+| F1 macro-promedio (9 intenciones) | 0,959 |
+| Exactitud de resolución del aeródromo | 81/82 (98,8 %) |
 | **Tasa de invención ante datos ausentes** | **0 %** (0 de 9 casos con detección objetiva) |
-| Reconocimiento explícito de la ausencia del dato | 11/11 |
+| Reconocimiento explícito de la ausencia del dato | 10/11 |
 | Veredictos que la verificación en código tuvo que reemplazar | 0 de 11 |
 | Códigos de aeródromo que hubo que corregir | 0 |
 
@@ -139,31 +143,34 @@ reserva no respondió, respondió el segundo. El primero atendió 80 casos y el 
 
 ⬜ **Figura 5.6.** *F1 por intención.* (`Teorico/figuras/cap5/fig_5_6_f1_asistente.png`)
 
-**Los desaciertos.** Los cuatro errores de clasificación ocurren entre intenciones vecinas
-(Figura 5.5). Dos corresponden a consultas sobre la ficha de un aeródromo que el asistente
-resolvió con otra herramienta de información del registro: una pregunta por combustible
-atendida con la búsqueda de combustible cercano, y una pregunta sobre un aeródromo
-inexistente atendida con la búsqueda de aeródromos, que informó correctamente que no existe.
-Uno confunde la evolución del día con el veredicto de un momento, y otro la consulta por el
-aire sobre un punto con una modificación de la ruta. En los cuatro casos la respuesta fue
-correcta respecto de los datos y ninguna fue peligrosa.
+**Los desaciertos.** De los cuatro errores de clasificación (Figura 5.5), tres ocurren entre
+intenciones vecinas: una pregunta por combustible en un aeródromo, atendida con la búsqueda de
+combustible cercano; una pregunta por las pistas de un aeródromo inexistente, atendida con la
+búsqueda de aeródromos, que informó correctamente que no figura en el registro; y una consulta
+por la evolución del día, respondida con el veredicto de un momento. El cuarto no es una
+confusión entre herramientas: ante una consulta por el contacto de «Córdoba» —nombre que
+designa más de un aeródromo— el asistente pidió que se precisara cuál, sin invocar ninguna
+herramienta. La métrica lo cuenta como desacierto porque no coincide con la intención
+esperada, pero repreguntar ante una ambigüedad es la conducta correcta. En los cuatro casos la
+respuesta fue correcta respecto de los datos y ninguna fue peligrosa.
 
-La única falla de resolución corresponde a una consulta que no nombra ningún aeródromo —"volvamos
-a la ruta directa, sacale el punto de paso"—, en la que el conjunto esperaba que el modelo lo
-infiriera del vuelo cargado. Eso mide la inferencia desde el contexto y no la resolución de
-entidades; la etiqueta se corrigió para las corridas siguientes, y el valor informado es, por
-lo tanto, conservador.
+La única falla de resolución es ese mismo caso: el conjunto esperaba el código del aeropuerto
+principal de Córdoba y el asistente pidió que se precisara el aeródromo. El valor informado es,
+por lo tanto, conservador, porque computa como falla una repregunta ante un nombre ambiguo.
+Por la misma razón, el reconocimiento explícito de la ausencia del dato queda en 10 de 11: en
+el caso restante el asistente repreguntó en lugar de declarar que el registro no publica el
+teléfono.
 
-El desempeño no depende de la región: Cuyo 12/12, Litoral 14/14, Pampa 30/30, Patagonia
-18/19 y NOA 10/12.
+El desempeño no depende de la región: Cuyo 12/12, Litoral 14/14, Pampa 29/30, Patagonia
+18/19, NOA 11/12 y 10/11 en los casos que no se asocian a ninguna región.
 
 **Límites de estas cifras.** Tres consideraciones acotan su lectura. Con entre 8 y 17 casos
 por intención, un solo caso desplaza el F1 de esa intención entre 6 y 12 puntos, y el promedio
 macro combina clases de soporte desigual. El conjunto se utilizó también durante el
 desarrollo (§ 4.2.4), de modo que las métricas describen el desempeño sobre el conjunto de
-desarrollo y no sobre casos que el diseño no haya visto. Y los resultados corresponden a la
-versión del modelo que el proveedor servía en la fecha de la corrida: una nueva versión puede
-modificarlos, lo que obliga a repetir la evaluación antes de comparar.
+desarrollo y no sobre casos que el diseño no haya visto. Y los resultados corresponden al modelo declarado en
+la fecha de la corrida: otra versión del modelo puede modificarlos, de modo que toda
+comparación exige repetir la evaluación con el modelo que se quiera comparar.
 
 ### 5.1.5. Tiempos de respuesta
 
@@ -197,11 +204,13 @@ interpretación, la ejecución de las herramientas y la redacción:
 
 | Media | Mediana | Percentil 95 | Máximo |
 |---|---|---|---|
-| 14,60 s | 9,59 s | 39,89 s | 68,08 s |
+| 5,75 s | 3,62 s | 19,68 s | 42,70 s |
 
 Los valores altos corresponden a las consultas que ejecutan cálculos completos: la propuesta
 de cambio de ruta calcula la ruta vigente y la propuesta y, si se trata de una escala, evalúa
-además la meteorología del aeródromo.
+además la meteorología del aeródromo. Estos tiempos son los de un modelo único; en operación,
+cuando el primer modelo de la cadena no responde, el intento fallido se suma al tiempo que
+percibe el piloto.
 
 ⬜ **Figura 5.7.** *Tiempos de respuesta del motor, en local y en la instancia desplegada, y del
 asistente.* (`Teorico/figuras/cap5/fig_5_7_tiempos_de_respuesta.png`)
