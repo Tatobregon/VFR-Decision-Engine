@@ -1176,6 +1176,28 @@ Sin la variable la app arranca igual: `/api/copilot/status` responde
 `available: false`, el panel del frontend no se muestra y **el resto del sistema
 funciona normalmente**. El copiloto es accesorio y su caida no arrastra a nadie.
 
+**Credencial del mapa base (septiembre 2026).** CARTO empezo a exigir clave para
+`basemaps.cartocdn.com` y, sin ella, devuelve la tesela con **"API KEY REQUIRED"
+estampada encima** —HTTP 200, no un error—, asi que el sintoma es visual y no
+aparece en ningun log. La clave se pide gratis en `carto.com/basemaps/apikey`
+(uso justo: 5 M de teselas por mes) y va en el mismo `.env` y en Render:
+
+```
+CARTO_API_KEY=...
+```
+
+- **Es una credencial de CLIENTE**: quien pide las teselas es el navegador, asi
+  que la clave viaja al frontend por `/api/map_config` y cualquiera que abra la
+  app puede leerla. Se mantiene en variable de entorno igual, por dos razones:
+  que no quede en un repositorio publico y que desarrollo y despliegue puedan
+  usar claves distintas. No confundirla con `GEMINI_API_KEY`, que **nunca** sale
+  del servidor.
+- **Sin clave el mapa no se rompe**: el frontend cae a las teselas de
+  OpenStreetMap, que no piden ninguna, invertidas por CSS para que acompañen el
+  tema oscuro (`.mapa-base-invertido`, solo el panel de teselas: las capas de
+  ruta, aerodromos y espacios aereos conservan sus colores, que significan cosas).
+- La URL lleva la clave como **`?key=`**, no `?api_key=`.
+
 Suite de regresion (415 tests, sin red):
 
 ```powershell

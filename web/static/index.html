@@ -43,6 +43,9 @@
 
     /* Mapa oscuro */
     .leaflet-container { background: #0d1117; }
+    /* Mapa base de reserva (OSM, sin clave): se invierte para que acompañe el
+       tema oscuro. Solo el panel de teselas; las capas propias no se tocan. */
+    .mapa-base-invertido .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.85) contrast(.9); }
     .leaflet-popup-content-wrapper { background: #161b22; color: #e6edf3; border: 1px solid #30363d; border-radius: 8px; }
     .leaflet-popup-tip { background: #161b22; }
 
@@ -1813,6 +1816,8 @@ function app() {
     showWeather: true,
     showCorridors: false,
     mapHeight: 520,   // altura del mapa en px (persistida en localStorage)
+    cartoKey: '',     // clave de las teselas CARTO; vacía = mapa base de reserva
+    _mapCfg: null,    // promesa de /api/map_config
 
     // ── Init
     async init() {
@@ -1848,6 +1853,14 @@ function app() {
       } catch(e) {
         console.error('Error cargando aeronaves:', e);
       }
+
+      // Clave del mapa base. Se guarda la promesa y no el resultado: el mapa se
+      // construye recién cuando hay una ruta, pero si llegara antes que la
+      // respuesta, initMap la espera en vez de dibujar sin clave.
+      this._mapCfg = fetch('/api/map_config')
+        .then(r => r.json())
+        .then(cfg => { this.cartoKey = (cfg.carto_key || '').trim(); })
+        .catch(e => { console.error('Error cargando la configuración del mapa:', e); });
 
       // Watcher para el mapa
       this.$watch('result', val => {
@@ -2380,7 +2393,8 @@ function app() {
     },
 
     // ── Mapa Leaflet
-    initMap() {
+    async initMap() {
+      if (this._mapCfg) { try { await this._mapCfg; } catch(e) {} }
       const wps0 = this.result?.route?.waypoints;
 
       if (this._map) {
@@ -2397,10 +2411,30 @@ function app() {
 
       this._map = L.map('map', { zoomControl: true, attributionControl: true });
 
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
-        subdomains: 'abcd', maxZoom: 19,
-      }).addTo(this._map);
+      // Mapa base. CARTO exige clave desde agosto de 2026 y, sin ella, devuelve
+      // la tesela con "API KEY REQUIRED" estampada encima: no falla, ensucia.
+      // Por eso, sin clave se usa OpenStreetMap —que no pide ninguna— invertido
+      // por CSS para que acompañe el tema oscuro de la interfaz.
+      const conClave = !!this.cartoKey;
+      if (conClave) {
+        L.tileLayer(
+          'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=' +
+            encodeURIComponent(this.cartoKey),
+          {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
+            subdomains: 'abcd', maxZoom: 19,
+          }
+        ).addTo(this._map);
+      } else {
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
+          maxZoom: 19,
+        }).addTo(this._map);
+      }
+      // El filtro toca solo el panel de teselas: las capas propias (ruta,
+      // aeródromos, espacios aéreos) viven en el panel de overlays y conservan
+      // sus colores, que significan cosas.
+      mapEl.classList.toggle('mapa-base-invertido', !conClave);
 
       // Capas independientes (airspace debajo de todo, luego ruta, aerovías encima)
       this._airspaceLayer  = L.layerGroup().addTo(this._map);

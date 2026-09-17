@@ -1205,6 +1205,30 @@ async def root():
     )
 
 
+@app.get("/api/map_config")
+async def map_config():
+    """
+    Clave de las teselas del mapa base, para el frontend.
+
+    CARTO exige una clave desde agosto de 2026 y estampa "API KEY REQUIRED"
+    sobre cada tesela si falta. Es una credencial de CLIENTE —viaja al
+    navegador por definicion, porque quien pide las teselas es el navegador—,
+    pero igual se lee del entorno y no del codigo: en un repositorio publico
+    no va ninguna credencial, y asi la de desarrollo y la del despliegue
+    pueden ser distintas.
+
+    Sin la variable el mapa NO queda roto: el frontend cae a un mapa base que
+    no pide clave, con el mismo criterio con el que el copiloto ausente no
+    arrastra al resto del sistema.
+    """
+    try:
+        from copilot.client import load_env      # lector de .env sin dependencias
+        load_env()
+    except ImportError:
+        pass
+    return {"carto_key": os.environ.get("CARTO_API_KEY", "").strip()}
+
+
 @app.get("/api/airports")
 async def search_airports(q: str = "", limit: int = 10):
     """Búsqueda de aeródromos por código o nombre."""
