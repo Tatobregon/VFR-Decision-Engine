@@ -2043,7 +2043,7 @@ function app() {
       if (!this.result) return {};
       const o = { 'ORIGEN': this.result.origin };
       (this.result.stops || []).forEach(c => {
-        o['ESCALA · ' + c.station_id] = c;
+        o[(c.stop_kind === 'combustible' ? 'ESCALA DE COMBUSTIBLE · ' : 'ESCALA · ') + c.station_id] = c;
       });
       o['DESTINO'] = this.result.dest;
       return o;
@@ -2527,7 +2527,7 @@ function app() {
         // emergencia/referencia. Escalas de combustible destacadas en verde.
         if (wp.is_emergency_airport) {
           const fuel = wp.is_fuel_stop;
-          const mkColor = fuel ? '#3fb950' : '#6e7681';
+          const mkColor = fuel ? (decCol[wp.decision] || '#8b949e') : '#6e7681';
           const popup = `<div style="font-family:monospace;min-width:170px;padding:4px 0">
             <div style="font-size:10px;font-weight:700;color:${mkColor};margin-bottom:2px">
               ${fuel ? '⛽ ESCALA DE COMBUSTIBLE' : '✚ AERÓDROMO CERCANO'}
@@ -2535,6 +2535,7 @@ function app() {
             <div style="font-size:13px;font-weight:700;color:#e6edf3">${wp.code}</div>
             <div style="font-size:11px;color:#e6edf3;margin:3px 0">${wp.name}</div>
             ${wp.dist_from_prev_km != null ? `<div style="font-size:10px;color:#8b949e">${wp.dist_from_prev_km} km desde el punto previo</div>` : ''}
+            ${fuel && wp.decision != null ? `<div style="font-size:10px;color:${mkColor}">Aterrizaje · R = ${wp.r_total.toFixed(2)} · ${wp.decision}</div>` : ''}
             ${this.etaBlock(wp)}
             <div style="font-size:9px;color:#8b949e;margin-top:3px">${fuel ? 'Escala recomendada por alcance de la aeronave' : 'Disponible para desvío de emergencia'}</div>
           </div>`;
@@ -2545,7 +2546,7 @@ function app() {
               icon: L.divIcon({
                 className: '',
                 html: `<div style="display:flex;flex-direction:column;align-items:center">
-                  <div style="width:20px;height:20px;border-radius:5px;background:#3fb950;border:2px solid #0d1117;
+                  <div style="width:20px;height:20px;border-radius:5px;background:${mkColor};border:2px solid #0d1117;
                        display:flex;align-items:center;justify-content:center;font-size:11px;box-shadow:0 1px 4px #000">⛽</div>
                 </div>`,
                 iconSize: [20, 20], iconAnchor: [10, 10],
@@ -2553,7 +2554,7 @@ function app() {
             }).bindPopup(popup).addTo(this._routeLayer);
             L.marker([wp.lat, wp.lon], {
               icon: L.divIcon({ className: '',
-                html: `<div style="color:#3fb950;font-family:monospace;font-size:10px;font-weight:700;white-space:nowrap;margin-top:12px;margin-left:6px;text-shadow:0 1px 3px #000">${wp.code}</div>`,
+                html: `<div style="color:${mkColor};font-family:monospace;font-size:10px;font-weight:700;white-space:nowrap;margin-top:12px;margin-left:6px;text-shadow:0 1px 3px #000">${wp.code}</div>`,
                 iconAnchor: [0, 0] }), interactive: false,
             }).addTo(this._routeLayer);
           } else {
@@ -2700,7 +2701,9 @@ function app() {
             ${fuelOnLine ? '<div style="font-size:10px;font-weight:700;color:#3fb950;margin-bottom:2px">⛽ ESCALA DE COMBUSTIBLE</div>' : ''}
             <div style="font-size:13px;font-weight:700;color:${color}">${wp.code}</div>
             <div style="font-size:11px;color:#e6edf3;margin:3px 0">${wp.name}</div>
-            <div style="font-size:10px;color:#8b949e">R = ${wp.r_total.toFixed(2)} · ${wp.decision}</div>
+            ${wp.decision == null
+              ? '<div style="font-size:10px;color:#8b949e">Sobrevuelo · sin veredicto de aeródromo</div>'
+              : `<div style="font-size:10px;color:${fuelOnLine ? color : '#8b949e'}">${fuelOnLine ? 'Aterrizaje · ' : ''}R = ${wp.r_total.toFixed(2)} · ${wp.decision}</div>`}
             ${this.etaBlock(wp)}
             ${fuelOnLine && wp.dist_from_prev_km != null ? `<div style="font-size:9px;color:#8b949e;margin-top:2px">${wp.dist_from_prev_km} km desde el punto previo</div>` : ''}
           </div>`;

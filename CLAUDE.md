@@ -647,6 +647,26 @@ total— y el vuelo no lo es. La diferencia se pide **explicita** en el formular
   aterrizaje contra una pista concreta; emitir uno para un punto por el que solo
   se pasa volviria a darle dos significados a la misma etiqueta.
 
+**La escala de COMBUSTIBLE que sugiere el sistema tambien es un aterrizaje**
+(pedido del piloto, 18/09/2026). Se marca en `_generate_route_waypoints` cuando el
+tramo siguiente supera el 90 % del alcance, y hasta entonces NO se evaluaba: su
+marcador decia "R = 0.00 · GO", que era `r_map.get(code, 0.0)`, un valor por
+defecto. Ahora `_paradas_a_evaluar()` junta las escalas pedidas y las de
+combustible, en orden de vuelo, y todas pasan por el mismo ciclo: ficha propia a
+la hora de llegada, noche y NOTAM de cierre, y **peso en el veredicto global**
+(la regla de siempre: el peor de los aerodromos donde se toca el suelo). La ficha
+lleva `stop_kind` ("escala" | "combustible") y la pantalla dice cual es. Si el
+piloto ya pidio escala en ese aerodromo, manda lo que pidio.
+Medido: Cordoba-Ezeiza con el Alpha Trainer, Marcos Juarez GO R 0.031 (antes
+GO de relleno); Salta-Neuquen, dos escalas de combustible NO GO por aterrizaje
+nocturno que antes figuraban GO.
+
+`_veredictos_en_marcadores()`: cada aerodromo del mapa lleva el veredicto de SU
+ficha (origen, destino, escalas, con los bloqueos ya aplicados). Los que solo se
+sobrevuelan quedan SIN veredicto (`None`) en vez del GO por defecto: el mismo
+defecto afectaba a los marcadores de las escalas pedidas, cuya ficha si se
+evaluaba pero el mapa decia "R = 0.00 · GO".
+
 **El desvio se cobra.** `RouteCard.detour` informa cuanto agrega contra la ruta
 directa —km, minutos, litros— porque sin ese numero aceptar un punto de paso es
 un boton a ciegas. La comparacion NO pide alternativo ni evalua intermedios: es
@@ -1261,7 +1281,7 @@ CARTO_API_KEY=...
   ruta, aerodromos y espacios aereos conservan sus colores, que significan cosas).
 - La URL lleva la clave como **`?key=`**, no `?api_key=`.
 
-Suite de regresion (458 tests, sin red):
+Suite de regresion (462 tests, sin red):
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt

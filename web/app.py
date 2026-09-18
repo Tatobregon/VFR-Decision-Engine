@@ -123,6 +123,10 @@ class WeatherCard(BaseModel):
     elev_ft: int
     decision: str
     r_total: float
+    # Solo en las fichas de escala: "escala" si la pidio el piloto,
+    # "combustible" si la sugirio el sistema por el alcance de la aeronave.
+    # Las dos son aterrizajes y se evaluan igual; la pantalla dice cual es.
+    stop_kind: Optional[str] = None
     weather_source: str
     raw_metar: Optional[str] = None    # texto crudo del METAR (si hay estacion)
     raw_taf: Optional[str] = None      # texto crudo del TAF (si el aerodromo lo emite)
@@ -704,6 +708,50 @@ def _apply_operational_blockers(
 
 
 # ── Helper: aeródromos de desvío por waypoint ────────────────────────────────
+
+def _paradas_a_evaluar(
+    waypoints : List[RouteWaypoint],
+    via_points: List,
+    path      : List[str],
+    origin    : str,
+    dest      : str,
+) -> List[Tuple[str, str]]:
+    """
+    Aerodromos intermedios donde se ATERRIZA, en orden de vuelo, con su tipo.
+
+    Son las escalas que pidio el piloto ("escala") y las de combustible que el
+    sistema sugiere por el alcance de la aeronave ("combustible"). Las segundas
+    tambien son aterrizajes: hasta septiembre de 2026 no se evaluaban y su
+    marcador decia "R = 0.00 · GO", un valor por defecto (pedido del piloto).
+    Si un aerodromo es las dos cosas, manda lo que pidio el piloto.
+    """
+    pedidas = [v.code for v in via_points if v.is_stop]
+    combustible = [wp.code for wp in waypoints
+                   if wp.is_fuel_stop and wp.code not in pedidas
+                   and wp.code not in (origin, dest)]
+    paradas = ([(c, "escala") for c in dict.fromkeys(pedidas)]
+               + [(c, "combustible") for c in dict.fromkeys(combustible)])
+    orden = {c: i for i, c in enumerate(path)}
+    return sorted(paradas, key=lambda p: orden.get(p[0], len(orden)))
+
+
+def _veredictos_en_marcadores(
+    waypoints: List[RouteWaypoint],
+    fichas   : Dict[str, "WeatherCard"],
+) -> None:
+    """
+    Cada aerodromo del mapa lleva el veredicto de SU ficha: origen, destino y
+    escalas, con los bloqueos por noche y NOTAM ya aplicados. Los que solo se
+    sobrevuelan no tienen veredicto de aerodromo —no se despega ni se aterriza
+    ahi— y quedan sin el, en vez del "R = 0.00 · GO" por defecto que tenian.
+    """
+    for wp in waypoints:
+        if wp.is_checkpoint or wp.is_airway_waypoint or wp.is_corridor_waypoint:
+            continue
+        ficha = fichas.get(wp.code)
+        wp.r_total  = ficha.r_total  if ficha else None
+        wp.decision = ficha.decision if ficha else None
+
 
 def _veredicto_en_ruta(
     waypoints: List[RouteWaypoint],
@@ -2118,18 +2166,23 @@ async def evaluate(req: EvaluateRequest):
     #
     # Se evalúa a la hora de LLEGADA a esa escala, derivada de los tramos reales
     # de la ruta ya calculada, no de la estimación inicial.
+    #
+    # Las escalas de COMBUSTIBLE que sugiere el sistema entran igual: tambien
+    # son aterrizajes (ver _paradas_a_evaluar).
     stop_cards: List[WeatherCard] = []
-    escalas = [v.code for v in via_points if v.is_stop]
-    if escalas and route_result.found:
+    fichas_por_codigo: Dict[str, WeatherCard] = {origin: origin_card, dest: dest_card}
+    paradas = (_paradas_a_evaluar(waypoints, via_points, route_result.path, origin, dest)
+               if route_result.found else [])
+    if paradas:
         etas = eta_por_aerodromo(route_result.legs, dep_time)
-        with ThreadPoolExecutor(max_workers=min(4, len(escalas))) as ex:
+        with ThreadPoolExecutor(max_workers=min(4, len(paradas))) as ex:
             futs = {
                 code: ex.submit(engine.evaluate, code, None,
                                 _hora_redonda(etas.get(code, arr_time)),
                                 VENTANA_EXTREMO_H)
-                for code in escalas
+                for code, _ in paradas
             }
-            for code in escalas:
+            for code, tipo in paradas:
                 ap_escala = AIRPORTS.get(code)
                 if ap_escala is None:
                     continue
@@ -2152,7 +2205,11 @@ async def evaluate(req: EvaluateRequest):
                 _apply_operational_blockers(card, ap_escala, cuando, notams_escala,
                                             "aterrizaje", flight_rules,
                                             aircraft.cruise_alt_ft, result=res_escala)
+                card.stop_kind = tipo
                 stop_cards.append(card)
+                fichas_por_codigo[code] = card
+
+    _veredictos_en_marcadores(waypoints, fichas_por_codigo)
 
     # El briefing se genera DESPUES de los bloqueos operacionales: si se armara
     # antes, describiria solo la meteorologia e ignoraria un NO GO por noche o

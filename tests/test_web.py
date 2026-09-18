@@ -406,3 +406,56 @@ def test_los_puntos_de_corredor_llegan_con_nombre():
     assert all(w.get("point_name") for w in wps)
     # Puntos distintos, nombres distintos: es lo que faltaba para saber virar.
     assert len({w["point_name"] for w in wps}) == len(wps)
+
+
+# ── Las escalas de combustible sugeridas se evaluan como escalas ──────────────
+
+from types import SimpleNamespace
+
+from web.app import RouteWaypoint, _paradas_a_evaluar, _veredictos_en_marcadores
+
+
+def _ap(code, **kw):
+    return RouteWaypoint(code=code, name=code, lat=0.0, lon=0.0,
+                         r_total=0.0, decision="GO", **kw)
+
+
+def _ficha(code, dec, r):
+    # La funcion solo lee el veredicto y el R de la ficha.
+    return SimpleNamespace(station_id=code, decision=dec, r_total=r)
+
+
+def test_la_escala_de_combustible_sugerida_se_evalua_como_aterrizaje():
+    wps = [_ap("SACO"), _ap("SAOM", is_fuel_stop=True), _ap("SAAR"),
+           _ap("SADF", is_fuel_stop=True), _ap("SAEZ")]
+    via = [ViaPoint(code="SAAR", is_stop=True)]
+    path = ["SACO", "SAOM", "SAAR", "SADF", "SAEZ"]
+    assert _paradas_a_evaluar(wps, via, path, "SACO", "SAEZ") == [
+        ("SAOM", "combustible"), ("SAAR", "escala"), ("SADF", "combustible")]
+
+
+def test_si_el_piloto_ya_pidio_escala_ahi_manda_lo_que_pidio():
+    wps = [_ap("SACO"), _ap("SAAR", is_fuel_stop=True), _ap("SAEZ")]
+    via = [ViaPoint(code="SAAR", is_stop=True)]
+    assert _paradas_a_evaluar(wps, via, ["SACO", "SAAR", "SAEZ"], "SACO", "SAEZ") == [
+        ("SAAR", "escala")]
+
+
+def test_un_sobrevuelo_no_es_parada():
+    wps = [_ap("SACO"), _ap("SAAR"), _ap("SAEZ")]
+    via = [ViaPoint(code="SAAR", is_stop=False)]
+    assert _paradas_a_evaluar(wps, via, ["SACO", "SAAR", "SAEZ"], "SACO", "SAEZ") == []
+
+
+def test_cada_marcador_lleva_el_veredicto_de_su_ficha_y_el_sobrevuelo_ninguno():
+    chk = RouteWaypoint(code="WP1-1", name="x", lat=0, lon=0, r_total=0.3,
+                        decision="CAUTION", is_checkpoint=True, is_enroute_eval=True)
+    wps = [_ap("SACO"), _ap("SAOM", is_fuel_stop=True), chk, _ap("SAAR"), _ap("SAEZ")]
+    fichas = {"SACO": _ficha("SACO", "GO", 0.1),
+              "SAOM": _ficha("SAOM", "NO GO", 0.7),
+              "SAEZ": _ficha("SAEZ", "CAUTION", 0.3)}
+    _veredictos_en_marcadores(wps, fichas)
+    por = {w.code: (w.decision, w.r_total) for w in wps}
+    assert por["SAOM"] == ("NO GO", 0.7)          # la escala ya no es GO de relleno
+    assert por["SAAR"] == (None, None)            # se sobrevuela: sin veredicto
+    assert por["WP1-1"] == ("CAUTION", 0.3)       # los checkpoints no se tocan
