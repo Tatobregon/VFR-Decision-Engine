@@ -44,7 +44,7 @@ automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a
 | Archivo | Estado | Descripcion |
 |---|---|---|
 | `data/fetcher_aviationweather.py` | **COMPLETO** | METAR + TAF de aviationweather.gov. Produce `RawMetar`, `RawTaf`, `RawTafPeriod`. Mock de SACO incluido. |
-| `data/fetcher_openmeteo.py` | **COMPLETO** | Pronostico NWP de Open-Meteo. Produce `RawNWP` + `RawNWPHour`. `elevation_m=None` NO envia elevacion: Open-Meteo usa su DEM y la devuelve en `RawNWP.elevation_m` (lo correcto para puntos de ruta). Con `cruise_alt_ft` pide **todas** las variables del nivel de presion (temperatura, rocio, humedad, nubosidad, viento y altura geopotencial), no solo el viento, y las deja en los campos `level_*` SIN pisar los de superficie. **`get_upper_air()`**: consulta dedicada de aire en altura, con tipos propios (`UpperAir`/`UpperAirHour`). **`get_forecast_ring()`**: consulta el aerodromo + 6 puntos a 10 km en UNA peticion, para muestrear la incertidumbre orografica. Mock incluido. |
+| `data/fetcher_openmeteo.py` | **COMPLETO** | Pronostico NWP de Open-Meteo. Produce `RawNWP` + `RawNWPHour`. `elevation_m=None` NO envia elevacion: Open-Meteo usa su DEM y la devuelve en `RawNWP.elevation_m` (lo correcto para puntos de ruta). Con `cruise_alt_ft` pide **todas** las variables del nivel de presion (temperatura, rocio, humedad, nubosidad, viento y altura geopotencial), no solo el viento, y las deja en los campos `level_*` SIN pisar los de superficie — **viento incluido** (`level_wind_*`, desde el 18/09/2026; antes el viento del nivel pisaba el de 10 m y se descartaba la rafaga). **`get_upper_air()`**: consulta dedicada de aire en altura, con tipos propios (`UpperAir`/`UpperAirHour`). **`get_forecast_ring()`**: consulta el aerodromo + 6 puntos a 10 km en UNA peticion, para muestrear la incertidumbre orografica. Mock incluido. |
 | `data/airports.py` | **COMPLETO** | Registro canonico de aerodromos. `AirportInfo`, `RunwayInfo` dataclasses. `AIRPORTS`, `AIRPORTS_PUBLIC`. Fuente unica de verdad para coords, elevacion y cabeceras. |
 | `data/airspace.py` | **COMPLETO** | Zonas CTR/TMA/R/P/D. Fuente `ar-airspace.json` (OpenAIP); fallback Cordoba si falta el cache. `zones_along_route()`, `route_intersects_zone()`. |
 | `data/airways.py` | **COMPLETO** | Grafo bidireccional de aerovias inferiores del AIP (ENR-3.1) desde `aerovias_argentinas.json`. `AIRWAY_NODES`, `AIRWAY_GRAPH`. |
@@ -419,8 +419,16 @@ vis < 8 km sobre FL100       CAUTION (ya existia; ahora deja razon)
   referencia AGL de la base de nubes.
 - **Sin datos no hay GO.** La falla de NWP devolvia R=0 / GO y pintaba el punto de
   verde. `RouteWaypoint.r_total/decision` son ahora `Optional`.
-- **GUST en el nivel no existe** (Open-Meteo no publica rafagas por nivel): la barra
-  daba 0 % en los 36 casos medidos. Ahora `r_gust=None` y la barra no se muestra.
+- **La superficie del checkpoint no tenia viento propio** (encontrado por el piloto,
+  18/09/2026). Al pedir el nivel, el fetcher PISABA el viento a 10 m con el del
+  nivel y descartaba la rafaga (`wind_gust = None`), asi que la barra GUST daba 0 %
+  siempre y el puntaje de superficie no podia ver el viento. Medido: 300/21 G52 kt
+  en la meseta chubutense, descartado. Ahora `windspeed_10m_kt`/`windgusts_10m_kt`
+  son SIEMPRE de superficie y el nivel va en `level_wind_*`. El popup muestra los
+  dos vientos, cada uno en su seccion; la ETA usa el del NIVEL; el mock tambien
+  dejo de pisar la superficie. Con el cambio: Rio Mayo, 18.7 G40.6 kt en superficie
+  -> GUST 88 %, dominante "gusts", R 0.044. Sigue GO: sin pista no hay cruzado, y
+  la rafaga pesa 0.050 (la misma regla que en los aerodromos).
 - **Factor dominante con R=0**: `max()` devolvia la primera clave. Ahora es None.
   Afectaba tambien a las fichas de aerodromo y al copiloto.
 - **Toda precaucion dice por que**: el piso de superficie (`conjunctive_floor`) y el
@@ -432,7 +440,7 @@ vis < 8 km sobre FL100       CAUTION (ya existia; ahora deja razon)
 nivel impone piso en 12 (9 CAUTION, 3 NO GO); 3 de 55 puntos cambian de veredicto
 con la altitud, contra 0 antes. Ej. al sur, a 5.500 y 7.500 ft: engelamiento a
 -1.6 y -4 C dentro de OVC -> NO GO, donde la superficie decia CAUTION. Fijado por
-40 tests en `tests/test_cruise_level.py`, sin red.
+43 tests en `tests/test_cruise_level.py`, sin red.
 
 > **Pendiente, declarado.** La regla de ficha `cloud_below_cruise` (aerodromos)
 > compara el crucero contra `card.ceiling_ft`, que en NWP puede ser la base de
@@ -1253,7 +1261,7 @@ CARTO_API_KEY=...
   ruta, aerodromos y espacios aereos conservan sus colores, que significan cosas).
 - La URL lleva la clave como **`?key=`**, no `?api_key=`.
 
-Suite de regresion (455 tests, sin red):
+Suite de regresion (458 tests, sin red):
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt

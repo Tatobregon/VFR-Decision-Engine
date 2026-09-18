@@ -231,7 +231,9 @@ class CheckpointWeather(BaseModel):
         altura geopotencial real. Vienen en la MISMA peticion que el viento,
         asi que no cuestan una llamada extra.
 
-    El viento (`wind_*`) ya es del nivel cuando se pidio altitud de crucero.
+    El viento (`wind_*`) es el de SUPERFICIE, con su rafaga; el del nivel va
+    en `level_wind_*`. Hasta septiembre de 2026 `wind_*` traia el del nivel y
+    la superficie se quedaba sin viento propio.
 
     Antes esta clase decia "altitud de crucero" y devolvia la temperatura de
     superficie: a 15.000 ft eso es un error de decenas de grados. Los nombres
@@ -267,6 +269,8 @@ class CheckpointWeather(BaseModel):
     level_cloud_pct: Optional[int] = None      # nubosidad EN el nivel
     level_altitude_ft: Optional[int] = None    # altura geopotencial real
     level_below_zero: bool = False             # el nivel esta bajo cero
+    level_wind_dir: Optional[int] = None       # viento EN el nivel
+    level_wind_spd_kt: Optional[float] = None
 
     # ── Barrera del NIVEL de crucero (risk/cruise_level.py) ───────────────────
     # Su piso ya esta aplicado en la decision del waypoint; aca va el POR QUE.
@@ -1071,9 +1075,8 @@ def _generate_route_waypoints(
                         flight_category=ref_wx.flight_category,
                         r_vis=getattr(worst, 'r_vis', None),
                         r_ceil=getattr(worst, 'r_ceil', None),
-                        # Open-Meteo no publica rafagas en los niveles de
-                        # presion: sin dato, la barra no se muestra. Un 0 %
-                        # fijo parecia una medicion.
+                        # Rafaga de superficie; sin dato, la barra no se
+                        # muestra (un 0 % fijo pareceria una medicion).
                         r_gust=(getattr(worst, 'r_gust', None)
                                 if ref_wx.wind_gust_kt is not None else None),
                         r_wx=getattr(worst, 'r_wx', None),
@@ -1091,6 +1094,8 @@ def _generate_route_waypoints(
                         level_rh_pct=getattr(lvl, 'level_rh_pct', None),
                         level_cloud_pct=getattr(lvl, 'level_cloud_pct', None),
                         level_altitude_ft=getattr(lvl, 'level_altitude_ft', None),
+                        level_wind_dir=getattr(lvl, 'level_wind_dir', None),
+                        level_wind_spd_kt=getattr(lvl, 'level_wind_spd_kt', None),
                         level_below_zero=bool(
                             getattr(lvl, 'level_temp_c', None) is not None
                             and lvl.level_temp_c < 0
@@ -1161,9 +1166,12 @@ def _generate_route_waypoints(
             if dist_km > 0.1:
                 track = bearing_deg(prev_pt[0], prev_pt[1], wp.lat, wp.lon)
                 gs = aircraft.cruise_kt
+                # La velocidad sobre el terreno depende del viento DEL NIVEL,
+                # no del de superficie. Sin dato del nivel no se corrige.
                 cw = wp.chk_weather
-                if cw and cw.wind_spd_kt is not None and cw.wind_dir is not None and not cw.wind_variable:
-                    gs = effective_groundspeed_kt(aircraft.cruise_kt, cw.wind_dir, cw.wind_spd_kt, track)
+                if cw and cw.level_wind_spd_kt is not None and cw.level_wind_dir is not None:
+                    gs = effective_groundspeed_kt(aircraft.cruise_kt, cw.level_wind_dir,
+                                                  cw.level_wind_spd_kt, track)
                 elapsed_h += leg_time_hours(dist_km, gs)
         wp.elapsed_min = round(elapsed_h * 60)
         wp.eta_utc     = dep_time + int(elapsed_h * 3600)

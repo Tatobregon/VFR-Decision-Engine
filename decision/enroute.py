@@ -100,9 +100,9 @@ def evaluate_nwp_at_coord(
     Si no hay datos, devuelve `(None, None, None, None, None, None)`: el punto
     queda sin evaluar, no en GO.
 
-    `ref_wx` es un ParsedWeather de SUPERFICIE (con el viento ya sustituido por
-    el del nivel). `level_hour` es el RawNWPHour de esa misma hora, que ademas
-    trae temperatura, rocio, humedad y nubosidad EN EL NIVEL de presion.
+    `ref_wx` es un ParsedWeather de SUPERFICIE, viento y rafaga incluidos.
+    `level_hour` es el RawNWPHour de esa misma hora, que ademas trae viento,
+    temperatura, rocio, humedad y nubosidad EN EL NIVEL de presion.
 
     Los dos se devuelven por separado a proposito. Un punto de ruta tiene dos
     realidades simultaneas —el suelo debajo y el aire por el que se lo cruza— y
@@ -162,9 +162,9 @@ def evaluate_nwp_at_coord(
             if blocker.is_blocked:
                 return 1.0, "NO GO", ref_wx, None, level_hour, level_check
 
-        # En vuelo crucero el viento cruzado no es peligroso (el piloto crabea).
-        # Se zeroa el crosswind alineando wind_dir con el track; r_gust sigue
-        # capturando turbulencia por ráfagas.
+        # Un punto de ruta no tiene pista: el cruzado se anula alineando la
+        # direccion con el track. r_gust mide la rafaga de SUPERFICIE, que es
+        # la que se encuentra al descender o aterrizar ahi.
         def _inflight_wx(w):
             wx2 = copy.copy(w)
             wx2.wind_dir = track_bearing
@@ -279,7 +279,7 @@ if __name__ == "__main__":
     if lvl is not None:
         print("    -- en el nivel de crucero --")
         print(f"    altura real: {lvl.level_altitude_ft} ft")
-        print(f"    viento     : {lvl.winddirection_10m}/{lvl.windspeed_10m_kt} kt")
+        print(f"    viento     : {lvl.level_wind_dir}/{lvl.level_wind_spd_kt} kt")
         print(f"    temperatura: {lvl.level_temp_c} C   rocio: {lvl.level_dewpoint_c} C")
         print(f"    nubosidad  : {lvl.level_cloud_pct} %   HR: {lvl.level_rh_pct} %")
         if lvl.level_temp_c is not None and wx is not None and wx.temp_c is not None:

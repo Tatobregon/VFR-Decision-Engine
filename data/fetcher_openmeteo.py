@@ -124,6 +124,8 @@ class RawNWPHour:
     level_rh_pct        : Optional[int]   = None   # humedad relativa en el nivel
     level_cloud_pct     : Optional[int]   = None   # nubosidad EN el nivel
     level_altitude_ft   : Optional[int]   = None   # altura geopotencial real
+    level_wind_dir      : Optional[int]   = None   # viento EN el nivel (grados)
+    level_wind_spd_kt   : Optional[float] = None   # viento EN el nivel (kt)
 
 
 @dataclass
@@ -475,23 +477,28 @@ class OpenMeteoFetcher:
                 return int(m * 3.28084) if m is not None else None
 
             # Viento: preferir nivel de presion si se solicito
+            # El viento de SUPERFICIE queda siempre en sus campos, con su
+            # rafaga. Hasta septiembre de 2026, al pedir un nivel se lo pisaba
+            # con el viento del nivel y se descartaba la rafaga: la parte
+            # "superficie" de un checkpoint no tenia viento propio y su puntaje
+            # no podia verlo (medido: 300/21 G52 kt en la meseta chubutense,
+            # descartado). Es la misma mezcla que ya se habia corregido para la
+            # temperatura.
+            wind_spd  = _to_float(_val("windspeed_10m"))
+            wind_dir  = _to_int(_val("winddirection_10m"))
+            wind_gust = _to_float(_val("windgusts_10m"))
+
+            lvl_spd = lvl_dir = None
             if pressure_lvl:
                 # Los nombres tienen que coincidir EXACTAMENTE con los que se
                 # piden en get_forecast (_UPPER_AIR_VARS). Open-Meteo acepta
                 # las dos grafias ("windspeed" y "wind_speed") pero devuelve la
                 # que se pidio: si aca se lee la otra, no se encuentra nada y el
-                # viento cae en silencio al de superficie.
+                # viento del nivel queda vacio.
                 spd_key = f"wind_speed_{pressure_lvl}hPa"
                 dir_key = f"wind_direction_{pressure_lvl}hPa"
-                alt_spd = _to_float(_val(spd_key))
-                alt_dir = _to_int(_val(dir_key))
-                wind_spd  = alt_spd  if alt_spd  is not None else _to_float(_val("windspeed_10m"))
-                wind_dir  = alt_dir  if alt_dir  is not None else _to_int(_val("winddirection_10m"))
-                wind_gust = None  # rafagas no disponibles en niveles de presion
-            else:
-                wind_spd  = _to_float(_val("windspeed_10m"))
-                wind_dir  = _to_int(_val("winddirection_10m"))
-                wind_gust = _to_float(_val("windgusts_10m"))
+                lvl_spd = _to_float(_val(spd_key))
+                lvl_dir = _to_int(_val(dir_key))
 
             hours.append(RawNWPHour(
                 valid_time_iso      = iso_str,
@@ -513,6 +520,8 @@ class OpenMeteoFetcher:
                 level_rh_pct        = _lvl_int("relative_humidity"),
                 level_cloud_pct     = _lvl_int("cloud_cover"),
                 level_altitude_ft   = _lvl_alt_ft(),
+                level_wind_dir      = lvl_dir,
+                level_wind_spd_kt   = lvl_spd,
             ))
 
         fetch_time = now_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -550,10 +559,10 @@ class OpenMeteoFetcher:
                         (0 m, o un promedio entre aerodromos) hace que el modelo
                         reduzca el pronostico de superficie a esa altura.
         hours_ahead   : cuantas horas de pronostico devolver (default 12)
-        cruise_alt_ft : si se especifica, solicita tambien viento en el nivel de
-                        presion mas cercano a esa altitud y lo usa como viento
-                        principal (en lugar del viento a 10m de superficie).
-                        Usar para waypoints intermedios en ruta de crucero.
+        cruise_alt_ft : si se especifica, solicita tambien las condiciones del
+                        nivel de presion mas cercano a esa altitud y las deja en
+                        los campos `level_*` (viento incluido). Los campos de
+                        superficie NO se tocan.
 
         Returns
         -------
@@ -892,9 +901,11 @@ def _simular_nivel_en_mock(nwp: "RawNWP", alt_ft: int) -> "RawNWP":
         h.level_rh_pct      = 40
         h.level_cloud_pct   = h.cloudcover_mid_pct or 0
         h.level_altitude_ft = alt_ft
-        # El viento en altura tampoco es el de superficie.
+        # El viento en altura tampoco es el de superficie, y va en SU campo:
+        # pisar el de superficie era justo el error que el mock debe detectar.
         if h.windspeed_10m_kt is not None:
-            h.windspeed_10m_kt = round(h.windspeed_10m_kt + alt_ft / 1000.0, 1)
+            h.level_wind_spd_kt = round(h.windspeed_10m_kt + alt_ft / 1000.0, 1)
+        h.level_wind_dir = h.winddirection_10m
     return nwp
 
 

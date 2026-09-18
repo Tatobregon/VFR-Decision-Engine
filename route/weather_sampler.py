@@ -180,6 +180,13 @@ def _fetch_one(
             return point
 
         wx    = min(all_wx, key=lambda w: abs(w.obs_time - point.eta_unix))
+        # Este modulo puntua con el viento DEL NIVEL. El fetcher ya no lo
+        # escribe sobre el de superficie, asi que se toma de su campo.
+        hora = next((h for h in raw.hours if h.valid_time_utc == wx.obs_time), None)
+        if fetch_alt and hora is not None and hora.level_wind_spd_kt is not None:
+            wx = dataclasses.replace(wx, wind_dir=hora.level_wind_dir,
+                                     wind_spd_kt=hora.level_wind_spd_kt,
+                                     wind_gust_kt=None)
         score = compute_soft_score(wx, leg_bearing, scoring_ac)
 
         point.decision    = score.decision

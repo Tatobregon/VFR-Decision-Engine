@@ -2622,7 +2622,7 @@ function app() {
             <div style="border-top:1px solid #30363d;margin-top:5px;padding-top:4px">
               <div style="font-size:10px;color:#8b949e;margin-bottom:3px">EN EL NIVEL DE RUTA${wp.is_airway_waypoint && wp.airway_mea_ft ? ' (MEA '+wp.airway_mea_ft.toLocaleString()+' ft)' : (wp.cruise_alt_ft ? ' ('+wp.cruise_alt_ft.toLocaleString()+' ft)' : '')}${cw.level_altitude_ft ? ' · nivel real '+cw.level_altitude_ft.toLocaleString()+' ft' : ''}</div>
               <div style="font-size:10px;color:#e6edf3;margin-bottom:2px">
-                Viento: ${cw.wind_variable ? 'VRB' : (cw.wind_dir != null ? String(cw.wind_dir).padStart(3,'0')+'°' : '---')} / ${cw.wind_spd_kt != null ? cw.wind_spd_kt+' kt' : '--'}${cw.wind_gust_kt ? ' G'+cw.wind_gust_kt+' kt' : ''}
+                Viento: ${cw.level_wind_dir != null ? String(cw.level_wind_dir).padStart(3,'0')+'°' : '---'} / ${cw.level_wind_spd_kt != null ? cw.level_wind_spd_kt+' kt' : '--'}
               </div>
               ${cw.level_temp_c != null ? `
                 <div style="font-size:10px;color:#e6edf3;margin-bottom:2px">
@@ -2633,6 +2633,9 @@ function app() {
                 </div>` : ''}
               <div style="font-size:9px;color:#6e7681;margin-top:4px;margin-bottom:1px;letter-spacing:.04em">EN SUPERFICIE, DEBAJO DEL PUNTO</div>
               <div style="font-size:10px;color:#8b949e;margin-bottom:2px">
+                Viento: ${cw.wind_dir != null ? String(cw.wind_dir).padStart(3,'0')+'°' : '---'} / ${cw.wind_spd_kt != null ? cw.wind_spd_kt+' kt' : '--'}${cw.wind_gust_kt ? ' <span style="color:#e6edf3">ráfagas '+cw.wind_gust_kt+' kt</span>' : ''}
+              </div>
+              <div style="font-size:10px;color:#8b949e;margin-bottom:2px">
                 Vis: ${cw.visibility_km != null ? (cw.visibility_km>=9.9 ? '>10 km' : cw.visibility_km+' km') : '---'} &nbsp;|&nbsp;
                 Techo: ${cw.ceiling_ft == null ? 'CLR' : (cw.ceiling_is_reference ? 'nubes medias o altas, base no pronosticada' : cw.ceiling_ft+' ft')}${cw.temp_c != null ? ' &nbsp;|&nbsp; Temp: '+cw.temp_c+'°C' : ''}
               </div>
@@ -2642,7 +2645,7 @@ function app() {
               <div style="margin-top:2px">
                 ${scoreRow('VIS',cw.r_vis)}${scoreRow('CEIL',cw.r_ceil)}${scoreRow('GUST',cw.r_gust)}${scoreRow('WX',cw.r_wx)}${scoreRow('FOG',cw.r_fog)}
               </div>
-              ${cw.r_gust == null ? `<div style="font-size:9px;color:#6e7681">Ráfagas: la fuente no las publica en altura</div>` : ''}
+              ${cw.r_gust == null ? `<div style="font-size:9px;color:#6e7681">Ráfagas: sin dato</div>` : ''}
               ${cw.dominant_factor ? `<div style="font-size:9px;color:#8b949e;margin-top:2px">Factor dominante: ${cw.dominant_factor}</div>` : ''}
               ${cw.surface_floor ? `<div style="font-size:10px;color:${cw.surface_floor === 'NO GO' ? '#f85149' : '#d29922'};margin-top:2px">Limitante en superficie (${cw.surface_floor}): ${cw.surface_floor_reason || ''}</div>` : ''}
               ${this.levelBarrierBlock(cw)}
@@ -2885,13 +2888,13 @@ function app() {
           <div style="border-top:1px solid #30363d;margin-top:5px;padding-top:4px">
             <div style="font-size:9px;color:#8b949e;margin-bottom:2px">NWP CRUCERO · R=${wp.r_total.toFixed(2)} <span style="color:${markerColor};font-weight:700">${wp.decision}</span></div>
             <div style="font-size:10px;color:#e6edf3">
-              ${cw.wind_variable ? 'VRB' : (cw.wind_dir != null ? String(cw.wind_dir).padStart(3,'0')+'°' : '---')} / ${cw.wind_spd_kt != null ? cw.wind_spd_kt+' kt' : '--'}${cw.wind_gust_kt ? ' G'+cw.wind_gust_kt : ''}
+              ${cw.level_wind_dir != null ? String(cw.level_wind_dir).padStart(3,'0')+'°' : '---'} / ${cw.level_wind_spd_kt != null ? cw.level_wind_spd_kt+' kt' : '--'} en el nivel
             </div>
             ${cw.level_temp_c != null ? `<div style="font-size:10px;color:#e6edf3">
               ${cw.level_temp_c}°C en el nivel${cw.level_below_zero ? ' (bajo cero)' : ''}${cw.level_cloud_pct != null ? ' · nubes '+cw.level_cloud_pct+'%' : ''}
             </div>` : ''}
             <div style="font-size:9px;color:#6e7681;margin-top:2px">
-              Superficie · Vis: ${cw.visibility_km != null ? (cw.visibility_km>=9.9?'>10 km':cw.visibility_km+' km') : '---'} · Techo: ${cw.ceiling_ft == null ? 'CLR' : (cw.ceiling_is_reference ? 'base no pronosticada' : cw.ceiling_ft+' ft')}
+              Superficie · Viento: ${cw.wind_dir != null ? String(cw.wind_dir).padStart(3,'0')+'°' : '---'}/${cw.wind_spd_kt != null ? cw.wind_spd_kt : '--'}${cw.wind_gust_kt ? ' G'+cw.wind_gust_kt : ''} kt · Vis: ${cw.visibility_km != null ? (cw.visibility_km>=9.9?'>10 km':cw.visibility_km+' km') : '---'} · Techo: ${cw.ceiling_ft == null ? 'CLR' : (cw.ceiling_is_reference ? 'base no pronosticada' : cw.ceiling_ft+' ft')}
             </div>
             ${cw.wx_codes && cw.wx_codes.length ? `<div style="font-size:10px;color:#d29922">${cw.wx_codes.join(' ')}</div>` : ''}
             ${cw.surface_floor ? `<div style="font-size:10px;color:${cw.surface_floor === 'NO GO' ? '#f85149' : '#d29922'}">Limitante en superficie (${cw.surface_floor}): ${cw.surface_floor_reason || ''}</div>` : ''}

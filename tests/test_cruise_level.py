@@ -316,3 +316,47 @@ def test_la_regla_de_8_km_sobre_fl100_deja_su_razon(inyectar):
     assert any("8 km" in x for x in nivel.reasons)
     # por debajo de FL100 el minimo es 5 km y 6 km alcanza
     assert _evaluar(alt=7500, t0=t0)[1] == "GO"
+
+
+# ── Superficie y nivel: cada viento en su campo ───────────────────────────────
+
+def test_pedir_un_nivel_no_pisa_el_viento_de_superficie():
+    """Bug real: al pedir el nivel se reemplazaba el viento a 10 m y se
+    descartaba la rafaga. La superficie del checkpoint se quedaba sin viento."""
+    from data.fetcher_openmeteo import OpenMeteoFetcher
+    f = OpenMeteoFetcher(mock=True)
+    sup = f.get_forecast(-31.0, -64.0, 500.0, hours_ahead=3).hours[0]
+    con = f.get_forecast(-31.0, -64.0, 500.0, hours_ahead=3, cruise_alt_ft=10000).hours[0]
+    assert (con.windspeed_10m_kt, con.winddirection_10m, con.windgusts_10m_kt) == \
+           (sup.windspeed_10m_kt, sup.winddirection_10m, sup.windgusts_10m_kt)
+    assert con.level_wind_spd_kt is not None and con.level_wind_spd_kt != con.windspeed_10m_kt
+    assert sup.level_wind_spd_kt is None          # sin nivel pedido no se inventa
+
+
+def test_la_rafaga_de_superficie_mueve_la_barra(inyectar):
+    t0 = int(time.time()) // 3600 * 3600 + 3600
+    raw = _pronostico(t0)
+    for h in raw.hours:
+        h.windspeed_10m_kt, h.windgusts_10m_kt = 21.0, 52.0
+    inyectar(raw)
+    r, dec, wx, score, lvl, nivel = _evaluar(t0=t0)
+    assert wx.wind_gust_kt == 52.0 and score.r_gust > 0 and r > 0
+
+
+def test_la_eta_usa_el_viento_del_nivel_y_no_el_de_superficie(monkeypatch):
+    """Superficie en calma y 60 kt de frente en el nivel: la llegada se atrasa."""
+    from parsers.metar_parser import ParsedWeather
+
+    class _Nivel:                               # hora cruda con viento del nivel
+        level_temp_c = 5.0; level_dewpoint_c = -5.0; level_rh_pct = 50
+        level_cloud_pct = 0; level_altitude_ft = 9500
+
+    def _ruta(lvl_spd):
+        n = _Nivel(); n.level_wind_dir = 180; n.level_wind_spd_kt = lvl_spd
+        wx = ParsedWeather(source="nwp", station_id="CHK", obs_time=0,
+                           wind_dir=0, wind_spd_kt=0.0, visibility_km=50.0)
+        chk = _ruta_con_checkpoint(monkeypatch, (0.0, "GO", wx, None, n, CruiseLevelCheck()))
+        return chk[0].elapsed_min
+
+    # SAZN -> SAZS va hacia el sudoeste: viento del sur (180) le da de frente
+    assert _ruta(60.0) > _ruta(0.0)
