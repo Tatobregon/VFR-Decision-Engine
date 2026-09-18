@@ -182,8 +182,10 @@ La hoja de ruta se organiza en tres líneas, ordenadas según su aporte a la val
 
 ### 6.3.2. Evolución del modelo
 
-5. **Puntaje de la ruta con las condiciones del nivel de crucero**, que hoy se informan pero no
-   intervienen en el puntaje de los puntos en ruta (§ 3.2.5.4).
+5. **Puntaje de la ruta con las condiciones del nivel de crucero.** Hoy el nivel interviene en
+   el veredicto de los puntos en ruta como barrera, pero el puntaje ponderado sigue midiendo
+   la superficie (§ 3.2.5.4); integrarlo exigiría derivar pesos para esos factores y
+   recalibrar.
 6. **Ruteo con puntos intermedios que no sean aeródromos**, para que la evitación de espacios
    aéreos y de terreno no dependa del aeródromo disponible más cercano, y para resolver el
    camino completo con los puntos de paso como obligatorios en lugar de tramo por tramo

@@ -44,7 +44,7 @@ automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a
 | Archivo | Estado | Descripcion |
 |---|---|---|
 | `data/fetcher_aviationweather.py` | **COMPLETO** | METAR + TAF de aviationweather.gov. Produce `RawMetar`, `RawTaf`, `RawTafPeriod`. Mock de SACO incluido. |
-| `data/fetcher_openmeteo.py` | **COMPLETO** | Pronostico NWP de Open-Meteo. Produce `RawNWP` + `RawNWPHour`. Con `cruise_alt_ft` pide **todas** las variables del nivel de presion (temperatura, rocio, humedad, nubosidad, viento y altura geopotencial), no solo el viento, y las deja en los campos `level_*` SIN pisar los de superficie. **`get_upper_air()`**: consulta dedicada de aire en altura, con tipos propios (`UpperAir`/`UpperAirHour`). **`get_forecast_ring()`**: consulta el aerodromo + 6 puntos a 10 km en UNA peticion, para muestrear la incertidumbre orografica. Mock incluido. |
+| `data/fetcher_openmeteo.py` | **COMPLETO** | Pronostico NWP de Open-Meteo. Produce `RawNWP` + `RawNWPHour`. `elevation_m=None` NO envia elevacion: Open-Meteo usa su DEM y la devuelve en `RawNWP.elevation_m` (lo correcto para puntos de ruta). Con `cruise_alt_ft` pide **todas** las variables del nivel de presion (temperatura, rocio, humedad, nubosidad, viento y altura geopotencial), no solo el viento, y las deja en los campos `level_*` SIN pisar los de superficie. **`get_upper_air()`**: consulta dedicada de aire en altura, con tipos propios (`UpperAir`/`UpperAirHour`). **`get_forecast_ring()`**: consulta el aerodromo + 6 puntos a 10 km en UNA peticion, para muestrear la incertidumbre orografica. Mock incluido. |
 | `data/airports.py` | **COMPLETO** | Registro canonico de aerodromos. `AirportInfo`, `RunwayInfo` dataclasses. `AIRPORTS`, `AIRPORTS_PUBLIC`. Fuente unica de verdad para coords, elevacion y cabeceras. |
 | `data/airspace.py` | **COMPLETO** | Zonas CTR/TMA/R/P/D. Fuente `ar-airspace.json` (OpenAIP); fallback Cordoba si falta el cache. `zones_along_route()`, `route_intersects_zone()`. |
 | `data/airways.py` | **COMPLETO** | Grafo bidireccional de aerovias inferiores del AIP (ENR-3.1) desde `aerovias_argentinas.json`. `AIRWAY_NODES`, `AIRWAY_GRAPH`. |
@@ -84,6 +84,7 @@ automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a
 | `risk/weights.py` | **COMPLETO** | Pesos AHP W_VIS=0.357 W_CEIL=0.357 W_XWIND=0.099 W_FOG=0.071 W_GUST=0.050 W_WX=0.044 W_TAF=0.022. Funciones r_i. Thresholds **calibrados**: t_go=0.22, t_caution=0.59. Los **parametros de forma** de las rampas son constantes nombradas con procedencia declarada (N norma / J juicio): los quiebres de riesgo MAXIMO coinciden con el rechazo categorico del sistema (3 km / 500 ft), que NO es una norma; el minimo VFR de la norma (5 km / 1000 ft) cae dentro de la rampa; los de riesgo NULO son juicio. `r_fog` de este modulo NO corre en runtime (la rampa real esta en `features/fog_risk.py`). |
 | `risk/hard_blockers.py` | **COMPLETO** | Tokens TS/TSRA/TSGR/GR/FC/VA/FZRA/FZDZ + vis<3km + ceil<500ft → NO GO inmediato (limites del sistema, no norma: el minimo VFR es 5 km / 1000 ft). |
 | `risk/soft_scoring.py` | **COMPLETO** | `compute_soft_score(...)` → `SoftScoreResult`. Score compensatorio + **barrera no-compensatoria** (`conjunctive_floor`): `decision = worst(umbral(R), piso)`. Expone `guardrail_floor`/`guardrail_reason`. La unica frontera de viento es `XWIND_CAUTION_FRACTION=0.85` (J), sobre el cruzado calculado con la RAFAGA. **La rafaga no impone piso por si sola** (septiembre 2026): entra por su componente cruzado. Efecto medido en sensitivity [5]: <=2/38 flips ante +/-30%. |
+| `risk/cruise_level.py` | **COMPLETO** | **Barrera del NIVEL de crucero** para los checkpoints (septiembre 2026): nube en el nivel (VFR: BKN -> CAUTION, OVC -> NO GO), engelamiento (T <= 0 C con nube >= BKN -> NO GO, VFR e IFR) y capa baja por debajo del crucero (VFR -> CAUTION). Pisos no compensatorios: no toca pesos ni umbrales. Solo compara con el crucero la base de ESPY; las capas media y alta van a alturas de referencia fijas y entran por la nubosidad del nivel. Lo que no llega se declara en `missing`. Ver *El checkpoint se evalua en el nivel de crucero*. |
 | `risk/scenarios.py` | **COMPLETO** | Bateria de 38 escenarios de referencia con etiqueta normativa ANAC/OACI (`normative_label`). Fuente compartida por calibracion y sensibilidad. **Declara en su encabezado el ALCANCE de la independencia de la referencia**: vale para vis/techo/wx/TAF, NO para cruzado ni rafaga, donde la etiqueta replica los cortes del motor y la concordancia es por construccion. |
 | `risk/calibration.py` | **COMPLETO** | Calibracion de umbrales por anclaje normativo (grid search + costo asimetrico). Resultado: t_go=0.22, t_caution=0.59 (36/38 = 95% concordancia, 0 sub-avisos, 2 sobre-avisos). Reporta ademas la concordancia **por nivel de minimos personales** (sin minimos 95%, PPL 89%, Alumno 71%) y verifica que en ninguno hay sub-avisos: el desvio es siempre por sobre-aviso. Validez de constructo, no empirica. |
 | `risk/sensitivity.py` | **COMPLETO** | Sensibilidad en 5 ejes: [1] OAT ±20% por peso, [2] Monte Carlo 7 pesos, [3] umbrales, [4] **parametros de forma de las r_i**, [5] **fraccion de CAUTION de la barrera de cruzado** (la rafaga ya no tiene piso propio). Estabilidad del veredicto 99%; 37/38 escenarios nunca cambian. **Hallazgo clave**: los parametros de forma pesan MAS que los pesos (5.3% de flips contra 0.8%; desde septiembre de 2026 se perturban los dos extremos de cada rampa). |
@@ -93,7 +94,7 @@ automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a
 | Archivo | Estado | Descripcion |
 |---|---|---|
 | `config.py` | **COMPLETO** | Constantes globales: `NWP_STATIONS` (derivado de los 561 aerodromos de `AIRPORTS`), `METAR_STATIONS` (vacio, vestigio v1.0), `NWP_HOURS_AHEAD`. |
-| `decision/enroute.py` | **COMPLETO** | `evaluate_nwp_at_coord()` devuelve **cinco** valores: `(r_total, decision, ref_wx, score, level_hour)`. `ref_wx` es superficie; `level_hour` trae las condiciones DEL NIVEL. Se entregan separados a proposito. Ademas `nwp_series_at_coord()`. **Extraidas de `web/app.py`** (septiembre 2026) porque el copiloto tambien las necesita y que la capa de lenguaje importara de `web/` invertiria las dependencias. En crucero **anulan el viento cruzado** (el piloto crabea; el cruzado es concepto de pista) y aplican el minimo VFR de 8 km sobre FL100. |
+| `decision/enroute.py` | **COMPLETO** | `evaluate_nwp_at_coord()` devuelve **seis** valores: `(r_total, decision, ref_wx, score, level_hour, level_check)`. `ref_wx` es superficie; `level_hour` trae las condiciones DEL NIVEL; `level_check` es la barrera del nivel, ya aplicada en `decision`. Se entregan separados a proposito. **Sin datos devuelve seis None**, nunca GO. Con `elev_m=None` Open-Meteo usa su propio terreno. Ademas `nwp_series_at_coord()`. **Extraidas de `web/app.py`** (septiembre 2026) porque el copiloto tambien las necesita y que la capa de lenguaje importara de `web/` invertiria las dependencias. En crucero **anulan el viento cruzado** (el piloto crabea; el cruzado es concepto de pista) y aplican el minimo VFR de 8 km sobre FL100. |
 | `decision/engine.py` | **COMPLETO** | `DecisionEngine.evaluate()` → `DecisionResult`. Pipeline: fetch→parse→**condiciones del momento**→hard_blockers→soft_score+taf_window→decision. **Regla de fuente**: con codigo ICAO intenta METAR+TAF y cae a NWP si no hay METAR; sin ICAO va directo a NWP. **Regla de momento** (`_condiciones_para_el_momento`): dentro de `VIGENCIA_OBSERVACION_H` manda el METAR; despues manda el TAF y el NWP completa temperatura y rocio; si ninguno cubre el momento, NWP entero. El camino NWP usa **muestreo en anillo** (peor caso en tiempo Y espacio). |
 | `output/briefing.py` | **COMPLETO** | `generate_briefing(...)` → briefing meteorologico multi-linea para el piloto (origen, destino, ruta, NOTAMs). 100% reglas, sin IA. |
 | `output/flight_plan.py` | **COMPLETO** | `build_flight_plan(...)` → plan de vuelo OACI (casillas 7-19 + mensaje FPL). **No radica** el plan: lo presenta el piloto. |
@@ -377,12 +378,66 @@ Bell Ville, 08/09 12:00 — medido contra la API
 - **El mock simula el nivel** con gradiente ISA. Sin eso, un test escrito sobre el mock
   pasaria con el bug puesto, que es lo peor que puede hacer una red de seguridad.
 
-> **Limitacion que SIGUE en pie, declarada.** El PUNTAJE de un checkpoint en ruta
-> (`r_vis`, `r_ceil`) se calcula con la visibilidad y el techo de SUPERFICIE, porque
-> no existe visibilidad por nivel de presion en la fuente. La informacion que se
-> MUESTRA ya es correcta y esta etiquetada; el scoring no cambio. Moverlo a la
-> nubosidad del nivel alteraria veredictos de ruta y exigiria recalibrar: es una
-> decision pendiente, no un olvido.
+> **Resuelto en parte (septiembre 2026), ver la seccion siguiente.** El VEREDICTO
+> de un checkpoint ya evalua el nivel de crucero, por barrera. El PUNTAJE (`r_vis`,
+> `r_ceil`, ...) sigue siendo de SUPERFICIE: integrar el nivel al puntaje ponderado
+> exigiria derivar pesos y recalibrar, y queda como trabajo futuro.
+
+### El checkpoint se evalua en el nivel de crucero
+
+Bug real encontrado por el piloto (septiembre 2026): un checkpoint con **todas las
+barras en 0 %** y "factor dominante: visibility". El R era correcto para lo que se
+le pasaba, pero se le pasaba solo la SUPERFICIE debajo del punto: del nivel entraba
+el viento, y en crucero el cruzado se anula. Medido contra la API en 12 puntos de
+las cinco regiones: **el R era identico a 5.500, 7.500 y 10.000 ft en los 12**.
+Un nivel metido en una capa cerrada, o con hielo, daba GO con el suelo despejado.
+
+**Decisiones del piloto:** barrera, no puntaje (no toca pesos ni calibracion); se
+MANTIENE la superficie (tormenta y visibilidad siguen vetando); el veredicto de
+ruta se muestra **aparte** del global, que sigue siendo de aerodromos.
+
+```
+                              VFR                    IFR
+nube en el nivel  BKN        CAUTION                 -
+                  OVC        NO GO                   -
+T <= 0 C con nube >= BKN     NO GO                   NO GO   (engelamiento)
+capa baja bajo el crucero    CAUTION                 -       (misma regla que la ficha)
+vis < 8 km sobre FL100       CAUTION (ya existia; ahora deja razon)
+```
+
+- **La base que se compara es SOLO la de Espy.** El adaptador pone la capa media a
+  8.000 ft y la alta a 20.000 ft FIJOS (`DEFAULT_MID/HIGH_CLOUD_BASE_FT`): no son
+  pronostico. El "Techo 8000 ft" del popup era esa constante. Las capas llevan ahora
+  `base_reference` y la pantalla dice "base no pronosticada". Esas capas entran por
+  la nubosidad EN el nivel, que si es dato del modelo. Si Espy topea en
+  `MAX_LOW_CLOUD_BASE_FT`, no se compara: se declara.
+- **Elevacion inventada, corregida de paso.** Las aerovias mandaban `elevation: 0`
+  y Open-Meteo reducia el pronostico de superficie AL NIVEL DEL MAR; los interpolados
+  mandaban un promedio entre aerodromos. Medido: +22.2 C de error en la Puna
+  (3.444 m), +13.5 C en las Sierras de Cordoba, +15.1 C en la precordillera. Ahora
+  los puntos de ruta no mandan elevacion y el modelo usa su DEM, que ademas es la
+  referencia AGL de la base de nubes.
+- **Sin datos no hay GO.** La falla de NWP devolvia R=0 / GO y pintaba el punto de
+  verde. `RouteWaypoint.r_total/decision` son ahora `Optional`.
+- **GUST en el nivel no existe** (Open-Meteo no publica rafagas por nivel): la barra
+  daba 0 % en los 36 casos medidos. Ahora `r_gust=None` y la barra no se muestra.
+- **Factor dominante con R=0**: `max()` devolvia la primera clave. Ahora es None.
+  Afectaba tambien a las fichas de aerodromo y al copiloto.
+- **Toda precaucion dice por que**: el piso de superficie (`conjunctive_floor`) y el
+  del nivel llegan al popup con su razon.
+- **Veredicto de ruta**: `RouteCard.enroute_decision` + `enroute_counts`, solo sobre
+  puntos `is_enroute_eval` (los de corredor llevan un GO de relleno sin evaluar).
+
+**Efecto medido** (165 evaluaciones, grilla del pais x 3 altitudes, 18/09/2026): el
+nivel impone piso en 12 (9 CAUTION, 3 NO GO); 3 de 55 puntos cambian de veredicto
+con la altitud, contra 0 antes. Ej. al sur, a 5.500 y 7.500 ft: engelamiento a
+-1.6 y -4 C dentro de OVC -> NO GO, donde la superficie decia CAUTION. Fijado por
+40 tests en `tests/test_cruise_level.py`, sin red.
+
+> **Pendiente, declarado.** La regla de ficha `cloud_below_cruise` (aerodromos)
+> compara el crucero contra `card.ceiling_ft`, que en NWP puede ser la base de
+> REFERENCIA de 8.000 ft de la capa media: puede dar CAUTION sobre un numero que
+> no es pronostico. Corregirlo mueve veredictos GLOBALES; queda a decision del piloto.
 
 ### El techo de un corredor VFR es AGL; la altitud de vuelo es MSL
 
@@ -1198,7 +1253,7 @@ CARTO_API_KEY=...
   ruta, aerodromos y espacios aereos conservan sus colores, que significan cosas).
 - La URL lleva la clave como **`?key=`**, no `?api_key=`.
 
-Suite de regresion (415 tests, sin red):
+Suite de regresion (455 tests, sin red):
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt

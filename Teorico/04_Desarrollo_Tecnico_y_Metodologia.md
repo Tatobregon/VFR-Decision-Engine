@@ -256,12 +256,14 @@ etapas:
    distancia, tiempo y combustible por etapa, y de ellos la hora real de llegada; si esa hora
    cae en otra franja horaria que la estimada, el destino se reevalúa.
 5. **Escalas y puntos en ruta.** Cada escala se evalúa como aeródromo a su hora de llegada;
-   los puntos de control en ruta se evalúan en paralelo e informan las condiciones del nivel
-   de crucero.
+   los puntos de control en ruta se evalúan en paralelo, con la superficie debajo del punto y
+   la barrera del nivel de crucero (§ 3.2.5.4), y de ellos resulta un veredicto de ruta. En
+   los puntos de ruta no se fija la elevación del terreno: el modelo numérico usa la suya, que
+   es también la referencia de la base de nubes que estima.
 6. **Restricciones operativas no meteorológicas**: vuelo nocturno en régimen VFR y NOTAM de
    cierre del aeródromo.
 7. **Consolidación**: el veredicto global es el más restrictivo entre los de todos los
-   aeródromos en los que la aeronave despega o aterriza; se generan el informe meteorológico
+   aeródromos en los que la aeronave despega o aterriza —el de la ruta se informa aparte—; se generan el informe meteorológico
    y el borrador del plan de vuelo.
 
 ⬜ **Figura 4.2.** *Flujo de datos de una evaluación.* Las siete etapas anteriores, con las
@@ -612,7 +614,7 @@ evaluación la solicita el piloto.
 
 ### 4.3.4. Aseguramiento de la calidad
 
-La calidad del software se sostiene sobre una suite de regresión de 415 pruebas automatizadas,
+La calidad del software se sostiene sobre una suite de regresión de 455 pruebas automatizadas,
 organizadas por capa:
 
 | Archivo | Pruebas | Alcance |
@@ -622,6 +624,7 @@ organizadas por capa:
 | `test_regression_scenarios.py` | 9 | Comportamiento del veredicto sobre la batería de referencia |
 | `test_engine_data.py` | 85 | Canalización de decisión, registro de aeródromos, selección de fuente, almacenamiento temporal y degradación |
 | `test_route.py` | 34 | Grafo de rutas, admisibilidad de la heurística de A\* para los cinco perfiles y aerovías |
+| `test_cruise_level.py` | 40 | Barrera del nivel de crucero, puntos en ruta sin datos y veredicto de la ruta |
 | `test_web.py` | 43 | Servicio web: puntos de paso, trayectoria volada y validación de entradas |
 | `test_copilot.py` | 90 | Asistente: verificaciones en código, contrato de las herramientas y conjunto de evaluación |
 
@@ -644,8 +647,9 @@ Cuatro prácticas le dan a la suite su valor:
 El sistema se despliega en la plataforma Render, en su plan gratuito, a partir del
 repositorio. La configuración se declara en un archivo versionado que fija la versión de
 Python —la misma del entorno de desarrollo—, instala las cuatro dependencias de producción e
-inicia el servidor. La clave de acceso al modelo de lenguaje se configura como variable de
-entorno secreta del servicio, fuera del repositorio. Todo cambio incorporado a la rama
+inicia el servidor. Las claves de servicio se configuran como variables de entorno, fuera del
+repositorio: la del modelo de lenguaje, que nunca sale del servidor, y la del mapa base, que
+por su naturaleza llega al navegador. Todo cambio incorporado a la rama
 principal se despliega automáticamente.
 
 ---

@@ -25,6 +25,15 @@ hay pista contra la cual medir un cruzado, y por eso:
 
   * Se aplica la regla VFR de visibilidad en altura: por encima de 10.000 ft
     el minimo VFR pasa de 5 a 8 km.
+
+  * El veredicto es el PEOR entre el puntaje de superficie debajo del punto
+    y la barrera del NIVEL de crucero (`risk/cruise_level.py`): nube en el
+    nivel, engelamiento y techo por debajo del crucero. Hasta septiembre de
+    2026 el aire del nivel se mostraba pero no se evaluaba, y el riesgo de un
+    checkpoint era el mismo a cualquier altitud.
+
+  * Sin datos NO hay veredicto. Si la consulta falla, se devuelve None en vez
+    de GO: un punto sin evaluar pintado de verde es informacion falsa.
 """
 
 import copy
@@ -36,8 +45,9 @@ try:
     from data.fetcher_openmeteo import OpenMeteoFetcher
     from parsers.openmeteo_adapter import OpenMeteoAdapter
     from risk.aircraft_profiles import AircraftProfile
+    from risk.cruise_level import cruise_level_floor, worst_of
     from risk.hard_blockers import check_hard_blockers_from_weather
-    from risk.soft_scoring import compute_soft_score
+    from risk.soft_scoring import _worst_verdict, compute_soft_score
 except ImportError:                                    # ejecucion como script
     import os
     import sys
@@ -46,8 +56,9 @@ except ImportError:                                    # ejecucion como script
     from data.fetcher_openmeteo import OpenMeteoFetcher
     from parsers.openmeteo_adapter import OpenMeteoAdapter
     from risk.aircraft_profiles import AircraftProfile
+    from risk.cruise_level import cruise_level_floor, worst_of
     from risk.hard_blockers import check_hard_blockers_from_weather
-    from risk.soft_scoring import compute_soft_score
+    from risk.soft_scoring import _worst_verdict, compute_soft_score
 
 logger = logging.getLogger(__name__)
 
@@ -56,10 +67,15 @@ logger = logging.getLogger(__name__)
 # Evaluacion en un punto, a altitud de crucero
 # ──────────────────────────────────────────────────────────────────────────────
 
+# Un punto sin datos queda SIN veredicto. Devolver GO con R=0 lo pintaba de
+# verde en el mapa: la ausencia de dato presentada como buen tiempo.
+_SIN_DATOS = (None, None, None, None, None, None)
+
+
 def evaluate_nwp_at_coord(
     lat: float,
     lon: float,
-    elev_m: float,
+    elev_m: Optional[float],
     dep_time: int,
     duration_hours: float,
     aircraft: AircraftProfile,
@@ -71,7 +87,18 @@ def evaluate_nwp_at_coord(
     """
     Evalúa riesgo NWP en coordenadas arbitrarias (no airport code).
 
-    Devuelve (r_total, decision, ref_wx, score, level_hour).
+    Devuelve (r_total, decision, ref_wx, score, level_hour, level_check).
+
+    `elev_m=None` es lo que corresponde a un punto de ruta: Open-Meteo usa su
+    propio modelo de terreno y devuelve la altura que uso, que es ademas la
+    referencia de la base de nubes AGL que se compara con el crucero.
+
+    `level_check` es la barrera del nivel (`CruiseLevelCheck`): su piso ya esta
+    aplicado en `decision`, y sus razones y faltantes se devuelven para que la
+    pantalla diga POR QUE. `r_total` sigue siendo el puntaje de superficie.
+
+    Si no hay datos, devuelve `(None, None, None, None, None, None)`: el punto
+    queda sin evaluar, no en GO.
 
     `ref_wx` es un ParsedWeather de SUPERFICIE (con el viento ya sustituido por
     el del nivel). `level_hour` es el RawNWPHour de esa misma hora, que ademas
@@ -92,12 +119,12 @@ def evaluate_nwp_at_coord(
             cruise_alt_ft=cruise_alt_ft,
         )
         if raw_nwp is None:
-            return 0.0, "GO", None, None, None
+            return _SIN_DATOS
 
         chk_id = f"CHK_{abs(lat):.1f}_{abs(lon):.1f}"
         all_wx = adapter.adapt_all(raw_nwp, station_id=chk_id)
         if not all_wx:
-            return 0.0, "GO", None, None, None
+            return _SIN_DATOS
 
         # Hora cruda por timestamp, para poder devolver las condiciones DEL
         # NIVEL junto con las de superficie.
@@ -111,10 +138,29 @@ def evaluate_nwp_at_coord(
         ref_wx = min(window_wx, key=lambda w: abs(w.obs_time - dep_time))
         level_hour = crudas.get(ref_wx.obs_time)
 
+        # Barrera del NIVEL de crucero, sobre toda la ventana (peor caso en el
+        # tiempo, como el puntaje). La elevacion es la que uso el modelo: la base
+        # de nubes que estima es AGL respecto de ese terreno, no de otro.
+        terrain_ft = (raw_nwp.elevation_m * 3.28084
+                      if raw_nwp.elevation_m is not None else None)
+        level_check = worst_of(
+            cruise_level_floor(
+                cruise_alt_ft      = cruise_alt_ft,
+                flight_rules       = flight_rules,
+                level_cloud_pct    = h.level_cloud_pct,
+                level_temp_c       = h.level_temp_c,
+                low_cloud_pct      = h.cloudcover_low_pct,
+                surface_temp_c     = h.temperature_2m_c,
+                surface_dewpoint_c = h.dewpoint_2m_c,
+                terrain_elev_ft    = terrain_ft,
+            )
+            for h in (crudas.get(w.obs_time) for w in window_wx) if h is not None
+        )
+
         for wx in window_wx:
             blocker = check_hard_blockers_from_weather(wx)
             if blocker.is_blocked:
-                return 1.0, "NO GO", ref_wx, None, level_hour
+                return 1.0, "NO GO", ref_wx, None, level_hour, level_check
 
         # En vuelo crucero el viento cruzado no es peligroso (el piloto crabea).
         # Se zeroa el crosswind alineando wind_dir con el track; r_gust sigue
@@ -128,21 +174,28 @@ def evaluate_nwp_at_coord(
         scores = [compute_soft_score(_inflight_wx(w), track_bearing, aircraft)
                   for w in window_wx]
         worst = max(scores, key=lambda s: s.r_total)
-        decision = worst.decision
+        decision = _worst_verdict(worst.decision, level_check.floor)
 
         # Regla de visibilidad VFR a altitud: a FL100 (10.000 ft) o más, el
         # mínimo VFR es 8 km, no 5. Si en ruta, a esa altitud, la visibilidad
         # cae por debajo de 8 km, la operación VFR queda marginal → CAUTION.
-        # (Solo VFR: en IFR no se requiere VMC.)
+        # (Solo VFR: en IFR no se requiere VMC.) Es una regla DEL NIVEL, asi que
+        # se registra en la barrera del nivel: antes cambiaba el veredicto sin
+        # dejar razon, y la pantalla mostraba un CAUTION inexplicado. La
+        # visibilidad es la de superficie, porque la fuente no la da por nivel.
         if flight_rules == "VFR" and cruise_alt_ft >= 10000 and decision == "GO" \
                 and ref_wx is not None and ref_wx.visibility_km is not None \
                 and ref_wx.visibility_km < 8.0:
             decision = "CAUTION"
+            level_check.floor = _worst_verdict(level_check.floor, "CAUTION")
+            level_check.reasons.append(
+                f"visibilidad {ref_wx.visibility_km:g} km (en superficie): por "
+                f"encima de 10.000 ft el minimo VFR es 8 km")
 
-        return worst.r_total, decision, ref_wx, worst, level_hour
+        return worst.r_total, decision, ref_wx, worst, level_hour, level_check
     except Exception as e:
         logger.warning(f"Error evaluando NWP en coord ({lat:.2f},{lon:.2f}): {e}")
-        return 0.0, "GO", None, None, None
+        return _SIN_DATOS
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -208,12 +261,17 @@ if __name__ == "__main__":
     ahora = int(time.time()) + 3600
 
     # Junin (SAAJ), a 7500 ft, rumbo este
-    r, dec, wx, score, lvl = evaluate_nwp_at_coord(
-        lat=-34.5459, lon=-60.9306, elev_m=81.0,
+    r, dec, wx, score, lvl, nivel = evaluate_nwp_at_coord(
+        lat=-34.5459, lon=-60.9306, elev_m=None,
         dep_time=ahora, duration_hours=1.0, aircraft=ac, mock=False,
         cruise_alt_ft=7500, track_bearing=90, flight_rules="VFR",
     )
-    print(f"\n  Junin a 7500 ft : R={r:.3f}  ({dec})")
+    if r is None:
+        print("\n  Junin a 7500 ft : sin datos")
+    else:
+        print(f"\n  Junin a 7500 ft : R={r:.3f}  ({dec})")
+        print(f"    barrera del nivel: {nivel.floor}  {'; '.join(nivel.reasons)}"
+              f"{'  faltan: ' + ', '.join(nivel.missing) if nivel.missing else ''}")
     if wx is not None:
         print("    -- superficie --")
         print(f"    visibilidad: {wx.visibility_km} km   techo: {wx.ceiling_ft} ft")

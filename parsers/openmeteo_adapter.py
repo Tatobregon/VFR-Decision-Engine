@@ -300,7 +300,11 @@ class OpenMeteoAdapter:
         en la practica y el NWP no aporta datos para estimarlas mejor.
 
         Cada capa resultante incluye "estimated": True para distinguirla de capas
-        observadas directamente en un METAR.
+        observadas directamente en un METAR, y "base_reference", que dice si su
+        base es una ALTURA DE REFERENCIA fija y no un pronostico: las capas media
+        y alta siempre, y la baja cuando falta temperatura o rocio para Espy. La
+        pantalla lo necesita para no presentar esos 8.000 ft como un techo
+        pronosticado.
         """
         layers = []
 
@@ -310,10 +314,11 @@ class OpenMeteoAdapter:
         # La capa media nunca puede quedar por debajo de la baja
         mid_base_ft = max(self.mid_cloud_base_ft, low_base_ft + 1000)
 
-        for cover_pct, base_ft in (
-            (low_pct,  low_base_ft),
-            (mid_pct,  mid_base_ft),
-            (high_pct, self.high_cloud_base_ft),
+        low_is_reference = temp_c is None or dewpoint_c is None
+        for cover_pct, base_ft, is_reference in (
+            (low_pct,  low_base_ft,             low_is_reference),
+            (mid_pct,  mid_base_ft,             True),
+            (high_pct, self.high_cloud_base_ft, True),
         ):
             if cover_pct is None:
                 continue
@@ -321,9 +326,10 @@ class OpenMeteoAdapter:
             if cover_str is None:
                 continue
             layers.append({
-                "cover"    : cover_str,
-                "base_ft"  : base_ft,
-                "estimated": True,
+                "cover"         : cover_str,
+                "base_ft"       : base_ft,
+                "estimated"     : True,
+                "base_reference": is_reference,
             })
 
         # Ordenar por altura ascendente (igual que MetarParser)

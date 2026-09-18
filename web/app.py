@@ -255,6 +255,10 @@ class CheckpointWeather(BaseModel):
     r_wx: Optional[float] = None
     r_fog: Optional[float] = None
     dominant_factor: Optional[str] = None
+    # Piso de la barrera de SUPERFICIE (conjunctive_floor) y su motivo. Sin esto
+    # un checkpoint con R = 0.07 aparecia en CAUTION sin decir por que.
+    surface_floor: Optional[str] = None
+    surface_floor_reason: Optional[str] = None
 
     # ── Condiciones EN EL NIVEL DE CRUCERO ────────────────────────────────────
     level_temp_c: Optional[float] = None       # temperatura en el nivel
@@ -264,14 +268,30 @@ class CheckpointWeather(BaseModel):
     level_altitude_ft: Optional[int] = None    # altura geopotencial real
     level_below_zero: bool = False             # el nivel esta bajo cero
 
+    # ── Barrera del NIVEL de crucero (risk/cruise_level.py) ───────────────────
+    # Su piso ya esta aplicado en la decision del waypoint; aca va el POR QUE.
+    level_floor: Optional[str] = None          # piso que impone el nivel
+    level_reasons: List[str] = []              # nube, hielo o techo bajo el crucero
+    level_missing: List[str] = []              # datos del nivel que no llegaron
+
+    # La base del techo de superficie puede ser una altura de REFERENCIA fija
+    # del adaptador (capas media y alta: 8.000 y 20.000 ft), no un pronostico.
+    ceiling_is_reference: bool = False
+
 
 class RouteWaypoint(BaseModel):
     code: str
     name: str
     lat: float
     lon: float
-    r_total: float
-    decision: str
+    # None en un punto en ruta cuya consulta NWP fallo: queda SIN veredicto.
+    # Antes se completaba con R=0 / GO y el mapa lo pintaba de verde.
+    r_total: Optional[float]
+    decision: Optional[str]
+    # Punto evaluado en ruta (checkpoint o waypoint de aerovia con NWP). Solo
+    # estos cuentan para el veredicto de ruta: los de corredor llevan un GO de
+    # relleno que nunca se evaluo.
+    is_enroute_eval: bool = False
     diversions: List[DiversionAirport] = []
     is_checkpoint: bool = False
     cruise_alt_ft: Optional[int] = None
@@ -330,6 +350,11 @@ class RouteCard(BaseModel):
     # Lo que cuesta el desvío contra la ruta directa. None si no hay puntos de
     # paso. Sin esto, aceptar un desvío es un botón a ciegas.
     detour: Optional[Dict] = None
+    # Veredicto EN RUTA: el peor de los puntos evaluados en el nivel de crucero.
+    # NO entra al veredicto global, que mide despegue y aterrizaje contra una
+    # pista (decision del piloto, septiembre 2026); se informa al lado.
+    enroute_decision: Optional[str] = None
+    enroute_counts: Dict[str, int] = {}
     error: str = ""
 
 
@@ -676,6 +701,35 @@ def _apply_operational_blockers(
 
 # ── Helper: aeródromos de desvío por waypoint ────────────────────────────────
 
+def _veredicto_en_ruta(
+    waypoints: List[RouteWaypoint],
+) -> Tuple[Optional[str], Dict[str, int]]:
+    """
+    Veredicto EN RUTA: el peor de los puntos evaluados en el nivel de crucero.
+
+    Se informa APARTE del veredicto global, que mide despegue y aterrizaje
+    contra una pista (decision del piloto, septiembre 2026): lo que pasa a mitad
+    de camino es otra pregunta. Solo cuentan los puntos marcados
+    `is_enroute_eval`; los de corredor llevan un GO de relleno que nunca se
+    evaluo. Los que quedaron sin datos se cuentan como tales, no como GO.
+
+    Devuelve (veredicto, conteo). Sin puntos evaluados: (None, {}). Con puntos
+    pero todos sin datos: (None, conteo).
+    """
+    evaluados = [wp for wp in waypoints if wp.is_enroute_eval]
+    if not evaluados:
+        return None, {}
+    conteo = {k: sum(wp.decision == k for wp in evaluados)
+              for k in ("GO", "CAUTION", "NO GO")}
+    conteo["SIN DATOS"] = sum(wp.decision is None for wp in evaluados)
+    con_dato = [wp.decision for wp in evaluados if wp.decision]
+    if not con_dato:
+        return None, conteo
+    veredicto = ("NO GO" if "NO GO" in con_dato
+                 else "CAUTION" if "CAUTION" in con_dato else "GO")
+    return veredicto, conteo
+
+
 def _find_diversions(
     waypoints: List[RouteWaypoint],
     max_km: float = 80.0,
@@ -940,7 +994,6 @@ def _generate_route_waypoints(
                     'seq_name':    aw.node_id,
                     'lat':         aw.lat,
                     'lon':         aw.lon,
-                    'elev_m':      0.0,
                     'cruise_alt':  _aw_flight_alt(aw),   # meteo a la altitud de la aerovía (MEA)
                     'track':       track,
                     'dep_time':    chk_time,
@@ -964,7 +1017,6 @@ def _generate_route_waypoints(
                     'seq_name':  f"En ruta · {round(j * step_km)} km desde {code}",
                     'lat':       chk_lat,
                     'lon':       chk_lon,
-                    'elev_m':    (ap.elev_ft + frac * (next_ap.elev_ft - ap.elev_ft)) * 0.3048,
                     'cruise_alt': cruise_alt,
                     'track':     track,
                     'dep_time':  chk_time,
@@ -978,14 +1030,17 @@ def _generate_route_waypoints(
 
     def _eval_chk(idx_spec):
         idx, spec = idx_spec
-        r, dec, ref_wx, worst, lvl = _evaluate_nwp_at_coord(
-            lat=spec['lat'], lon=spec['lon'], elev_m=spec['elev_m'],
+        # Sin elevacion: Open-Meteo usa su modelo de terreno. Antes se mandaba
+        # 0 m en las aerovias (el pronostico de superficie se reducia al nivel
+        # del mar) y un promedio entre aerodromos en los interpolados.
+        r, dec, ref_wx, worst, lvl, nivel = _evaluate_nwp_at_coord(
+            lat=spec['lat'], lon=spec['lon'], elev_m=None,
             dep_time=spec['dep_time'], duration_hours=1.0,
             aircraft=aircraft, mock=mock,
             cruise_alt_ft=spec['cruise_alt'], track_bearing=spec['track'],
             flight_rules=flight_rules,
         )
-        return idx, spec, r, dec, ref_wx, worst, lvl
+        return idx, spec, r, dec, ref_wx, worst, lvl, nivel
 
     route_codes = set(path)
 
@@ -993,11 +1048,14 @@ def _generate_route_waypoints(
         with ThreadPoolExecutor(max_workers=min(8, len(chk_items))) as ex:
             futures = [ex.submit(_eval_chk, item) for item in chk_items]
             for fut in futures:
-                idx, spec, r, dec, ref_wx, worst, lvl = fut.result()
+                idx, spec, r, dec, ref_wx, worst, lvl, nivel = fut.result()
 
                 # Construir resumen meteo del checkpoint si hay datos NWP
                 chk_wx = None
                 if ref_wx is not None:
+                    capa_techo = next(
+                        (l for l in (ref_wx.sky_layers or [])
+                         if l.get("cover") in ("BKN", "OVC")), None)
                     chk_wx = CheckpointWeather(
                         wind_dir=ref_wx.wind_dir,
                         wind_spd_kt=ref_wx.wind_spd_kt,
@@ -1013,10 +1071,20 @@ def _generate_route_waypoints(
                         flight_category=ref_wx.flight_category,
                         r_vis=getattr(worst, 'r_vis', None),
                         r_ceil=getattr(worst, 'r_ceil', None),
-                        r_gust=getattr(worst, 'r_gust', None),
+                        # Open-Meteo no publica rafagas en los niveles de
+                        # presion: sin dato, la barra no se muestra. Un 0 %
+                        # fijo parecia una medicion.
+                        r_gust=(getattr(worst, 'r_gust', None)
+                                if ref_wx.wind_gust_kt is not None else None),
                         r_wx=getattr(worst, 'r_wx', None),
                         r_fog=getattr(worst, 'r_fog', None),
                         dominant_factor=getattr(worst, 'dominant_factor', None),
+                        surface_floor=(worst.guardrail_floor
+                                       if worst is not None
+                                       and worst.guardrail_floor != "GO" else None),
+                        surface_floor_reason=(worst.guardrail_reason or None
+                                              if worst is not None
+                                              and worst.guardrail_floor != "GO" else None),
                         # Condiciones del nivel de crucero (misma petición)
                         level_temp_c=getattr(lvl, 'level_temp_c', None),
                         level_dewpoint_c=getattr(lvl, 'level_dewpoint_c', None),
@@ -1027,6 +1095,11 @@ def _generate_route_waypoints(
                             getattr(lvl, 'level_temp_c', None) is not None
                             and lvl.level_temp_c < 0
                         ),
+                        level_floor=nivel.floor if nivel else None,
+                        level_reasons=list(nivel.reasons) if nivel else [],
+                        level_missing=list(nivel.missing) if nivel else [],
+                        ceiling_is_reference=bool(
+                            capa_techo and capa_techo.get("base_reference")),
                     )
 
                 # Para checkpoints NO GO, sugerir aeródromo alternativo cercano
@@ -1045,6 +1118,7 @@ def _generate_route_waypoints(
                         code=orig.code, name=orig.name,
                         lat=orig.lat, lon=orig.lon,
                         r_total=r, decision=dec,
+                        is_enroute_eval=True,
                         is_checkpoint=False,
                         cruise_alt_ft=spec['cruise_alt'],
                         chk_weather=chk_wx,
@@ -1062,6 +1136,7 @@ def _generate_route_waypoints(
                         code=spec['seq_code'], name=spec['seq_name'],
                         lat=spec['lat'], lon=spec['lon'],
                         r_total=r, decision=dec,
+                        is_enroute_eval=True,
                         is_checkpoint=True, cruise_alt_ft=spec['cruise_alt'],
                         chk_weather=chk_wx,
                         alt_via=alt_via,
@@ -2087,6 +2162,9 @@ async def evaluate(req: EvaluateRequest):
     decisions = [origin_card.decision, dest_card.decision] + [c.decision for c in stop_cards]
     global_dec = "NO GO" if "NO GO" in decisions else "CAUTION" if "CAUTION" in decisions else "GO"
 
+    # Veredicto EN RUTA, aparte del global (ver _veredicto_en_ruta).
+    enroute_dec, enroute_counts = _veredicto_en_ruta(waypoints)
+
     # Aeródromos de desvío por waypoint (sin requests HTTP)
     divs = _find_diversions(waypoints)
     waypoints = [
@@ -2140,6 +2218,8 @@ async def evaluate(req: EvaluateRequest):
             "is_stop": v.is_stop,
         } for v in via_points],
         detour=detour,
+        enroute_decision=enroute_dec,
+        enroute_counts=enroute_counts,
         error=route_result.error,
     )
 

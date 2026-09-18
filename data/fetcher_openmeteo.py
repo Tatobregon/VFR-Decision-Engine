@@ -531,7 +531,7 @@ class OpenMeteoFetcher:
         self,
         lat          : float,
         lon          : float,
-        elevation_m  : float,
+        elevation_m  : Optional[float],
         hours_ahead  : int = 12,
         cruise_alt_ft: Optional[int] = None,
     ) -> Optional[RawNWP]:
@@ -542,7 +542,13 @@ class OpenMeteoFetcher:
         ----------
         lat           : latitud del punto en grados decimales (negativo = sur)
         lon           : longitud del punto en grados decimales (negativo = oeste)
-        elevation_m   : elevacion del punto en metros AMSL
+        elevation_m   : elevacion del punto en metros AMSL. Con None NO se envia:
+                        Open-Meteo usa su propio modelo de terreno (DEM de 90 m)
+                        y devuelve en `RawNWP.elevation_m` la altura que uso.
+                        Es lo que corresponde para un punto de ruta, cuya
+                        elevacion real no se conoce: forzar un valor inventado
+                        (0 m, o un promedio entre aerodromos) hace que el modelo
+                        reduzca el pronostico de superficie a esa altura.
         hours_ahead   : cuantas horas de pronostico devolver (default 12)
         cruise_alt_ft : si se especifica, solicita tambien viento en el nivel de
                         presion mas cercano a esa altitud y lo usa como viento
@@ -588,20 +594,24 @@ class OpenMeteoFetcher:
         # Los checkpoints de una ruta y las evaluaciones sucesivas del mismo
         # aerodromo caen en la misma clave; un modelo NWP se actualiza cada
         # 1-6 h, asi que reconsultarlo en cada evaluacion es puro costo.
-        cache_key = (round(lat, 3), round(lon, 3), round(elevation_m or 0.0),
+        cache_key = (round(lat, 3), round(lon, 3),
+                     None if elevation_m is None else round(elevation_m),
                      pressure_lvl, FORECAST_DAYS)
+
+        params = {
+            "latitude"       : lat,
+            "longitude"      : lon,
+            "hourly"         : hourly_vars,
+            "wind_speed_unit": "kn",
+            "timezone"       : "America/Argentina/Buenos_Aires",
+            "forecast_days"  : FORECAST_DAYS,
+        }
+        if elevation_m is not None:
+            params["elevation"] = elevation_m
 
         def _fetch():
             try:
-                return self._get(params={
-                    "latitude"       : lat,
-                    "longitude"      : lon,
-                    "elevation"      : elevation_m,
-                    "hourly"         : hourly_vars,
-                    "wind_speed_unit": "kn",
-                    "timezone"       : "America/Argentina/Buenos_Aires",
-                    "forecast_days"  : FORECAST_DAYS,
-                })
+                return self._get(params=params)
             except (ConnectionError, ValueError) as e:
                 logger.error(f"No se pudo obtener pronostico NWP: {e}")
                 return None

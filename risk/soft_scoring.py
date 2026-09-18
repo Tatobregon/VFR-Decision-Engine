@@ -38,6 +38,7 @@ Uso tipico
 
 import logging
 from dataclasses import dataclass
+from typing import Optional
 
 try:
     from risk.weights          import (
@@ -298,7 +299,8 @@ class SoftScoreResult:
     aircraft_name     : str
 
     # ── Componente dominante ──────────────────────────────────────────────────
-    dominant_factor   : str             # Componente con mayor contribucion ponderada
+    dominant_factor   : Optional[str]   # Componente con mayor contribucion ponderada;
+                                        # None si ninguno aporta riesgo
 
     # ── Barrera no-compensatoria (veto conjuntivo) ────────────────────────────
     guardrail_floor   : str  = "GO"     # Piso impuesto por un factor showstopper
@@ -417,7 +419,12 @@ def compute_soft_score(
         "fog"        : W_FOG   * _r_fog,
         "taf_risk"   : W_TAF   * _r_taf,
     }
+    # Con todas las contribuciones en cero, max() devolvia la PRIMERA clave del
+    # diccionario, y la pantalla decia "factor dominante: visibility" en un dia
+    # perfecto. Si ningun factor aporta riesgo, no hay dominante.
     dominant = max(contributions, key=contributions.get)
+    if contributions[dominant] <= 0.0:
+        dominant = None
 
     floor_note = f" | PISO={guardrail_floor} ({guardrail_reason})" if guardrail_floor != "GO" else ""
     logger.info(

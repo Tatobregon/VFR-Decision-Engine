@@ -522,15 +522,16 @@ def test_a_mayor_altitud_de_crucero_menor_temperatura_en_el_nivel():
 
 def test_la_evaluacion_en_ruta_devuelve_superficie_y_nivel_por_separado():
     """
-    `evaluate_nwp_at_coord` devuelve cinco valores, y el quinto son las
-    condiciones DEL NIVEL. Se entregan aparte del ParsedWeather —que es un
-    contrato de superficie— para que nadie las confunda de nuevo.
+    `evaluate_nwp_at_coord` devuelve seis valores: el quinto son las
+    condiciones DEL NIVEL y el sexto la barrera que se aplico sobre ellas. Se
+    entregan aparte del ParsedWeather —que es un contrato de superficie— para
+    que nadie las confunda de nuevo.
     """
     import time
 
     from decision.enroute import evaluate_nwp_at_coord
 
-    r, dec, ref_wx, worst, lvl = evaluate_nwp_at_coord(
+    r, dec, ref_wx, worst, lvl, nivel = evaluate_nwp_at_coord(
         lat=-31.0, lon=-64.0, elev_m=500.0,
         dep_time=int(time.time()) + 3600, duration_hours=1.0,
         aircraft=get_profile("Cessna 172 Skyhawk"), mock=True,

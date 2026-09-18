@@ -781,6 +781,23 @@
         <span x-text="formatTime(result?.route?.total_time_h || 0)"></span>
       </div>
 
+      <!-- ── VEREDICTO EN RUTA ─────────────────────────────────────────────
+           El peor de los puntos evaluados en el nivel de crucero (nube,
+           hielo, techo por debajo del crucero, y la superficie debajo). Se
+           muestra APARTE: el veredicto global mide despegue y aterrizaje contra
+           una pista y no lo incluye. Los puntos sin datos se dicen, no se
+           cuentan como GO. -->
+      <template x-if="result?.route?.found && Object.keys(result?.route?.enroute_counts || {}).length">
+        <div class="mt-2 text-xs font-mono flex items-center gap-2 flex-wrap justify-center">
+          <span class="text-muted">En ruta, a altitud de crucero:</span>
+          <span class="font-bold"
+                :style="`color:${result.route.enroute_decision ? decisionColor(result.route.enroute_decision) : '#8b949e'}`"
+                x-text="result.route.enroute_decision || 'SIN DATOS'"></span>
+          <span class="text-muted" x-text="enrouteSummary(result.route.enroute_counts)"></span>
+          <span class="text-muted">· no entra al veredicto global</span>
+        </div>
+      </template>
+
       <!-- ── LO QUE CUESTA EL DESVÍO ──────────────────────────────────────
            Sin este número, pedir un punto de paso es un botón a ciegas: el
            piloto ve la ruta nueva pero no cuánto agregó. Y el quiebre de
@@ -2617,15 +2634,19 @@ function app() {
               <div style="font-size:9px;color:#6e7681;margin-top:4px;margin-bottom:1px;letter-spacing:.04em">EN SUPERFICIE, DEBAJO DEL PUNTO</div>
               <div style="font-size:10px;color:#8b949e;margin-bottom:2px">
                 Vis: ${cw.visibility_km != null ? (cw.visibility_km>=9.9 ? '>10 km' : cw.visibility_km+' km') : '---'} &nbsp;|&nbsp;
-                Techo: ${cw.ceiling_ft != null ? cw.ceiling_ft+' ft' : 'CLR'}${cw.temp_c != null ? ' &nbsp;|&nbsp; Temp: '+cw.temp_c+'°C' : ''}
+                Techo: ${cw.ceiling_ft == null ? 'CLR' : (cw.ceiling_is_reference ? 'nubes medias o altas, base no pronosticada' : cw.ceiling_ft+' ft')}${cw.temp_c != null ? ' &nbsp;|&nbsp; Temp: '+cw.temp_c+'°C' : ''}
               </div>
               ${cw.wx_codes && cw.wx_codes.length ? `<div style="font-size:10px;color:#d29922">Fenómenos: ${cw.wx_codes.join(' ')}</div>` : ''}
               ${cw.flight_category ? `<div style="font-size:10px;color:#8b949e">Cat: ${cw.flight_category}</div>` : ''}
-              <div style="margin-top:4px">
+              <div style="font-size:9px;color:#6e7681;margin-top:4px;letter-spacing:.04em">RIESGO EN SUPERFICIE</div>
+              <div style="margin-top:2px">
                 ${scoreRow('VIS',cw.r_vis)}${scoreRow('CEIL',cw.r_ceil)}${scoreRow('GUST',cw.r_gust)}${scoreRow('WX',cw.r_wx)}${scoreRow('FOG',cw.r_fog)}
               </div>
+              ${cw.r_gust == null ? `<div style="font-size:9px;color:#6e7681">Ráfagas: la fuente no las publica en altura</div>` : ''}
               ${cw.dominant_factor ? `<div style="font-size:9px;color:#8b949e;margin-top:2px">Factor dominante: ${cw.dominant_factor}</div>` : ''}
-            </div>` : '<div style="font-size:10px;color:#8b949e;margin-top:4px">Sin datos NWP</div>';
+              ${cw.surface_floor ? `<div style="font-size:10px;color:${cw.surface_floor === 'NO GO' ? '#f85149' : '#d29922'};margin-top:2px">Limitante en superficie (${cw.surface_floor}): ${cw.surface_floor_reason || ''}</div>` : ''}
+              ${this.levelBarrierBlock(cw)}
+            </div>` : '<div style="font-size:10px;color:#8b949e;margin-top:4px">Sin datos NWP: el punto no se evaluó</div>';
 
           const altViaBlock = wp.alt_via ? `
             <div style="border-top:1px solid #30363d;margin-top:5px;padding-top:4px;background:#1a2a1a;border-radius:4px;padding:5px 4px;margin-top:5px">
@@ -2647,7 +2668,7 @@ function app() {
           const popupChk = `<div style="font-family:monospace;min-width:200px;max-width:265px;padding:4px 0">
             <div style="font-size:10px;font-weight:600;color:${isFused ? '#58a6ff' : '#8b949e'};margin-bottom:2px">${isFused ? '⊕ CHECKPOINT + AEROVÍA' : '◆ CHECKPOINT EN RUTA'}</div>
             <div style="font-size:11px;color:#e6edf3;margin:3px 0">${wp.name}</div>
-            <div style="font-size:12px;font-weight:700;color:${chkColor}">R = ${wp.r_total.toFixed(2)} · ${wp.decision}</div>
+            <div style="font-size:12px;font-weight:700;color:${chkColor}">${wp.decision == null ? 'SIN DATOS' : 'R = ' + wp.r_total.toFixed(2) + ' · ' + wp.decision}</div>
             ${this.etaBlock(wp)}
             ${wp.cruise_alt_ft ? `<div style="font-size:10px;color:#8b949e">Altitud de ruta: ${wp.cruise_alt_ft.toLocaleString()} ft${wp.is_airway_waypoint ? ' (MEA aerovía)' : ''}</div>` : ''}
             ${awBlock}
@@ -2852,8 +2873,10 @@ function app() {
       awWps.forEach(wp => {
         const isEntry = wp.is_airway_entry;
         const isExit  = wp.is_airway_exit;
-        // Si tiene evaluación NWP, colorear según decisión; si no, azul aerovía
-        const hasNwp = wp.r_total != null && wp.r_total > 0;
+        // Si tiene evaluación NWP, colorear según decisión; si no, azul aerovía.
+        // Sin datos la decisión llega en null. Antes se miraba r_total > 0, que
+        // confundía un punto con buen tiempo (R = 0) con uno sin evaluar.
+        const hasNwp = wp.decision != null && wp.r_total != null;
         const markerColor = hasNwp ? (_awDecCol[wp.decision] || '#58a6ff') : '#58a6ff';
 
         // Bloque meteo si hay evaluación NWP
@@ -2868,10 +2891,12 @@ function app() {
               ${cw.level_temp_c}°C en el nivel${cw.level_below_zero ? ' (bajo cero)' : ''}${cw.level_cloud_pct != null ? ' · nubes '+cw.level_cloud_pct+'%' : ''}
             </div>` : ''}
             <div style="font-size:9px;color:#6e7681;margin-top:2px">
-              Superficie · Vis: ${cw.visibility_km != null ? (cw.visibility_km>=9.9?'>10 km':cw.visibility_km+' km') : '---'} · Techo: ${cw.ceiling_ft != null ? cw.ceiling_ft+' ft' : 'CLR'}
+              Superficie · Vis: ${cw.visibility_km != null ? (cw.visibility_km>=9.9?'>10 km':cw.visibility_km+' km') : '---'} · Techo: ${cw.ceiling_ft == null ? 'CLR' : (cw.ceiling_is_reference ? 'base no pronosticada' : cw.ceiling_ft+' ft')}
             </div>
             ${cw.wx_codes && cw.wx_codes.length ? `<div style="font-size:10px;color:#d29922">${cw.wx_codes.join(' ')}</div>` : ''}
-          </div>` : '';
+            ${cw.surface_floor ? `<div style="font-size:10px;color:${cw.surface_floor === 'NO GO' ? '#f85149' : '#d29922'}">Limitante en superficie (${cw.surface_floor}): ${cw.surface_floor_reason || ''}</div>` : ''}
+            ${this.levelBarrierBlock(cw)}
+          </div>` : (wp.is_enroute_eval ? '<div style="font-size:10px;color:#8b949e;margin-top:4px">Sin datos NWP: el punto no se evaluó</div>' : '');
 
         // Popup
         const popup = `<div style="font-family:monospace;min-width:190px;max-width:260px;padding:4px 0">
@@ -3354,6 +3379,37 @@ function app() {
       return `<div style="font-size:10px;color:#8b949e;margin-top:2px">
         🕓 ETA <span style="color:#e6edf3;font-weight:600">${this.formatEta(wp.eta_utc)}</span>
         <span style="color:#6e7681">· ${this.formatElapsed(wp.elapsed_min)}</span></div>`;
+    },
+
+    // "2 NO GO · 1 CAUTION · 5 GO de 8 puntos · 1 sin datos"
+    enrouteSummary(c) {
+      if (!c) return '';
+      const total = (c['GO'] || 0) + (c['CAUTION'] || 0) + (c['NO GO'] || 0) + (c['SIN DATOS'] || 0);
+      const partes = ['NO GO', 'CAUTION', 'GO'].filter(k => c[k]).map(k => `${c[k]} ${k}`);
+      let txt = `${partes.join(' · ')} de ${total} punto${total === 1 ? '' : 's'}`;
+      if (c['SIN DATOS']) txt += ` · ${c['SIN DATOS']} sin datos`;
+      return txt;
+    },
+
+    // Bloque HTML de la barrera del NIVEL de crucero (risk/cruise_level.py).
+    // El veredicto del punto es el peor entre la superficie y este piso: si el
+    // piso manda, la pantalla tiene que decir por qué, porque el R de arriba es
+    // el de superficie y por sí solo no lo explica.
+    levelBarrierBlock(cw) {
+      if (!cw || cw.level_floor == null) return '';
+      const col = { 'GO': '#3fb950', 'CAUTION': '#d29922', 'NO GO': '#f85149' }[cw.level_floor] || '#8b949e';
+      const razones = (cw.level_reasons || []).map(r =>
+        `<div style="font-size:10px;color:${col}">· ${r}</div>`).join('');
+      const faltan = (cw.level_missing || []).length
+        ? `<div style="font-size:9px;color:#6e7681;margin-top:2px">Sin dato: ${cw.level_missing.join(', ')}</div>` : '';
+      return `<div style="margin-top:5px;padding-top:4px;border-top:1px dashed #30363d">
+        <div style="font-size:9px;color:#6e7681;letter-spacing:.04em">EN EL NIVEL DE CRUCERO
+          · <span style="color:${col};font-weight:700">${cw.level_floor}</span></div>
+        ${razones || ((cw.level_missing || []).length
+            ? '<div style="font-size:10px;color:#8b949e">Evaluación incompleta: faltan datos del nivel</div>'
+            : '<div style="font-size:10px;color:#8b949e">Sin nube en el nivel, hielo ni techo por debajo del crucero</div>')}
+        ${faltan}
+      </div>`;
     },
 
     async copyBriefing() {

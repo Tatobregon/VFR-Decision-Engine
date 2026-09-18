@@ -955,9 +955,24 @@ que difiere de la altitud nominal. Las magnitudes que la fuente no publica por n
 visibilidad, en particular— se declaran ausentes en lugar de sustituirse por las de
 superficie.
 
-El puntaje de riesgo de los puntos de la ruta conserva, por ahora, la visibilidad y el
-techo de superficie, porque la fuente no publica visibilidad por nivel de presión: es una
-limitación declarada, que se retoma en el § 6.3.
+El veredicto de un punto de la ruta combina las dos descripciones sin mezclarlas. El
+puntaje de riesgo se calcula con la superficie que queda debajo del punto —visibilidad,
+niebla, fenómenos—, que es la que importa si hay que descender o aterrizar. Sobre ese
+puntaje actúa una barrera propia del nivel de crucero, con el mismo mecanismo no
+compensatorio del § 3.2.4: en régimen visual, una capa quebrada en el nivel impone
+precaución y una cubierta lo veta, porque el vuelo visual se realiza fuera de nubes; en
+ambos regímenes, la nube en el nivel con temperatura bajo cero se veta por engelamiento; y
+en régimen visual, una capa baja cuya base queda por debajo del crucero impone precaución,
+porque obliga a volar por encima de ella. Los cortes de cobertura son los mismos octavos
+con los que el sistema define el techo. Solo se compara con el crucero la base que la
+fuente permite estimar —la de la capa baja, por la regla de Espy—: las capas medias y altas
+carecen de base pronosticada y entran por la nubosidad del propio nivel. La visibilidad
+sigue tomándose de superficie, porque la fuente no la publica por nivel.
+
+El veredicto de la ruta —el más restrictivo de sus puntos— se informa junto al veredicto
+global sin integrarlo: el veredicto global mide el despegue y el aterrizaje contra una
+pista, y lo que ocurre a mitad de camino es una pregunta distinta. La integración del
+nivel de crucero al puntaje ponderado, y no solo a la barrera, se retoma en el § 6.3.
 
 ### 3.2.6. Elección de algoritmos para la planificación de ruta
 
@@ -1113,9 +1128,9 @@ abstracta, de modo que sustituir el proveedor no afecta a ningún otro component
 | Formularios | **python-multipart** | Requerido por FastAPI para el envío de formularios. |
 | Interfaz | HTML + **Tailwind CSS** | Estilos por clases utilitarias, sin etapa de compilación. |
 | Interactividad | **Alpine.js 3.14.1** | Reactividad declarativa embebida en el propio HTML. Se prefirió sobre React o Vue por no requerir empaquetador ni proceso de construcción, para una interfaz de una sola vista. |
-| Cartografía | **Leaflet 1.9.4** | Biblioteca de mapas interactivos de código abierto, con capa base de teselas oscuras. Se prefirió sobre alternativas comerciales por no requerir clave de servicio ni imponer cuotas. |
+| Cartografía | **Leaflet 1.9.4** | Biblioteca de mapas interactivos de código abierto, sin clave de servicio. La capa base de teselas oscuras de CARTO exige, desde agosto de 2026, una clave gratuita con un límite de uso justo de cinco millones de teselas mensuales; sin ella, el sistema recurre a las teselas de OpenStreetMap, que no requieren clave. |
 | Modelo de lenguaje | **Google Gemini** (nivel gratuito), por solicitudes HTTP directas | Interpretación de las consultas y redacción de las respuestas del asistente. Se accede mediante una cadena de reserva entre modelos de la misma familia, para tolerar las indisponibilidades intermitentes del nivel gratuito. Si el servicio no está configurado, el resto del sistema funciona normalmente. El proveedor es intercambiable (§ 3.3.1). |
-| Pruebas | **pytest** | Suite de regresión de 415 pruebas, ejecutable sin conexión de red; el modelo de lenguaje se sustituye por un cliente simulado. |
+| Pruebas | **pytest** | Suite de regresión de 455 pruebas, ejecutable sin conexión de red; el modelo de lenguaje se sustituye por un cliente simulado. |
 | Asistencia al desarrollo | **Claude Code** (Anthropic, 2026) | Herramienta de programación asistida por inteligencia artificial, empleada en el desarrollo del sistema y en la redacción y revisión de este documento; no forma parte del sistema entregado. El autor definió los requisitos, tomó las decisiones de diseño y validó los resultados, y todo cambio de código se verificó con la suite de pruebas antes de incorporarse. Su aporte y sus riesgos se analizan en el § 6.2. |
 | Control de versiones | **Git** / **GitHub** | Repositorio público, enlazado en el Anexo conforme a la consigna. |
 | Despliegue | **Render** (plan gratuito) | Despliegue automático a partir del repositorio, definido de manera declarativa en un archivo de configuración versionado. |
