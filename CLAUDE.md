@@ -50,7 +50,7 @@ automaticamente: si el aerodromo tiene ICAO intenta METAR, si no hay METAR cae a
 | `data/airways.py` | **COMPLETO** | Grafo bidireccional de aerovias inferiores del AIP (ENR-3.1) desde `aerovias_argentinas.json`. `AIRWAY_NODES`, `AIRWAY_GRAPH`. |
 | `data/fir_zones.py` | **COMPLETO** | FIR de un punto → contacto ATC ("Cordoba Control", etc.) desde `FIRs_Argenina.geojson`. |
 | `data/terrain.py` | **COMPLETO** | Terreno SRTM 30m via Open-Topo-Data. Usado por el perfil vertical. |
-| `data/cache.py` | **COMPLETO** | Cache en memoria con TTL por tipo de dato (METAR 10min, TAF/NOTAM/NWP 30min). A nivel de modulo (los fetchers se crean por request) y thread-safe. No cachea respuestas vacias ni el modo mock. |
+| `data/cache.py` | **COMPLETO** | Cache en memoria con TTL por tipo de dato (METAR 10min, TAF/NOTAM/NWP 30min). A nivel de modulo (los fetchers se crean por request) y thread-safe. No cachea respuestas vacias ni el modo mock. **`get_or_call_stale()`** conserva lo vencido hasta `TTL_GRACIA_S` (6 h) y lo entrega CON SU EDAD si el reintento falla: ver *Una caida del pronostico no deja la ficha en blanco*. |
 | `data/fetcher_madhel.py` | **HERRAMIENTA** | Regenera `madhel_cache.json`. NO corre en runtime. |
 | `data/fetcher_openaip.py` | **HERRAMIENTA** | Regenera `ar-airspace.json`. NO corre en runtime (requiere API key). |
 
@@ -446,6 +446,39 @@ con la altitud, contra 0 antes. Ej. al sur, a 5.500 y 7.500 ft: engelamiento a
 > compara el crucero contra `card.ceiling_ft`, que en NWP puede ser la base de
 > REFERENCIA de 8.000 ft de la capa media: puede dar CAUTION sobre un numero que
 > no es pronostico. Corregirlo mueve veredictos GLOBALES; queda a decision del piloto.
+
+### Una caida del pronostico no deja la ficha en blanco
+
+Encontrado en uso (13/10/2026): la ficha de un aerodromo sin estacion mostraba
+**"Sin datos meteorologicos disponibles"** y nada mas. El METAR/TAF del otro
+extremo funcionaba, asi que la falla era solo del camino NWP, y era
+INTERMITENTE: el mismo aerodromo respondia bien minutos despues, en local y en
+Render. Una sola peticion fallida —limite de consultas, tiempo de espera, corte
+de red— borraba toda la informacion del aerodromo, sin decir por que.
+
+Tres redes de seguridad, en orden:
+
+1. **El anillo cae al punto solo.** El anillo son 7 puntos en una peticion larga;
+   si falla, se pide el punto del aerodromo, que es corta y barata. Se pierde el
+   muestreo del entorno (el motor ya declara cuantas muestras uso), no el
+   pronostico.
+2. **Ultimo pronostico conocido.** `NWP_CACHE.get_or_call_stale()` conserva lo
+   vencido hasta 6 h y lo devuelve si la fuente no responde, junto con su EDAD.
+   `RawNWP.stale_age_s` la propaga y el motor la pone en `conditions_source`:
+   *"pronostico NWP de hace 40 min (la fuente no respondio; es el ultimo
+   conocido)"*. Un pronostico viejo PRESENTADO COMO VIEJO vale mucho mas que una
+   ficha vacia; presentarlo como actual seria el engano que el sistema evita en
+   todos lados, y por eso la edad nunca se omite. Mas de 6 h no se usa: ya no
+   describe el momento del vuelo.
+3. **Si no hay nada, se dice POR QUE.** `_motivo()` traduce la excepcion
+   (429 -> "limite de consultas", timeout, sin conexion) y `_no_data()` la suma
+   al `error_message`; la pantalla la muestra debajo del cartel y agrega
+   "Volve a evaluar en un momento" cuando reintentar puede servir.
+
+Medido: una evaluacion de ruta gasta ~5 peticiones a Open-Meteo (el anillo es
+UNA, multipunto), asi que el limite diario del nivel gratuito no se roza con uso
+normal; el riesgo real es un pico de minuto o un corte momentaneo.
+Fijado por 13 tests en `tests/test_resiliencia_nwp.py`, sin red.
 
 ### El techo de un corredor VFR es AGL; la altitud de vuelo es MSL
 
@@ -1281,7 +1314,7 @@ CARTO_API_KEY=...
   ruta, aerodromos y espacios aereos conservan sus colores, que significan cosas).
 - La URL lleva la clave como **`?key=`**, no `?api_key=`.
 
-Suite de regresion (462 tests, sin red):
+Suite de regresion (475 tests, sin red):
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt

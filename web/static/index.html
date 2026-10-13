@@ -1058,9 +1058,15 @@
           </div>
 
           <!-- Sin datos -->
+          <!-- Sin datos: se dice la CAUSA (límite de consultas, tiempo de espera,
+               sin conexión). "Sin datos" a secas no le dice al piloto si
+               reintentar sirve de algo. -->
           <div x-show="!card.fetch_ok"
                class="bg-caution/10 border border-caution/30 rounded-lg px-3 py-2 mb-3 text-sm text-caution">
             ⚠ Sin datos meteorológicos disponibles
+            <template x-if="card.error_message">
+              <div class="text-xs text-muted mt-1" x-text="motivoSinDatos(card.error_message)"></div>
+            </template>
           </div>
 
           <!-- Viento + Compass -->
@@ -3385,6 +3391,18 @@ function app() {
       return `<div style="font-size:10px;color:#8b949e;margin-top:2px">
         🕓 ETA <span style="color:#e6edf3;font-weight:600">${this.formatEta(wp.eta_utc)}</span>
         <span style="color:#6e7681">· ${this.formatElapsed(wp.elapsed_min)}</span></div>`;
+    },
+
+    // La causa de "sin datos", legible. El motor manda
+    // "Sin datos meteorologicos para SACC (fuente: nwp): <causa>"; acá se
+    // muestra la causa y, si reintentar puede servir, se dice.
+    motivoSinDatos(msg) {
+      if (!msg) return '';
+      const i = msg.indexOf('): ');
+      const causa = i >= 0 ? msg.slice(i + 3) : msg;
+      const reintentar = /límite|limite|tard|conexi/i.test(causa);
+      return causa.charAt(0).toUpperCase() + causa.slice(1) +
+             (reintentar ? '. Volvé a evaluar en un momento.' : '');
     },
 
     // "2 NO GO · 1 CAUTION · 5 GO de 8 puntos · 1 sin datos"

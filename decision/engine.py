@@ -294,6 +294,16 @@ class DecisionEngine:
         if not all_wx:
             return self._no_data(sid, "nwp")
 
+        # Si la fuente no respondio y se esta usando el ultimo pronostico
+        # conocido, la procedencia lo dice: presentarlo como actual seria
+        # exactamente el engano que el resto del sistema evita.
+        edad = getattr(ring[0], "stale_age_s", None)
+        procedencia_nwp = "pronostico NWP"
+        if edad:
+            procedencia_nwp = (f"pronostico NWP de hace {edad / 60:.0f} min "
+                               f"(la fuente no respondio; es el ultimo conocido)")
+            logger.warning(f"{sid}: {procedencia_nwp}")
+
         # ── Ventana de vuelo ─────────────────────────────────────────────────
         window_end = departure_time + int(flight_duration_h * 3600)
         window_wx  = [w for w in all_wx
@@ -342,7 +352,7 @@ class DecisionEngine:
                     score_breakdown = None,
                     taf_result      = None,
                     weather_source  = "nwp",
-                    conditions_source = "pronostico NWP",
+                    conditions_source = procedencia_nwp,
                     obs_time        = wx.obs_time,
                     next_go_from    = None,
                     weather         = wx,
@@ -440,7 +450,7 @@ class DecisionEngine:
             score_breakdown  = worst,
             taf_result       = None,
             weather_source   = "nwp",
-            conditions_source = "pronostico NWP",
+            conditions_source = procedencia_nwp,
             obs_time         = ref_wx.obs_time,
             next_go_from     = None,
             weather          = ref_wx,
@@ -798,8 +808,17 @@ class DecisionEngine:
         return False
 
     def _no_data(self, sid: str, source: str) -> DecisionResult:
-        """Resultado conservador cuando no hay datos disponibles."""
+        """
+        Resultado conservador cuando no hay datos disponibles.
+
+        El mensaje lleva la CAUSA que informo el fetcher —limite de consultas,
+        tiempo de espera agotado, sin conexion—, no solo "sin datos": el piloto
+        necesita saber si reintentar sirve de algo.
+        """
+        causa = getattr(self._nwp_fetch, "last_error", "") if source == "nwp" else ""
         msg = f"Sin datos meteorologicos para {sid} (fuente: {source})"
+        if causa:
+            msg += f": {causa}"
         logger.error(msg)
         return DecisionResult(
             station_id      = sid,

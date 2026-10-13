@@ -144,6 +144,11 @@ class RawNWP:
     hours         : list[RawNWPHour]  # horas del pronostico, ordenadas cronologicamente
     source        : str  = "open-meteo-nwp"
     nwp_estimated : bool = True
+    # Segundos de antiguedad si este pronostico salio de la cache vencida porque
+    # la fuente no respondio. None = recien consultado. Se declara en pantalla:
+    # un pronostico viejo presentado como actual es el modo de falla que este
+    # proyecto evita en todos lados.
+    stale_age_s   : Optional[float] = None
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -343,6 +348,22 @@ def _argentina_iso_to_utc_timestamp(iso_str: str) -> int:
 # Fetcher principal
 # ──────────────────────────────────────────────────────────────────────────────
 
+def _motivo(exc: Exception) -> str:
+    """Traduce la excepcion de red a una causa que se pueda mostrar en pantalla."""
+    texto = str(exc)
+    bajo  = texto.lower()
+    if "429" in texto or "rate limit" in bajo:
+        return ("limite de consultas del servicio de pronostico; "
+                "se restablece solo en un rato")
+    if "timeout" in bajo:
+        return "el servicio de pronostico tardo demasiado en responder"
+    if "conexion" in bajo or "connection" in bajo:
+        return "sin conexion con el servicio de pronostico"
+    if "status" in bajo:
+        return f"el servicio de pronostico respondio con error: {texto[:80]}"
+    return texto[:120]
+
+
 class OpenMeteoFetcher:
     """
     Cliente para la API de Open-Meteo.
@@ -361,6 +382,10 @@ class OpenMeteoFetcher:
         self.mock    = mock
         self.session = requests.Session()
         self.session.headers.update(DEFAULT_HEADERS)
+        # Motivo del ultimo fallo, en castellano. Sin esto la pantalla solo
+        # podia decir "sin datos", que no distingue un corte de red de un
+        # limite de consultas ni le dice al piloto si reintentar sirve.
+        self.last_error = ""
 
     # ── API real ──────────────────────────────────────────────────────────────
 
@@ -623,12 +648,15 @@ class OpenMeteoFetcher:
                 return self._get(params=params)
             except (ConnectionError, ValueError) as e:
                 logger.error(f"No se pudo obtener pronostico NWP: {e}")
+                self.last_error = _motivo(e)
                 return None
 
-        raw_data = NWP_CACHE.get_or_call(cache_key, _fetch)
+        raw_data, edad = NWP_CACHE.get_or_call_stale(cache_key, _fetch)
         if raw_data is None:
             return None
-        return self._parse_response(raw_data, hours_ahead, pressure_lvl=pressure_lvl)
+        parsed = self._parse_response(raw_data, hours_ahead, pressure_lvl=pressure_lvl)
+        parsed.stale_age_s = edad
+        return parsed
 
     # ──────────────────────────────────────────────────────────────────────────
     # Muestreo en anillo — tratamiento de la incertidumbre orografica
@@ -698,17 +726,27 @@ class OpenMeteoFetcher:
                 })
             except (ConnectionError, ValueError) as e:
                 logger.error(f"No se pudo obtener el anillo NWP: {e}")
+                self.last_error = _motivo(e)
                 return None
 
-        raw = NWP_CACHE.get_or_call(cache_key, _fetch)
+        raw, edad = NWP_CACHE.get_or_call_stale(cache_key, _fetch)
         if raw is None:
-            return []
+            # Plan B: el anillo son 7 puntos en una peticion larga; el punto solo
+            # es una peticion corta y barata, y con mal tiempo de red suele pasar
+            # cuando la otra no. Se pierde el muestreo del entorno —el motor lo
+            # declara al informar cuantas muestras uso—, no el pronostico.
+            logger.warning(f"Anillo NWP sin respuesta en ({lat:.2f},{lon:.2f}): "
+                           f"se intenta el punto solo")
+            single = self.get_forecast(lat, lon, elevation_m, hours_ahead)
+            return [single] if single else []
 
         blocks = raw if isinstance(raw, list) else [raw]
         out: List[RawNWP] = []
         for block in blocks:
             try:
-                out.append(self._parse_response(block, hours_ahead, pressure_lvl=None))
+                punto = self._parse_response(block, hours_ahead, pressure_lvl=None)
+                punto.stale_age_s = edad
+                out.append(punto)
             except Exception as e:
                 logger.warning(f"Punto del anillo ilegible, se descarta: {e}")
         return out

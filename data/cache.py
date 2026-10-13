@@ -25,6 +25,11 @@ Diseno
   espera la red.
 - Nunca cachea respuestas vacias o None: si la API fallo, el proximo intento
   debe volver a preguntar en vez de arrastrar el error hasta que expire el TTL.
+- Lo VENCIDO no se tira enseguida: se conserva hasta `TTL_GRACIA_S` y se entrega
+  solo si el reintento falla (`get_or_call_stale`). Un pronostico de hace un rato,
+  declarado como tal, describe el estado del aire mucho mejor que una ficha en
+  blanco; lo que no se puede hacer es presentarlo como actual, y por eso el
+  metodo devuelve ademas su EDAD y el motor la informa en pantalla.
 """
 
 import logging
@@ -45,6 +50,12 @@ TTL_NOTAM_S = 30 * 60    # NOTAM: cambian con baja frecuencia
 TTL_NWP_S   = 30 * 60    # NWP: los modelos corren cada 1-6 h
 
 _MAX_ENTRIES = 512       # tope de entradas por cache (evita crecimiento sin fin)
+
+# Cuanto se conserva un valor DESPUES de vencido, por si la fuente deja de
+# responder. Seis horas es el orden de actualizacion de un modelo numerico: mas
+# viejo que eso ya no describe el momento del vuelo y es preferible decir que no
+# hay datos.
+TTL_GRACIA_S = 6 * 60 * 60
 
 
 class TTLCache:
@@ -90,6 +101,50 @@ class TTLCache:
             self._data[key] = (time.time() + self._ttl, value)
         return value
 
+    def get_or_call_stale(self, key: Any, fn: Callable[[], Any]):
+        """
+        Como `get_or_call`, pero si la llamada falla entrega el ULTIMO valor
+        conocido para esa clave, aunque este vencido.
+
+        Devuelve `(valor, edad_s)`: `edad_s` es None cuando el valor esta fresco
+        y los segundos transcurridos cuando se esta sirviendo uno vencido. El
+        llamador tiene que declarar esa edad: un pronostico viejo presentado
+        como actual es el modo de falla que este proyecto evita en todos lados.
+        """
+        now = time.time()
+
+        with self._lock:
+            entry = self._data.get(key)
+            if entry is not None and entry[0] > now:
+                self.hits += 1
+                return entry[1], None
+
+        self.misses += 1
+        value = fn()
+
+        if value is None or (isinstance(value, (list, tuple, dict)) and len(value) == 0):
+            # La fuente no respondio: se recurre a lo ultimo que si respondio.
+            with self._lock:
+                entry = self._data.get(key)
+            if entry is None:
+                return value, None
+            edad = time.time() - (entry[0] - self._ttl)
+            if edad > TTL_GRACIA_S:
+                logger.warning(
+                    f"cache[{self._name}] el ultimo valor tiene {edad / 3600:.1f} h: "
+                    f"demasiado viejo para usarlo")
+                return value, None
+            logger.warning(
+                f"cache[{self._name}] la fuente no respondio: se usa el ultimo "
+                f"pronostico conocido, de hace {edad / 60:.0f} min")
+            return entry[1], edad
+
+        with self._lock:
+            if len(self._data) >= self._max:
+                self._purge_locked(time.time())
+            self._data[key] = (time.time() + self._ttl, value)
+        return value, None
+
     def clear(self) -> None:
         """Vacia la cache (usado por los tests)."""
         with self._lock:
@@ -106,9 +161,15 @@ class TTLCache:
     # ── Interno ───────────────────────────────────────────────────────────────
 
     def _purge_locked(self, now: float) -> None:
-        """Elimina lo expirado; si aun asi esta lleno, descarta lo mas viejo."""
-        expirados = [k for k, (exp, _) in self._data.items() if exp <= now]
-        for k in expirados:
+        """
+        Elimina lo expirado HACE RATO; si aun asi esta lleno, descarta lo mas
+        viejo. Lo recien vencido se conserva: es la red de seguridad que usa
+        `get_or_call_stale` cuando la fuente deja de responder.
+        """
+        # Vencido hace mas que la gracia: ya no sirve ni como ultimo recurso.
+        viejos = [k for k, (exp, _) in self._data.items()
+                  if exp <= now - TTL_GRACIA_S]
+        for k in viejos:
             del self._data[k]
         if len(self._data) >= self._max:
             sobrantes = sorted(self._data.items(), key=lambda kv: kv[1][0])
