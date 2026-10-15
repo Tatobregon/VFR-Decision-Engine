@@ -11,3 +11,6 @@ data/madhel_fetch_err.log
 
 # Descargas del estudio de validacion (se regeneran solas)
 validation/cache/
+
+# La carpeta de la tesis no va al repositorio publico
+Teorico/
